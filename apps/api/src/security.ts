@@ -35,7 +35,7 @@ export function validateMutationOrigin(req:Request,env:Env):void{
  const u=new URL(req.url);
  if(!origin){
   const demo=env.MOCK_AUTH==='local-only'&&['localhost','127.0.0.1'].includes(u.hostname);
-  const bearer=/^Bearer [A-Za-z0-9._~+\\/-]+$/i.test(req.headers.get('authorization')||'');
+  const bearer=/^Bearer\s+\S+$/i.test(req.headers.get('authorization')||'');
   assert(demo||bearer,403,'origin_required','請求缺少來源驗證');
   return;
  }
