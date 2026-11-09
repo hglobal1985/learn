@@ -1,0 +1,17 @@
+{
+  "name": "learn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "devDependencies": {"eslint":"^9.0.0","@eslint/js":"^9.0.0","typescript-eslint":"^8.0.0","globals":"^16.0.0"},
+  "scripts": {
+    "check:core": "tsc -p packages/shared/tsconfig.json && node --test packages/shared/tests/*.test.mjs",
+    "check:api": "tsc -p apps/api/tsconfig.json",
+    "test:preview": "node --test apps/preview/tests/*.test.mjs",
+    "test:api": "tsc -p apps/api/tsconfig.build-test.json && node --test apps/api/tests/*.test.mjs",
+    "lint": "eslint apps packages",
+    "check": "npm run check:core && npm run check:api",
+    "preview": "node apps/preview/server.mjs"
+  }
+}
