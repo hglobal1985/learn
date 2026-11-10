@@ -66,12 +66,14 @@ test('API never reveals member content to unauthenticated visitors',async()=>{
  assert.deepEqual(result.videos.map(x=>x.id),['pub001','muxpub01','muxsign01']);assert.equal(result.total,3);
  assert.equal((await request('/v1/videos/mem001')).status,403);
 });
-test('all mutations remain blocked while central OAuth is unavailable',async()=>{
+test('mutations remain protected while publicly viewable YouTube is playable',async()=>{
  const r=await request('/v1/videos','POST');assert.equal(r.status,401);
- assert.equal((await request('/v1/videos/pub001/playback','POST')).status,401);
+ const p=await request('/v1/videos/pub001/playback','POST');
+ assert.equal(p.status,200);assert.equal((await p.json()).type,'youtube');
+ assert.equal((await request('/v1/videos/mem001/playback','POST')).status,403);
 });
-test('health reports transitional contract and unfinished authentication honestly',async()=>{
- const r=await request('/v1/health');const body=await r.json();assert.equal(body.central_auth,'pending');assert.equal(body.contract_version,'2026-11-10.1');
+test('health reports 2026-11-10.2 relay without pretending to have credentials',async()=>{
+ const r=await request('/v1/health');const body=await r.json();assert.equal(body.central_auth,'relay');assert.equal(body.contract_version,'2026-11-10.2');
 });
 test('production never authenticates via demo headers or legacy secret',async()=>{
  const fake={DB:new DB(),HGLOBAL_ID_CLIENT_SECRET:'legacy-not-used'};
@@ -80,4 +82,15 @@ test('production never authenticates via demo headers or legacy secret',async()=
 });
 test('missing database fails closed without exposing internals',async()=>{
  const r=await request('/v1/videos','GET',{});assert.equal(r.status,503);
+});
+
+test('login relay and privacy routes render while server does not handle Google credentials',async()=>{
+ for(const path of ['/login','/auth/done','/settings','/admin']){
+  const r=await request(path);assert.equal(r.status,200);
+  assert.match(r.headers.get('content-security-policy'),/id\.hglobal1985\.com/);
+ }
+ const s=await request('/settings');const body=await s.text();
+ assert.match(body,/id\.hglobal1985\.com\/privacy/);
+ assert.match(body,/申請刪除帳號/);
+ assert.doesNotMatch(body,/HGLOBAL_ID_CLIENT_SECRET/);
 });
