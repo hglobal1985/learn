@@ -75,7 +75,7 @@ test('anonymous and non-superadmin cannot read or write video admin data',async(
   mockCentral({isOwner:false});
   const unauthorized=await worker.fetch(req('/v1/admin/videos'),{DB:db});assert.equal(unauthorized.status,403);
   const forbiddenPost=await worker.fetch(req('/v1/admin/videos','POST',{title:'x'}),{DB:db});assert.equal(forbiddenPost.status,403);
-  assert.equal(this.records.length,0);
+  assert.equal(db.records.length,0);
  }finally{globalThis.fetch=savedFetch}
 });
 test('superadmin can add YouTube from phone as draft and publish',async()=>{
@@ -87,14 +87,14 @@ test('superadmin can add YouTube from phone as draft and publish',async()=>{
   const created=await worker.fetch(req('/v1/admin/videos','POST',data),{DB:db});
   assert.equal(created.status,201);
   const body=await created.json();
-  assert.equal(this.records[0].status,'draft');
-  assert.equal(this.records[0].source_id,'dQw4w9WgXcQ');
+  assert.equal(db.records[0].status,'draft');
+  assert.equal(db.records[0].source_id,'dQw4w9WgXcQ');
   const publish=await worker.fetch(req('/v1/admin/videos/'+body.video_id+'/publish','POST'),{DB:db});
   assert.equal(publish.status,200);
-  assert.equal(this.records[0].status,'published');
+  assert.equal(db.records[0].status,'published');
   const takeDown=await worker.fetch(req('/v1/admin/videos/'+body.video_id+'/unpublish','POST'),{DB:db});
   assert.equal(takeDown.status,200);
-  assert.equal(this.records[0].status,'draft');
+  assert.equal(db.records[0].status,'draft');
  }finally{globalThis.fetch=savedFetch}
 });
 test('Mux Asset ID import saves draft but cannot publish without safe API credentials',async()=>{
@@ -104,11 +104,11 @@ test('Mux Asset ID import saves draft but cannot publish without safe API creden
   assert.equal(created.status,201);
   const body=await created.json();
   assert.equal(body.needs_mux_connection,true);
-  assert.equal(this.records[0].status,'draft');
-  assert.equal(this.records[0].source_id,'');
+  assert.equal(db.records[0].status,'draft');
+  assert.equal(db.records[0].source_id,'');
   const publish=await worker.fetch(req('/v1/admin/videos/'+body.video_id+'/publish','POST'),{DB:db});
   assert.equal(publish.status,503);
-  assert.equal(this.records[0].status,'draft');
+  assert.equal(db.records[0].status,'draft');
  }finally{globalThis.fetch=savedFetch}
 });
 test('website account navigation and admin UI work on mobile and retain CSP',async()=>{
