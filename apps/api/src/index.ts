@@ -98,7 +98,7 @@ async function importExistingMux(req:Request,env:Env,viewer:Viewer):Promise<Resp
  assert(/^[A-Za-z0-9]+$/.test(assetId),422,'invalid_asset_id','Mux 資產識別碼無效');
  const access=b.access_mode??'rank';
  assert(isMode(access),422,'invalid_access_mode','影片權限無效');
- const minRank=access==='rank'&&b.min_rank_code!=null?cleanText(b.min_rank_code,32):null;
+ const rule=accessFields(access,b.audience,b.min_rank_code);
  const existing=await env.DB.prepare('SELECT id FROM videos WHERE mux_asset_id=?').bind(assetId).first<{id:string}>();
  assert(!existing,409,'already_imported','這部 Mux 影片已經匯入');
  const asset=await inspectMuxAsset(env,assetId);
