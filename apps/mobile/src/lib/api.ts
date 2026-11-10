@@ -1,5 +1,6 @@
 import {DEMO_VIDEOS,demoPublished,demoCanView,demoComments,addDemoComment,type CatalogItem,type DemoComment} from './demo';
 import {DEMO_MODE} from './session';
+import {Platform} from 'react-native';
 import type {DemoIdentity} from './demo';
 import {token,refresh} from './central-auth';
 export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'https://learn.hglobal1985.com';
@@ -26,7 +27,15 @@ export async function getCatalogVideo(id:string,identity:DemoIdentity):Promise<C
 }
 export async function getPlayback(videoId:string):Promise<{type:'mux'|'youtube';url?:string;video_id?:string}>{
  if(DEMO_MODE)throw Error('目前尚未連接正式影片來源');
- return request(`videos/${encodeURIComponent(videoId)}/playback`,'POST');
+ const data=await request<{type:'mux'|'youtube';playback_id?:string;playback_token?:string;public?:boolean;video_id?:string}>(`videos/${encodeURIComponent(videoId)}/playback`,'POST');
+ if(data.type==='youtube')return {type:'youtube',video_id:data.video_id};
+ if(!data.playback_id||!/^[A-Za-z0-9]+$/.test(data.playback_id))throw Error('影片播放資訊無效');
+ const key=data.playback_token;
+ if(!data.public&&!key)throw Error('影片授權尚未就緒');
+ const url=Platform.OS==='web'?'https://player.mux.com/'+data.playback_id+(key?'?playback-token='+encodeURIComponent(key):'?preload=none'):
+  'https://stream.mux.com/'+data.playback_id+'.m3u8'+(key?'?token='+encodeURIComponent(key):'');
+ return {type:'mux',url};
+
 }
 export async function listComments(videoId:string):Promise<DemoComment[]>{
  if(DEMO_MODE)return demoComments.filter(c=>c.video_id===videoId);
