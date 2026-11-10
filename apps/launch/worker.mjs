@@ -3,7 +3,7 @@ import {AUTH_BROWSER_JS} from './auth/web-client.mjs';
 import {ADMIN_BROWSER_JS} from './admin/browser.mjs';
 import {ADMIN_PAGE} from './admin/page.mjs';
 import {adminRoute} from './admin/routes.mjs';
-import {muxPlayback} from './access/mux.mjs';
+import {muxPlayback,MuxSigningError} from './access/mux.mjs';
 import {canViewPublic} from './access/policy.mjs';
 const BASE = 'https://learn.hglobal1985.com';
 const CSS = `
@@ -160,9 +160,15 @@ async function publicApi(req,env,path){
   if(req.method!=='POST')return json({error:{code:'invalid_method',message:'請求方式無效'}},405);
   try{
    const playback=await muxPlayback(env,v);
-   if(!playback)return json({error:{code:'not_available',message:'影片串流功能尚未啟用'}},503);
+   if(!playback)return json({error:{code:'mux_signing_not_configured',message:'此影片的安全播放簽章尚未設定，請聯絡管理員'}},503);
    return json(playback);
-  }catch{return json({error:{code:'not_available',message:'影片串流功能尚未啟用'}},503)}
+  }catch(error){
+   if(error instanceof MuxSigningError){
+    // Only a safe status code is returned; private key material stays inside the Worker.
+    return json({error:{code:error.code,message:'Mux 安全播放金鑰格式無法使用，請管理員檢查設定'}},503);
+   }
+   return json({error:{code:'playback_unavailable',message:'影片播放服務暫時無法使用，請稍後重試'}},503);
+  }
  }
  if(req.method!=='GET')return json({error:{code:'invalid_method',message:'請求方式無效'}},405);
  return json({video:{id:v.id,title:v.title,description:v.description,source_type:v.source_type,source_id:v.source_type==='youtube'?v.source_id:undefined,category:v.category,access_mode:v.access_mode,created_at:v.created_at},share_url:BASE+'/'+v.id});
