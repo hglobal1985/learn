@@ -67,3 +67,25 @@ export async function allowed(req,video,viewer){
   if(!r.ok)return false;const data=await r.json();return data.allowed===true;
  }catch{return false}
 }
+
+/**
+ * Central-member superadmin editorial review. This is a distinct privilege from Amway
+ * eligibility, never granted to ordinary members. The central role is verified on EACH
+ * request, and any central failure denies review. This method does not write handoff state.
+ */
+export async function canPreviewAsSuperadmin(request,viewer){
+ if(!viewer?.sub)return false;
+ const authorization=request.headers.get('authorization');
+ if(!/^Bearer [-_A-Za-z0-9]+\\.[-_A-Za-z0-9]+\\.[-_A-Za-z0-9]+$/.test(authorization||''))return false;
+ try{
+  const [config,permission]=await Promise.all([
+   fetch(ISSUER+'/v1/apps/learn/config',{signal:AbortSignal.timeout(5000)}),
+   fetch(ISSUER+'/v1/apps/learn/handoff',{
+    headers:{Authorization:authorization},signal:AbortSignal.timeout(5000)
+   })
+  ]);
+  if(!config.ok||!permission.ok)return false;
+  const [app,owner]=await Promise.all([config.json(),permission.json()]);
+  return app.app_id==='learn'&&app.status==='active'&&owner.app_id==='learn';
+ }catch{return false}
+}
