@@ -101,3 +101,42 @@ test('moderation actions require moderation grant',async()=>{
  assert.equal((await run('/v1/comments/comment01/moderate',{'x-demo-sub':'dev:member'},'POST',{action:'hide'})).status,403);
  assert.equal((await run('/v1/comments/comment01/moderate',{'x-demo-sub':'dev:owner'},'POST',{action:'hide'})).status,200);
 });
+
+test('existing Mux asset import denies members without upload permission',async()=>{
+ const r=await run('/v1/videos/mux/import',{'x-demo-sub':'dev:member'},'POST',
+  {title:'既有影片',asset_id:'asset123',access_mode:'rank'});
+ assert.equal(r.status,403);
+});
+test('existing restricted Mux asset is rejected when public playback exists',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async()=>new Response(JSON.stringify({data:{status:'ready',duration:180,playback_ids:[
+  {id:'publicID',policy:'public'},{id:'signedID',policy:'signed'}
+ ]}}),{status:200,headers:{'content-type':'application/json'}});
+ env.MUX_TOKEN_ID='test-token-id';env.MUX_TOKEN_SECRET='test-token-secret';
+ try{
+  const r=await run('/v1/videos/mux/import',{'x-demo-sub':'dev:owner'},'POST',
+   {title:'既有會員影片',description:'',category:'培訓',asset_id:'asset123',access_mode:'members'});
+  assert.equal(r.status,409);assert.equal(r.json.error.code,'mux_public_playback_exists');
+ }finally{globalThis.fetch=previous;delete env.MUX_TOKEN_ID;delete env.MUX_TOKEN_SECRET;}
+});
+test('signed-only existing Mux video imports as draft without changing source asset',async()=>{
+ const previous=globalThis.fetch;let method='';
+ globalThis.fetch=async(_url,opts)=>{method=opts.method;return new Response(JSON.stringify({data:{status:'ready',duration:201,playback_ids:[{id:'signedABC',policy:'signed'}]}}),{status:200});};
+ env.MUX_TOKEN_ID='test-token-id';env.MUX_TOKEN_SECRET='test-token-secret';
+ try{
+  const r=await run('/v1/videos/mux/import',{'x-demo-sub':'dev:owner'},'POST',
+   {title:'既有獎銜影片',description:'',category:'培訓',asset_id:'asset123',access_mode:'rank',min_rank_code:'15'});
+  assert.equal(r.status,201);assert.equal(r.json.status,'draft');assert.match(r.json.share_url,/^https:\/\/learn\.hglobal1985\.com\/[a-z0-9]+$/);
+  assert.equal(method,'GET');
+ }finally{globalThis.fetch=previous;delete env.MUX_TOKEN_ID;delete env.MUX_TOKEN_SECRET;}
+});
+test('Mux import rejects assets not yet ready',async()=>{
+ const previous=globalThis.fetch;
+ globalThis.fetch=async()=>new Response(JSON.stringify({data:{status:'preparing',playback_ids:[{id:'signedABC',policy:'signed'}]}}),{status:200});
+ env.MUX_TOKEN_ID='test-token-id';env.MUX_TOKEN_SECRET='test-token-secret';
+ try{
+  const r=await run('/v1/videos/mux/import',{'x-demo-sub':'dev:owner'},'POST',
+   {title:'既有影片',asset_id:'asset123',access_mode:'rank'});
+  assert.equal(r.status,422);assert.equal(r.json.error.code,'mux_not_ready');
+ }finally{globalThis.fetch=previous;delete env.MUX_TOKEN_ID;delete env.MUX_TOKEN_SECRET;}
+});
