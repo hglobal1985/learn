@@ -152,9 +152,26 @@ export const AUTH_BROWSER_JS=String.raw`
      const data=await protectedCall('/v1/videos?'+q);
      const container=byId('catalog');
      if(container&&Array.isArray(data.videos)){
+      const filters=document.querySelector('.filters');
+      if(filters){
+       const names=[...new Set(data.videos.map(v=>v.category).filter(Boolean))];
+       const active=params.get('category')||'';
+       const search=params.get('q')||'';
+       const makeChip=(name,label)=>{
+        const a=document.createElement('a');a.className='chip'+(active===name?' active':'');
+        a.href='/?'+new URLSearchParams({q:search,category:name}).toString();
+        a.textContent=label;return a;
+       };
+       filters.replaceChildren(makeChip('','全部'),...names.map(name=>makeChip(name,name)));
+      }
       container.textContent='';
       if(!data.videos.length){const e=document.createElement('div');e.className='empty';e.textContent='目前尚未上架符合資格的課程';container.append(e)}
       else{
+       if(data.admin_preview){
+        const note=document.createElement('p');note.className='muted';
+        note.textContent='超級管理員預覽：可檢查已發布課程，其他會員仍依觀看資格審核。';
+        container.append(note);
+       }
        const grid=document.createElement('div');grid.className='grid';
        for(const v of data.videos){
         const a=document.createElement('a');a.className='course';a.href='/'+encodeURIComponent(v.id);
