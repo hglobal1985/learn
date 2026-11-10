@@ -21,3 +21,4 @@ jobs:
       - run: npm run check:api
       - run: npm run test:preview
       - run: npm run typecheck -w @learn/mobile
+      - run: npm run lint
