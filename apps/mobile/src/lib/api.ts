@@ -1,12 +1,18 @@
 import {DEMO_VIDEOS,demoPublished,demoCanView,demoComments,addDemoComment,type CatalogItem,type DemoComment} from './demo';
 import {DEMO_MODE} from './session';
 import type {DemoIdentity} from './demo';
-export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'';
+import {token,refresh} from './central-auth';
+export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'https://learn.hglobal1985.com';
 export async function request<T>(path:string,method='GET',body?:unknown):Promise<T>{
- const r=await fetch(`${API_ORIGIN}/v1/${path}`,{
-  method,credentials:'include',headers:{...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined
+ const send=async(bearer:string|null)=>fetch(`${API_ORIGIN}/v1/${path}`,{
+  method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(bearer?{Authorization:'Bearer '+bearer}:{})},
+  body:body?JSON.stringify(body):undefined
  });
- const value=await r.json();if(!r.ok)throw Error(value?.error?.message||`請求失敗：${r.status}`);
+ let bearer=await token();
+ let r=await send(bearer);
+ if(r.status===401&&bearer&&await refresh()){bearer=await token();r=await send(bearer)}
+ const value=await r.json();
+ if(!r.ok)throw Error(value?.error?.message||`請求失敗：${r.status}`);
  return value as T;
 }
 export async function listCatalog(identity:DemoIdentity,search='',category=''):Promise<CatalogItem[]>{
