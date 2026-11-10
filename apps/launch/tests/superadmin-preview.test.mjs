@@ -115,7 +115,7 @@ test('superadmin override fails closed when Central app paused or role API unava
 });
 test('published-only API never allows superadmin to open draft by direct video ID',async()=>{
  mockCentral({superadmin:true,eligible:false});
- const db={prepare(sql){return {bind(){return this},async first(){return draft},async all(){return {results:[draft]}}}}};
+ const db={prepare(){return {bind(){return this},async first(){return draft},async all(){return {results:[draft]}}}}};
  try{
   const detail=await worker.fetch(req('/v1/videos/draft0001',true),{DB:db});
   assert.equal(detail.status,403);
