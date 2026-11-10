@@ -77,7 +77,6 @@ async function findVideo(env,id){
  if(!ID.test(id))return null;
  return env.DB.prepare('SELECT * FROM videos WHERE id=?').bind(id).first();
 }
-const shareScript='document.getElementById("share")?.addEventListener("click",async function(){const url=location.href;try{if(navigator.share){await navigator.share({url,title:document.title});return}await navigator.clipboard.writeText(url);this.textContent="已複製網址"}catch(e){if(e.name!=="AbortError")this.textContent="請複製網址"}})';
 async function detail(env,req,id){
  const v=await findVideo(env,id);
  if(!v)return render('<main class="wrap main"><h1 class="title">找不到影片</h1><a class="back" href="/">返回課程</a></main>','找不到影片',404);
@@ -92,7 +91,7 @@ async function detail(env,req,id){
  const comments=(rows.results||[]).map(c=>'<div class="comment"><div class="comment-name">會員</div><div>'+esc(c.body)+'</div></div>').join('')||'<p class="muted">目前沒有留言</p>';
  const markup='<main class="wrap main"><a class="back" href="/">← 返回課程</a><div class="video">'+player+'</div><div class="details"><span class="category">'+esc(v.category)+'</span><h1 class="title">'+esc(v.title)+'</h1><div class="desc">'+esc(v.description||'')+'</div><div class="share-row"><button id="share" class="btn">分享影片</button></div></div>'+
  '<section class="comments"><h2>學習心得與討論</h2>'+comments+'<button class="pill" disabled>登入後留言</button></section></main>';
- return render(markup,esc(v.title),200,shareScript);
+ return render(markup,esc(v.title));
 }
 async function publicApi(req,env,path){
  if(path==='/v1/health')return json({status:'ok',project:'learn',phase:'central-relay',central_auth:'relay',contract_version:'2026-11-10.2'});
