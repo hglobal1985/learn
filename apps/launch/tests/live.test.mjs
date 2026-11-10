@@ -78,7 +78,7 @@ test('health reports 2026-11-10.2 relay without pretending to have credentials',
 test('production never authenticates via demo headers or legacy secret',async()=>{
  const fake={DB:new DB(),HGLOBAL_ID_CLIENT_SECRET:'legacy-not-used'};
  const r=await worker.fetch(new Request('https://learn.hglobal1985.com/v1/session',{headers:{'x-demo-sub':'dev:owner'}}),fake);
- assert.deepEqual(await r.json(),{authenticated:false});
+ assert.deepEqual(await r.json(),{authenticated:false,member_sub:null});
 });
 test('missing database fails closed without exposing internals',async()=>{
  const r=await request('/v1/videos','GET',{});assert.equal(r.status,503);
