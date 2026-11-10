@@ -30,7 +30,7 @@ test('homepage renders public-only catalog, no fake accounts',async()=>{
 });
 test('public direct root video path is a functional detail page',async()=>{
  const r=await request('/pub001');assert.equal(r.status,200);
- assert.match(await r.text(),/youtube-nocookie.com\\/embed/);
+ assert.ok((await r.text()).includes('youtube-nocookie.com/embed'));
 });
 test('members and rank direct links fail closed',async()=>{
  for(const id of ['mem001','rank001','draft01']){
