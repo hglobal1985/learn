@@ -20,6 +20,15 @@ test('rank decisions belong exclusively to central API and fail closed',async()=
  assert.equal(await canView(make('rank'),{sub:'s1'},async()=>false),false);
  assert.equal(await canView(make('rank'),{sub:'s1'},async()=>{throw Error('unavailable')}),false);
 });
+test('rank audience everyone is separately checked and never trusts the caller',async()=>{
+ let rule;
+ const v={...make('rank'),audience:'everyone',min_rank_code:null};
+ assert.equal(await canView(v,{sub:'s1'},async r=>{rule=r;return true}),true);
+ assert.deepEqual(rule,{audience:'everyone',min_rank:null});
+ assert.equal(await canView({...v,min_rank_code:'r21'},{sub:'s1'},async()=>true),false);
+ assert.equal(await canView({...v,audience:'unexpected'},{sub:'s1'},async()=>true),false);
+ assert.equal(await canView(v,null,async()=>true),false);
+});
 test('draft and unlisted video are invisible',async()=>{
  assert.equal(await canView({...make('public'),status:'draft'},null,async()=>true),false);
  assert.equal(await canView({...make('public'),status:'unlisted'},null,async()=>true),false);
