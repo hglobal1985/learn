@@ -134,3 +134,29 @@ test('central profile calls are never sent to learn API, and owner checks do not
  assert.match(AUTH_BROWSER_JS,/isLocal\?path:BASE\+path/);
  assert.doesNotMatch(AUTH_BROWSER_JS,/path\.startsWith\('\/v1\/'\)\?path/);
 });
+
+test('publishing errors are visible inline at the tapped video card and API messages are retained',()=>{
+ assert.match(ADMIN_BROWSER_JS,/publish-status/);
+ assert.match(ADMIN_BROWSER_JS,/status\(message\)/);
+ assert.match(ADMIN_BROWSER_JS,/正在.*處理中…/s);
+ assert.match(ADMIN_BROWSER_JS,/scrollIntoView/);
+ assert.match(AUTH_BROWSER_JS,/problem\?\.error\?\.message/);
+ assert.doesNotThrow(()=>new Function(ADMIN_BROWSER_JS));
+ assert.doesNotThrow(()=>new Function(AUTH_BROWSER_JS));
+});
+test('missing Mux secrets returns an actionable 503, never publishes signed draft',async()=>{
+ mockCentral();const db=new DB();
+ db.records.push({
+  id:'jade20261108',title:'線上翡翠達標班 2026/11/8',source_type:'mux',
+  access_mode:'rank',status:'draft',mux_asset_id:'y02s92iJgeiypHtlHISrcc8kzZ6p008Ge996EttDrm8wU',
+  mux_playback_policy:'signed',source_id:'signed123'
+ });
+ try{
+  const response=await worker.fetch(req('/v1/admin/videos/jade20261108/publish','POST'),{DB:db});
+  assert.equal(response.status,503);
+  const body=await response.json();
+  assert.equal(body.error.code,'mux_not_configured');
+  assert.match(body.error.message,/Mux API/);
+  assert.equal(db.records[0].status,'draft');
+ }finally{globalThis.fetch=savedFetch}
+});
