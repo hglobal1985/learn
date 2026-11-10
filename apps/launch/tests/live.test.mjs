@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import worker from '../worker.mjs';
 const videos=[
  {id:'pub001',title:'公開課程',description:'實用的內容',category:'營養',source_type:'youtube',source_id:'dQw4w9WgXcQ',status:'published',access_mode:'public'},
+ {id:'muxpub01',title:'Mux 公開課程',description:'公開影片',category:'營養',source_type:'mux',source_id:'publicMux99',mux_playback_policy:'public',status:'published',access_mode:'public'},
+ {id:'muxsign01',title:'Signed 公開課程',description:'安全授權',category:'營養',source_type:'mux',source_id:'signedPlaybackXYZ',mux_playback_policy:'signed',status:'published',access_mode:'public'},
  {id:'mem001',title:'會員內容',description:'不可對外',category:'培訓',source_type:'mux',source_id:'secretID',status:'published',access_mode:'members'},
  {id:'rank001',title:'限定內容',description:'不可對外',category:'培訓',source_type:'mux',source_id:'secretID',status:'published',access_mode:'rank'},
  {id:'draft01',title:'草稿資料',description:'不可顯示',category:'營養',source_type:'youtube',source_id:'dQw4w9WgXcQ',status:'draft',access_mode:'public'}
@@ -32,6 +34,27 @@ test('public direct root video path is a functional detail page',async()=>{
  const r=await request('/pub001');assert.equal(r.status,200);
  assert.ok((await r.text()).includes('youtube-nocookie.com/embed'));
 });
+test('public Mux embeds official browser-compatible iframe with safe thumbnail',async()=>{
+ const home=await request('/');const markup=await home.text();
+ assert.match(markup,/image\.mux\.com\/publicMux99\/thumbnail\.webp\?width=640/);
+ assert.doesNotMatch(markup,/image\.mux\.com\/signedPlaybackXYZ|secretID/);
+ const detail=await request('/muxpub01');const html=await detail.text();
+ assert.equal(detail.status,200);
+ assert.match(html,/https:\/\/player\.mux\.com\/publicMux99\?preload=none/);
+ assert.doesNotMatch(html,/stream\.mux\.com\/publicMux99\.m3u8/);
+ const csp=detail.headers.get('content-security-policy')||'';
+ assert.match(csp,/frame-src[^;]*https:\/\/player\.mux\.com/);
+ assert.match(csp,/img-src[^;]*https:\/\/image\.mux\.com/);
+});
+test('signed playback IDs are never placed in public thumbnails, players or API',async()=>{
+ const page=await request('/muxsign01');assert.equal(page.status,200);
+ const html=await page.text();
+ assert.doesNotMatch(html,/signedPlaybackXYZ|player\.mux\.com\/signedPlaybackXYZ/);
+ assert.match(html,/影片尚未提供播放/);
+ const api=await request('/v1/videos/muxsign01');const json=await api.json();
+ assert.equal(json.video.source_id,undefined);
+ assert.doesNotMatch(JSON.stringify(json),/signedPlaybackXYZ/);
+});
 test('members and rank direct links fail closed',async()=>{
  for(const id of ['mem001','rank001','draft01']){
   const r=await request('/'+id);assert.equal(r.status,403);
@@ -40,7 +63,7 @@ test('members and rank direct links fail closed',async()=>{
 });
 test('API never reveals member content to unauthenticated visitors',async()=>{
  const r=await request('/v1/videos');const result=await r.json();
- assert.deepEqual(result.videos.map(x=>x.id),['pub001']);assert.equal(result.total,1);
+ assert.deepEqual(result.videos.map(x=>x.id),['pub001','muxpub01','muxsign01']);assert.equal(result.total,3);
  assert.equal((await request('/v1/videos/mem001')).status,403);
 });
 test('all mutations remain blocked while central OAuth is unavailable',async()=>{
