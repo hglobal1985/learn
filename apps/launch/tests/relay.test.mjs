@@ -50,7 +50,7 @@ test('rank check fails closed and requires verified token and Central approval',
  }finally{globalThis.fetch=original}
 });
 test('no raw video playback ID, title or Mux token returned for unauthorized rank',async()=>{
- const id='private000',db={prepare(sql){let params=[];return {bind(...p){params=p;return this},async first(){return {id,title:'私密影片',access_mode:'rank',audience:'hglobal_verified',min_rank_code:'gold',status:'published',source_type:'mux',source_id:'secret123',mux_playback_policy:'signed'}},async all(){return {results:[]}}}}};
+ const id='private000',db={prepare(){return {bind(){return this},async first(){return {id,title:'私密影片',access_mode:'rank',audience:'hglobal_verified',min_rank_code:'gold',status:'published',source_type:'mux',source_id:'secret123',mux_playback_policy:'signed'}},async all(){return {results:[]}}}}};
  const req=new Request('https://learn.hglobal1985.com/v1/videos/'+id);
  const res=await worker.fetch(req,{DB:db});
  assert.equal(res.status,403);
