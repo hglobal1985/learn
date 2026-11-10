@@ -47,8 +47,13 @@ test('all mutations remain blocked while central OAuth is unavailable',async()=>
  const r=await request('/v1/videos','POST');assert.equal(r.status,401);
  assert.equal((await request('/v1/videos/pub001/playback','POST')).status,401);
 });
-test('health reports unfinished authentication honestly',async()=>{
- const r=await request('/v1/health');assert.deepEqual((await r.json()).central_auth,'pending');
+test('health reports transitional contract and unfinished authentication honestly',async()=>{
+ const r=await request('/v1/health');const body=await r.json();assert.equal(body.central_auth,'pending');assert.equal(body.contract_version,'2026-11-10.1');
+});
+test('production never authenticates via demo headers or legacy secret',async()=>{
+ const fake={DB:new DB(),HGLOBAL_ID_CLIENT_SECRET:'legacy-not-used'};
+ const r=await worker.fetch(new Request('https://learn.hglobal1985.com/v1/session',{headers:{'x-demo-sub':'dev:owner'}}),fake);
+ assert.deepEqual(await r.json(),{authenticated:false});
 });
 test('missing database fails closed without exposing internals',async()=>{
  const r=await request('/v1/videos','GET',{});assert.equal(r.status,503);
