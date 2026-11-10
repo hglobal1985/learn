@@ -1,0 +1,25 @@
+name: Learn quality checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  shared-and-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm run check:core
+      - run: npm run test:api
+      - run: npm run check:api
+      - run: npm run test:preview
+      - run: npm run typecheck -w @learn/mobile
+      - run: npm run lint
+      - run: npm run build:web -w @learn/mobile
