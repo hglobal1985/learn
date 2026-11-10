@@ -13,6 +13,39 @@ export const AUTH_BROWSER_JS=String.raw`
    sessionStorage.setItem('hglobal.learn.return',location.pathname+location.search);
   }
  });
+ async function visit(url,replace=false){
+  const u=new URL(url,location.href);
+  try{
+   const response=await fetch(u.pathname+u.search,{credentials:'omit'});
+   if(response.status>=500)throw Error('navigation_unavailable');
+   const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+   if(!doc.body||!doc.querySelector('main'))throw Error('invalid_page');
+   const nodes=Array.from(doc.body.childNodes).filter(node=>node.nodeType!==1||node.tagName!=='SCRIPT');
+   document.body.replaceChildren(...nodes);
+   document.title=doc.title;
+   if(replace)history.replaceState({},'',u.pathname+u.search);
+   else history.pushState({},'',u.pathname+u.search);
+   window.scrollTo(0,0);
+   await bootstrap();
+  }catch{location.assign(u.pathname+u.search)}
+ }
+ document.addEventListener('click',e=>{
+  const button=e.target&&e.target.closest&&e.target.closest('#share');
+  if(button){
+   e.preventDefault();
+   const url=location.href;
+   if(navigator.share)void navigator.share({url,title:document.title}).catch(()=>{});
+   else if(navigator.clipboard)void navigator.clipboard.writeText(url).then(()=>{button.textContent='已複製網址'}).catch(()=>{});
+   return;
+  }
+  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.altKey||e.shiftKey)return;
+  const a=e.target&&e.target.closest&&e.target.closest('a[href]');
+  if(!a||a.target||a.download)return;
+  const u=new URL(a.href,location.href);
+  if(u.origin!==location.origin||u.pathname==='/login'||u.pathname==='/auth/done')return;
+  e.preventDefault();void visit(u.href);
+ });
+ window.addEventListener('popstate',()=>void visit(location.href,true));
  async function call(path,opts={}){
   const r=await fetch(BASE+path,{...opts,credentials:'omit'});
   if(!r.ok){const e=await r.json().catch(()=>({}));const error=new Error(e.error&&e.error.message||'中央會員暫時無法使用');error.status=r.status;error.code=e.error&&e.error.code;throw error;}
