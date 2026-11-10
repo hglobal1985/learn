@@ -16,7 +16,7 @@ let expiry=0;
 let memberId:string|null=null;
 let refreshInFlight:Promise<boolean>|null=null;
 type Pending={nonce:string;state:string;redirect:string;created:number;returnTo:string};
-let nativePending:Pending|null=null;
+
 
 function randomHex(){return Array.from(Crypto.getRandomBytes(24),x=>x.toString(16).padStart(2,'0')).join('')}
 function sanitizedPath(path:string){return path.startsWith('/')&&!path.startsWith('//')&&!path.includes('\\')?path:'/'}
@@ -42,7 +42,7 @@ export async function central<T>(path:string,method='GET',payload?:unknown,token
   method,headers:{...(payload?{'Content-Type':'application/json'}:{}),...(token?{Authorization:'Bearer '+token}:{})},
   ...(payload?{body:JSON.stringify(payload)}:{})
  });
- if(!response.ok){let body:unknown=null;try{body=await response.json()}catch{}throw parseError(response,body)}
+ if(!response.ok){let body:unknown=null;try{body=await response.json()}catch{body=null}throw parseError(response,body)}
  return response.status===204?undefined as T:await response.json() as T;
 }
 export async function config():Promise<AppConfig>{
@@ -59,7 +59,7 @@ export function outdated(version:string,minVersion:string){
 export function signedIn(){return !!access&&Date.now()<expiry}
 export function currentMember(){return memberId}
 export async function clearLocal(){
- access=null;expiry=0;memberId=null;nativePending=null;
+ access=null;expiry=0;memberId=null;
  if(Platform.OS==='web')window.sessionStorage.removeItem(WEB_PENDING);
  await setRefresh(null);
 }
@@ -100,14 +100,13 @@ export async function login():Promise<'redirecting'|'ok'|'cancelled'>{
   window.sessionStorage.setItem(WEB_PENDING,JSON.stringify(pending));
   window.location.assign(url.toString());return 'redirecting';
  }
- nativePending=pending;
  const result=await WebBrowser.openAuthSessionAsync(url.toString(),MOBILE_DONE);
- if(result.type!=='success'){nativePending=null;return 'cancelled'}
+ if(result.type!=='success')return 'cancelled'
  const callback=new URL(result.url);
  const query=callback.searchParams;
  if(callback.protocol!=='learn:'||callback.hostname!=='auth'||callback.pathname!=='/google')throw Error('登入回傳網址無效');
  const ok=await finish(query,pending);
- nativePending=null;return ok?'ok':'cancelled';
+ return ok?'ok':'cancelled';
 }
 async function finish(params:URLSearchParams,pending:Pending):Promise<boolean>{
  if(Date.now()-pending.created>600000||!pending.nonce||params.get('state')!==pending.state)throw Error('登入驗證已失效，請重新登入');
