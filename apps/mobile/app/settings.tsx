@@ -1,4 +1,6 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
+import {Link} from 'expo-router';
+import {request} from '../src/lib/api';
 import {Linking,Pressable,Text,View} from 'react-native';
 import {Page,H,Button,P} from '../src/components/Ui';
 import {C} from '../src/lib/theme';
@@ -18,12 +20,17 @@ const links=[
 export default function Settings(){
  const {identity,setIdentity,demoOwner,setDemoOwner,loggedIn,availability,loading,memberSub,login,logout}=useSession();
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
+ const [canManage,setCanManage]=useState(false);
+ useEffect(()=>{let alive=true;if(!loggedIn){setCanManage(false);return}
+  request<{is_super_admin:boolean}>('admin/session').then(v=>{if(alive)setCanManage(v.is_super_admin===true)}).catch(()=>{if(alive)setCanManage(false)});
+  return()=>{alive=false};
+ },[loggedIn]);
  async function act(action:()=>Promise<void>){
   setBusy(true);setMessage('');
   try{await action()}catch(e){setMessage(e instanceof Error?e.message:'操作未完成')}
   finally{setBusy(false)}
  }
- return <Page><H>我的學習</H>
+ return <Page><H>我的學習與帳號設定</H>
  {DEMO_MODE?<View style={{gap:14,backgroundColor:'white',padding:18,borderRadius:12}}>
   {modes.map(m=><Pressable key={m.key} onPress={()=>setIdentity(m.key)} style={{padding:14,backgroundColor:identity===m.key?'#E6F1FF':'white',borderWidth:1,borderColor:identity===m.key?C.blue:C.border,borderRadius:9}}>
    <Text style={{fontWeight:'700',color:C.ink}}>{identity===m.key?'● ':'○ '}{m.label}</Text>
@@ -37,6 +44,7 @@ export default function Settings(){
    <Button title="登出此裝置" onPress={()=>void act(()=>logout(false))} disabled={busy}/>
    <Button title="登出所有 H-Global1985 App" onPress={()=>void act(()=>logout(true))} disabled={busy} outline/>
   </>:<Button title="使用 H-Global1985 登入" disabled={busy||loading||availability!=='active'} onPress={()=>void act(login)}/>}
+  {canManage&&<Link href="/admin" style={{color:C.blue,fontWeight:'700'}}>超級管理員｜影片管理與上傳</Link>}
   {!!message&&<P>{message}</P>}
  </View>}
  <View style={{gap:12,padding:18,backgroundColor:'white',borderRadius:12}}>

@@ -8,13 +8,14 @@ import {DEMO_MODE,useSession} from '../src/lib/session';
 import {demoDrafts,demoPublished} from '../src/lib/demo';
 import {youtubeId} from '../../../packages/shared/src/index';
 import {request} from '../src/lib/api';
+import {LiveAdmin} from '../src/components/LiveAdmin';
 type Mode='public'|'members'|'rank';type Source='youtube'|'mux';
 const MODES:{value:Mode;label:string}[]=[{value:'public',label:'公開'},{value:'members',label:'登入會員'},{value:'rank',label:'獎銜限定'}];
 function Choice<T extends string>({value,options,onSelect}:{value:T;options:{value:T;label:string}[];onSelect:(v:T)=>void}){
  return <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{options.map(o=><Pressable key={o.value} onPress={()=>onSelect(o.value)} style={{padding:11,borderWidth:1,borderColor:value===o.value?C.blue:C.border,backgroundColor:value===o.value?'#E8F2FE':'white',borderRadius:9}}><Text style={{color:C.ink}}>{o.label}</Text></Pressable>)}</View>
 }
 export default function Admin(){
- const {demoOwner,loggedIn}=useSession();const [,setRevision]=useState(0);
+ const {demoOwner}=useSession();const [,setRevision]=useState(0);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('一般');
  const [source,setSource]=useState<Source>('youtube'),[url,setUrl]=useState(''),[mode,setMode]=useState<Mode>('rank'),[audience,setAudience]=useState<'everyone'|'hglobal_verified'>('hglobal_verified'),[minRank,setMinRank]=useState('');
  const [visibility,setVisibility]=useState<'public'|'unlisted'>('public'),[risk,setRisk]=useState(false);
@@ -81,7 +82,7 @@ export default function Admin(){
    }else setInfo('YouTube 草稿已建立');
   }
  }catch(e){setInfo(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
- if(!DEMO_MODE)return <Page><H>管理後台</H><P>{loggedIn?'影片管理尚待完成管理員權限驗證與正式服務部署':'請先使用 H-Global1985 帳號登入'}</P></Page>;
+ if(!DEMO_MODE)return <LiveAdmin/>;
  if(!demoOwner)return <Page><H>管理後台</H><P>沒有管理權限</P></Page>;
  return <Page><H>影片管理</H>
  <View style={{padding:18,gap:16,backgroundColor:C.white,borderRadius:12}}>

@@ -27,6 +27,7 @@ export const AUTH_BROWSER_JS=String.raw`
    else history.pushState({},'',u.pathname+u.search);
    window.scrollTo(0,0);
    await bootstrap();
+   if(u.pathname==='/admin')void window.__learnAdminInit?.();
   }catch{location.assign(u.pathname+u.search)}
  }
  document.addEventListener('click',e=>{
@@ -65,12 +66,14 @@ export const AUTH_BROWSER_JS=String.raw`
  async function token(){return access&&Date.now()<until?access:await rotate()?access:null}
  async function protectedCall(path,method='GET',body){
   let t=await token();if(!t)throw Error('請先登入');
-  const send=t=>fetch(path.startsWith('/v1/')?path:BASE+path,{method,headers:{Authorization:'Bearer '+t,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const isLocal=/^\/v1\/(?:videos(?:\/|\?|$)|admin(?:\/|\?|$))/.test(path);
+  const send=t=>fetch(isLocal?path:BASE+path,{method,headers:{Authorization:'Bearer '+t,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   let r=await send(t);
   if(r.status===401&&await rotate())r=await send(access);
   if(!r.ok)throw Error('目前沒有瀏覽資格');
   return r.json();
  }
+ window.__learnApi=Object.freeze({protectedCall});
  async function start(){
   try{
    const conf=await call('/v1/apps/learn/config');
@@ -125,9 +128,16 @@ export const AUTH_BROWSER_JS=String.raw`
   if(t){
    try{
     const profile=await protectedCall('/v1/me/profile');
-    const authLink=byId('auth-link');if(authLink){authLink.textContent='我的學習';authLink.href='/settings'}
+    const authLink=byId('auth-link');if(authLink)authLink.hidden=true;
+    const settingsLogin=byId('settings-login');if(settingsLogin)settingsLogin.hidden=true;
     const member=byId('member-id');if(member)member.textContent=profile.member_id;
     const signout=byId('logout');if(signout)signout.hidden=false;
+    try{
+     const admin=await protectedCall('/v1/admin/session');
+     if(admin?.is_super_admin===true){
+      for(const key of ['admin-nav-link','admin-tab','manage-link']){const el=byId(key);if(el)el.hidden=false}
+     }
+    }catch{}
     if(path==='/'){
      const params=new URLSearchParams(location.search);
      const q=new URLSearchParams({q:params.get('q')||'',category:params.get('category')||''});
@@ -181,13 +191,7 @@ export const AUTH_BROWSER_JS=String.raw`
       }
      }catch{}
     }
-   if(path==='/admin'){
-    try{
-     const data=await protectedCall('/v1/admin/handoff');
-     const target=byId('handoff-status');
-     if(target)target.textContent=data.up_to_date?'中央會員串接指令已是最新版本':'有新版串接指令可更新';
-    }catch{}
-   }
+   if(path==='/admin')void window.__learnAdminInit?.();
    }catch{clear()}
   }
   const signout=byId('logout');
