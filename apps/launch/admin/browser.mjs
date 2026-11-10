@@ -8,9 +8,28 @@ export const ADMIN_BROWSER_JS=String.raw`
  const button=(label,action)=>{
   const b=document.createElement('button');b.type='button';b.className='pill';b.textContent=label;
   b.addEventListener('click',async()=>{
+   if(b.disabled)return;
+   const card=b.closest('.video-item');
+   const notice=card?.querySelector('.publish-status');
+   const status=message=>{
+    if(notice){notice.textContent=message;notice.hidden=false;notice.setAttribute('role','status')}
+    else say('save-result',message);
+   };
    b.disabled=true;
-   try{await action()}catch(e){say('save-result',e instanceof Error?e.message:'操作失敗')}
-   finally{b.disabled=false}
+   b.textContent='處理中…';
+   status('正在'+label+'，請稍候…');
+   try{
+    await action();
+    status(label==='發布影片'?'影片發布成功':'影片已下架');
+   }catch(e){
+    const message=e instanceof Error?e.message:'操作失敗，請稍後再試';
+    status(message);
+    // Keep feedback beside the tapped button, not above the video list.
+    notice?.scrollIntoView?.({block:'nearest'});
+   }finally{
+    b.disabled=false;
+    b.textContent=label;
+   }
   });return b;
  };
  function updateForm(){
@@ -75,20 +94,29 @@ export const ADMIN_BROWSER_JS=String.raw`
     const status=textItem('狀態',v.status==='published'?'已發布':'草稿');
     const scope=textItem('觀看權限',v.access_mode==='public'?'公開':v.access_mode==='members'?'登入會員':'獎銜限定');
     const controls=document.createElement('div');controls.className='admin-controls';
+    const publishStatus=document.createElement('p');
+    publishStatus.className='publish-status notice';
+    publishStatus.hidden=true;
+    publishStatus.setAttribute('aria-live','polite');
+    if(v.source_type==='mux'&&v.status!=='published'){
+     const note=document.createElement('p');note.className='muted';
+     note.textContent='Mux Signed 影片發布前需要完成 API 連線及安全播放簽章設定';
+     row.append(note);
+    }
     if(v.status==='published'){
      controls.append(button('下架',async()=>{
       await api().protectedCall('/v1/admin/videos/'+encodeURIComponent(v.id)+'/unpublish','POST');
-      say('save-result','已下架為草稿');await loadVideos();
+      await loadVideos();
      }));
     }else{
      controls.append(button('發布影片',async()=>{
       await api().protectedCall('/v1/admin/videos/'+encodeURIComponent(v.id)+'/publish','POST');
-      say('save-result','發布成功');await loadVideos();
+      await loadVideos();
      }));
     }
     const link=document.createElement('a');link.className='pill';link.href='/'+encodeURIComponent(v.id);
     link.textContent='影片頁面';controls.append(link);
-    row.append(title,meta,status,scope,controls);container.append(row);
+    row.append(title,meta,status,scope,controls,publishStatus);container.append(row);
    }
   }catch{container.textContent='無法讀取影片清單，請重新登入後再試'}
  }
