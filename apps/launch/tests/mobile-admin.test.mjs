@@ -17,21 +17,21 @@ function token(){
 class DB{
  constructor(){this.records=[]}
  prepare(sql){
-  let values=[];
+  const records=this.records;let values=[];
   return {
    bind(...params){values=params;return this},
    async first(){
-    if(sql.includes('mux_asset_id=?'))return this.records.find(v=>v.mux_asset_id===values[0])||null;
-    if(sql.includes('WHERE id=?'))return this.records.find(v=>v.id===values[0])||null;
+    if(sql.includes('mux_asset_id=?'))return records.find(v=>v.mux_asset_id===values[0])||null;
+    if(sql.includes('WHERE id=?'))return records.find(v=>v.id===values[0])||null;
     return null;
    },
-   async all(){return {results:this.records.map(v=>({...v}))}},
+   async all(){return {results:records.map(v=>({...v}))}},
    async run(){
     if(sql.startsWith('INSERT INTO videos(')){
      const [id,title,description,category,access_mode,audience,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,youtube_visibility,accepted_unlisted_risk,duration_seconds]=values;
-     this.records.push({id,title,description,category,access_mode,audience,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,youtube_visibility,accepted_unlisted_risk,duration_seconds,status:'draft'});
-    }else if(sql.includes("status='published'")){const v=this.records.find(x=>x.id===values.at(-1));if(v)v.status='published'}
-    else if(sql.includes("status='draft'")){const v=this.records.find(x=>x.id===values.at(-1));if(v)v.status='draft'}
+     records.push({id,title,description,category,access_mode,audience,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,youtube_visibility,accepted_unlisted_risk,duration_seconds,status:'draft'});
+    }else if(sql.includes("status='published'")){const v=records.find(x=>x.id===values.at(-1));if(v)v.status='published'}
+    else if(sql.includes("status='draft'")){const v=records.find(x=>x.id===values.at(-1));if(v)v.status='draft'}
     return {success:true};
    }
   };
