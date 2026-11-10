@@ -15,8 +15,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm run check:core
       - run: npm run test:api
       - run: npm run check:api
+      - run: npm run test:preview
