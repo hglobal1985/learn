@@ -36,7 +36,7 @@ const head=(nonce,title)=>'<!doctype html><html lang="zh-Hant-TW"><head><meta ch
 const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><button class="pill" disabled>登入尚未開放</button></div></div></header>';
 const foot='<footer class="footer"><div class="wrap">寰宇行動大學</div></footer>';
 const nonce=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/=+$/,'');
-const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com data:; frame-src https://www.youtube-nocookie.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com"});
+const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com https://image.mux.com data:; frame-src https://www.youtube-nocookie.com https://player.mux.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com"});
 const render=(markup,title,status=200,script='')=>{
  const n=nonce(); const js=script?'<script nonce="'+n+'">'+script+'</script>':'';
  return new Response(head(n,title)+nav+markup+foot+js+'</body></html>',{status,headers:headers(n)});
@@ -44,13 +44,15 @@ const render=(markup,title,status=200,script='')=>{
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}});
 const filter=(request)=>{const u=new URL(request.url);return {q:(u.searchParams.get('q')||'').trim().slice(0,100),category:(u.searchParams.get('category')||'').trim().slice(0,60)}};
 async function queryCatalog(env,request){
- const {q,category}=filter(request);const sql="SELECT id,title,description,category,source_type,source_id FROM videos WHERE status='published' AND access_mode='public' AND (?='' OR title LIKE ? OR description LIKE ?) AND (?='' OR category=?) ORDER BY created_at DESC LIMIT 100";
+ const {q,category}=filter(request);const sql="SELECT id,title,description,category,source_type,source_id,mux_playback_policy FROM videos WHERE status='published' AND access_mode='public' AND (?='' OR title LIKE ? OR description LIKE ?) AND (?='' OR category=?) ORDER BY created_at DESC LIMIT 100";
  const qlike='%'+q+'%';const rows=await env.DB.prepare(sql).bind(q,qlike,qlike,category,category).all();
  return {videos:rows.results||[],q,category};
 }
 function courseCard(v){
  const title=esc(v.title),description=esc(v.description||''),category=esc(v.category),url='/'+encodeURIComponent(v.id);
- const thumb=v.source_type==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(v.source_id)?'<img alt="" loading="lazy" src="https://i.ytimg.com/vi/'+v.source_id+'/hqdefault.jpg">':'▶';
+ const muxPublic=v.source_type==='mux'&&v.mux_playback_policy==='public'&&/^[A-Za-z0-9]+$/.test(v.source_id);
+ const thumb=v.source_type==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(v.source_id)?'<img alt="" loading="lazy" src="https://i.ytimg.com/vi/'+v.source_id+'/hqdefault.jpg">':
+  muxPublic?'<img alt="" loading="lazy" src="https://image.mux.com/'+v.source_id+'/thumbnail.webp?width=640">':'▶';
  return '<a class="course" href="'+url+'"><div class="thumb">'+thumb+'</div><div class="course-body"><div class="course-title">'+title+'</div><p class="course-description">'+description.slice(0,150)+'</p><span class="category">'+category+'</span></div></a>';
 }
 async function homepage(env,req){
@@ -77,7 +79,7 @@ async function detail(env,req,id){
  if(v.source_type==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(v.source_id)){
   player='<iframe title="'+esc(v.title)+'" src="https://www.youtube-nocookie.com/embed/'+v.source_id+'?rel=0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
  } else if(v.source_type==='mux'&&v.mux_playback_policy==='public'&&/^[A-Za-z0-9]+$/.test(v.source_id)){
-  player='<video controls playsinline preload="metadata" controlsList="nodownload" src="https://stream.mux.com/'+v.source_id+'.m3u8"></video>';
+  player='<iframe title="'+esc(v.title)+'" src="https://player.mux.com/'+v.source_id+'?preload=none" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy" referrerpolicy="no-referrer"></iframe>';
  }
  const rows=await env.DB.prepare("SELECT id,body,parent_comment_id,created_at FROM comments WHERE video_id=? AND status='visible' ORDER BY created_at ASC LIMIT 200").bind(id).all();
  const comments=(rows.results||[]).map(c=>'<div class="comment"><div class="comment-name">會員</div><div>'+esc(c.body)+'</div></div>').join('')||'<p class="muted">目前沒有留言</p>';
