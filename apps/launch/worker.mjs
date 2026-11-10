@@ -115,7 +115,7 @@ export default{
    }
    if(path.startsWith('/v1/'))return json({error:{code:'unauthenticated',message:'請先登入'}},401);
    return render('<main class="wrap main"><h1>找不到頁面</h1><a class="back" href="/">返回課程</a></main>','找不到頁面',404);
-  }catch(e){
+  }catch{
    return path.startsWith('/v1/')?json({error:{code:'server_error',message:'暫時無法使用'}},503):
    render('<main class="wrap main"><h1>服務暫時無法使用</h1></main>','服務狀態',503);
   }
