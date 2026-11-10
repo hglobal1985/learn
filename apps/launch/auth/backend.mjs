@@ -76,7 +76,7 @@ export async function allowed(req,video,viewer){
 export async function canPreviewAsSuperadmin(request,viewer){
  if(!viewer?.sub)return false;
  const authorization=request.headers.get('authorization');
- if(!/^Bearer [-_A-Za-z0-9]+\\.[-_A-Za-z0-9]+\\.[-_A-Za-z0-9]+$/.test(authorization||''))return false;
+ if(!/^Bearer [-_A-Za-z0-9]+\.[-_A-Za-z0-9]+\.[-_A-Za-z0-9]+$/.test(authorization||''))return false;
  try{
   const [config,permission]=await Promise.all([
    fetch(ISSUER+'/v1/apps/learn/config',{signal:AbortSignal.timeout(5000)}),
