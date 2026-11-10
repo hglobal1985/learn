@@ -4,6 +4,7 @@ import {generateKeyPairSync,createSign} from 'node:crypto';
 import worker from '../worker.mjs';
 import {youtubeId,videoForm,safeMuxPlayback} from '../admin/media.mjs';
 import {ADMIN_BROWSER_JS} from '../admin/browser.mjs';
+import {AUTH_BROWSER_JS} from '../auth/web-client.mjs';
 const ISSUER='https://id.hglobal1985.com';
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const jwk=publicKey.export({format:'jwk'});jwk.kid='owner-suite-20261110';jwk.alg='RS256';jwk.use='sig';
@@ -43,7 +44,7 @@ function mockCentral({isOwner=true,active=true}={}){
   const u=String(url);
   if(u===ISSUER+'/oauth/jwks')return Response.json({keys:[jwk]});
   if(u===ISSUER+'/v1/apps/learn/config')return Response.json({app_id:'learn',status:active?'active':'paused'});
-  if(u.startsWith(ISSUER+'/v1/apps/learn/handoff'))return isOwner?Response.json({up_to_date:true}):Response.json({error:{code:'forbidden'}},{status:403});
+  if(u===ISSUER+'/v1/apps/learn/handoff')return isOwner?Response.json({up_to_date:true}):Response.json({error:{code:'forbidden'}},{status:403});
   throw Error('unexpected fetch destination');
  };
 }
@@ -127,4 +128,9 @@ test('website account navigation and admin UI work on mobile and retain CSP',asy
   assert.match(admin.headers.get('content-security-policy'),/nonce-/);
   assert.doesNotThrow(()=>new Function(ADMIN_BROWSER_JS));
  }finally{globalThis.fetch=savedFetch}
+});
+
+test('central profile calls are never sent to learn API, and owner checks do not report handoff versions',()=>{
+ assert.match(AUTH_BROWSER_JS,/isLocal\?path:BASE\+path/);
+ assert.doesNotMatch(AUTH_BROWSER_JS,/path\.startsWith\('\/v1\/'\)\?path/);
 });
