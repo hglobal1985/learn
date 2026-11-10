@@ -45,6 +45,8 @@ h2{font-size:25px;margin:0 0 20px}h1.title{font-size:clamp(26px,4vw,39px);margin
 .video-item h3{margin:0 0 8px;line-height:1.35}.video-item p{margin:5px 0}.admin-controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .admin-controls .pill{min-height:44px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .admin-controls .pill:disabled{opacity:.6}
+.publish-status{display:block;margin:12px 0 0;line-height:1.55}
+.publish-status[hidden]{display:none!important}
 @media(max-width:680px){
  .wrap{padding:0 17px}.nav{min-height:72px}.brand{font-size:17px}.mark{width:38px;height:38px;font-size:21px}
  .hero{padding:36px 0}.main{padding:27px 0 calc(110px + env(safe-area-inset-bottom))}
