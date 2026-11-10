@@ -1,3 +1,5 @@
+import {currentSession} from './auth/session.mjs';
+import {canViewPublic} from './access/policy.mjs';
 const BASE = 'https://learn.hglobal1985.com';
 const CSS = `
 :root{color-scheme:light;--ink:#18283d;--muted:#57687c;--blue:#2459a6;--paper:#f5f7fb;--line:#dbe5ee;--navy:#182e49}
@@ -31,7 +33,7 @@ h2{font-size:25px;margin:0 0 20px}h1.title{font-size:clamp(26px,4vw,39px);margin
 const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ID=/^[A-Za-z0-9_-]{3,64}$/;
 const head=(nonce,title)=>'<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#182e49"><title>'+esc(title)+'｜寰宇行動大學</title><style nonce="'+nonce+'">'+CSS+'</style></head><body>';
-const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><button class="pill" disabled>會員登入</button></div></div></header>';
+const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><button class="pill" disabled>登入尚未開放</button></div></div></header>';
 const foot='<footer class="footer"><div class="wrap">寰宇行動大學</div></footer>';
 const nonce=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/=+$/,'');
 const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com data:; frame-src https://www.youtube-nocookie.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com"});
@@ -70,7 +72,7 @@ const shareScript='document.getElementById("share")?.addEventListener("click",as
 async function detail(env,req,id){
  const v=await findVideo(env,id);
  if(!v)return render('<main class="wrap main"><h1 class="title">找不到影片</h1><a class="back" href="/">返回課程</a></main>','找不到影片',404);
- if(v.status!=='published'||v.access_mode!=='public')return render('<main class="wrap main"><h1 class="title">需要符合資格才能瀏覽此內容</h1><a class="back" href="/">返回課程</a></main>','沒有觀看資格',403);
+ if(!canViewPublic(v))return render('<main class="wrap main"><h1 class="title">需要符合資格才能瀏覽此內容</h1><a class="back" href="/">返回課程</a></main>','沒有觀看資格',403);
  let player='<div class="placeholder">影片尚未提供播放</div>';
  if(v.source_type==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(v.source_id)){
   player='<iframe title="'+esc(v.title)+'" src="https://www.youtube-nocookie.com/embed/'+v.source_id+'?rel=0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
@@ -84,8 +86,8 @@ async function detail(env,req,id){
  return render(markup,esc(v.title),200,shareScript);
 }
 async function publicApi(req,env,path){
- if(path==='/v1/health')return json({status:'ok',project:'learn',phase:'public-web',central_auth:'pending'});
- if(path==='/v1/session')return json({authenticated:false});
+ if(path==='/v1/health')return json({status:'ok',project:'learn',phase:'public-web',central_auth:'pending',contract_version:'2026-11-10.1'});
+ if(path==='/v1/session')return json(currentSession());
  if(path==='/v1/videos'){
   const data=await queryCatalog(env,req);
   return json({videos:data.videos.map(v=>({id:v.id,title:v.title,description:v.description,category:v.category,source_type:v.source_type,access_mode:'public'})),total:data.videos.length});

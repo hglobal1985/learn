@@ -2,6 +2,7 @@ import {canView,isMuxPublishable,VIDEO_ID,youtubeId,visibleCatalog,type AccessMo
 import {assert,asString,bodyJson,cleanText,httpErrorResponse,json,type Env} from './http.js';
 import {centralCheck,getViewer,requirePermission,validateMutationOrigin,validPermission,isOwnedComment} from './security.js';
 import {createDirectUpload,inspectMuxAsset,signedPlaybackToken,verifyWebhook} from './mux.js';
+import {accessFields} from './access/rules.js';
 
 type Viewer=Awaited<ReturnType<typeof getViewer>>;
 type Comment={id:string;video_id:string;author_sub:string;parent_comment_id:string|null;body:string;status:string;created_at:string};
@@ -31,7 +32,7 @@ async function createVideo(req:Request,env:Env,viewer:Viewer):Promise<Response>{
  const b=await bodyJson(req);
  const title=cleanText(b.title,120),description=cleanText(b.description??'',3000,0),category=cleanText(b.category??'一般',60);
  const access=b.access_mode??'rank';assert(isMode(access),422,'invalid_access_mode','影片權限無效');
- const minRank=access==='rank'&&b.min_rank_code!=null?cleanText(b.min_rank_code,32):null;
+ const rule=accessFields(access,b.audience,b.min_rank_code);
  const source=pick(b.source_type,['mux','youtube']);assert(source,422,'invalid_source','影片來源無效');
  const sourceId=source==='youtube'?youtubeId(asString(b.youtube_url)):'';
  if(source==='youtube')assert(sourceId,422,'invalid_youtube_url','YouTube 網址無效');
@@ -39,8 +40,8 @@ async function createVideo(req:Request,env:Env,viewer:Viewer):Promise<Response>{
  const risk=b.accept_unlisted_risk===true;
  if(visibility==='unlisted'&&access!=='public')assert(risk,422,'unlisted_risk_unconfirmed','需確認來源網址可以被轉傳');
  const videoId=id();
- await env.DB.prepare("INSERT INTO videos(id,title,description,access_mode,min_rank_code,source_type,source_id,youtube_visibility,accepted_unlisted_risk,category,status) VALUES(?,?,?,?,?,?,?,?,?,?,'draft')")
-  .bind(videoId,title,description,access,minRank,source,sourceId||'',visibility,risk?1:0,category).run();
+ await env.DB.prepare("INSERT INTO videos(id,title,description,access_mode,audience,min_rank_code,source_type,source_id,youtube_visibility,accepted_unlisted_risk,category,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft')")
+  .bind(videoId,title,description,access,rule.audience,rule.minRank,source,sourceId||'',visibility,risk?1:0,category).run();
  return json({video_id:videoId,status:'draft',share_url:'https://learn.hglobal1985.com/'+videoId},201);
 }
 async function updateVideo(req:Request,env:Env,vid:string,viewer:Viewer):Promise<Response>{
@@ -50,17 +51,18 @@ async function updateVideo(req:Request,env:Env,vid:string,viewer:Viewer):Promise
  if('title'in b){updates.push('title=?');values.push(cleanText(b.title,120))}
  if('description'in b){updates.push('description=?');values.push(cleanText(b.description,3000,0))}
  if('category'in b){updates.push('category=?');values.push(cleanText(b.category,60))}
- if('access_mode'in b||'min_rank_code'in b){
+ if('access_mode'in b||'min_rank_code'in b||'audience'in b){
   await requirePermission(env,viewer,'videos.access');
   const mode=b.access_mode??v.access_mode;assert(isMode(mode),422,'invalid_access_mode','影片權限無效');
   const rankCode=mode==='rank'?(b.min_rank_code===undefined?v.min_rank_code:b.min_rank_code):null;
-  const minRank=rankCode==null?null:cleanText(rankCode,32);
+  const nextAudience=b.audience===undefined&&mode==='rank'&&v.access_mode==='rank'?v.audience:b.audience;
+  const rule=accessFields(mode,nextAudience,rankCode);
   if(v.source_type==='mux'&&v.mux_asset_id&&mode!=='public'){
    const asset=await inspectMuxAsset(env,v.mux_asset_id);
    assert(isMuxPublishable({...v,access_mode:mode},asset.playback_ids?.map(p=>p.policy)||[]),409,'mux_public_playback_exists','Mux 仍有公開播放 ID');
   }
   if(v.source_type==='youtube'&&v.youtube_visibility==='unlisted'&&mode!=='public')assert(Number(v.accepted_unlisted_risk)===1,422,'unlisted_risk_unconfirmed','請先確認來源網址可以被轉傳');
-  updates.push('access_mode=?','min_rank_code=?');values.push(mode,minRank);
+  updates.push('access_mode=?','audience=?','min_rank_code=?');values.push(mode,rule.audience,rule.minRank);
  }
  assert(updates.length,422,'no_changes','沒有可更新的欄位');
  await env.DB.prepare('UPDATE videos SET '+updates.join(',')+',updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(...values,vid).run();
@@ -96,22 +98,22 @@ async function importExistingMux(req:Request,env:Env,viewer:Viewer):Promise<Resp
  assert(/^[A-Za-z0-9]+$/.test(assetId),422,'invalid_asset_id','Mux 資產識別碼無效');
  const access=b.access_mode??'rank';
  assert(isMode(access),422,'invalid_access_mode','影片權限無效');
- const minRank=access==='rank'&&b.min_rank_code!=null?cleanText(b.min_rank_code,32):null;
+ const rule=accessFields(access,b.audience,b.min_rank_code);
  const existing=await env.DB.prepare('SELECT id FROM videos WHERE mux_asset_id=?').bind(assetId).first<{id:string}>();
  assert(!existing,409,'already_imported','這部 Mux 影片已經匯入');
  const asset=await inspectMuxAsset(env,assetId);
  assert(asset.status==='ready',422,'mux_not_ready','Mux 影片尚未完成處理');
  const playbackIds=asset.playback_ids||[];
  const candidate:VideoRecord={
-  id:'checking',title,description,access_mode:access,min_rank_code:minRank,source_type:'mux',
+  id:'checking',title,description,access_mode:access,audience:rule.audience,min_rank_code:rule.minRank,source_type:'mux',
   source_id:'',youtube_visibility:null,category,status:'draft',mux_asset_id:assetId
  };
  assert(isMuxPublishable(candidate,playbackIds.map(p=>p.policy)),409,'mux_public_playback_exists','限定影片仍有公開播放 ID，無法匯入');
  const selected=playbackIds.find(p=>p.policy==='signed')||playbackIds.find(p=>p.policy==='public');
  assert(selected?.id,422,'mux_no_playback','Mux 影片沒有可用的播放 ID');
  const videoId=id();
- await env.DB.prepare("INSERT INTO videos(id,title,description,access_mode,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,category,duration_seconds,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft')")
-  .bind(videoId,title,description,access,minRank,'mux',selected.id,assetId,selected.policy,category,Math.ceil(asset.duration||0)).run();
+ await env.DB.prepare("INSERT INTO videos(id,title,description,access_mode,audience,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,category,duration_seconds,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft')")
+  .bind(videoId,title,description,access,rule.audience,rule.minRank,'mux',selected.id,assetId,selected.policy,category,Math.ceil(asset.duration||0)).run();
  return json({video_id:videoId,status:'draft',share_url:'https://learn.hglobal1985.com/'+videoId},201);
 }
 
@@ -246,7 +248,7 @@ async function handle(req:Request,env:Env):Promise<Response>{
   const vid=vm[1]!,action=vm[2];
   if(!action&&method==='GET'){
    const v=await requireVideo(req,env,vid,viewer);
-   return json({video:{id:v.id,title:v.title,description:v.description,source_type:v.source_type,source_id:v.source_type==='youtube'?v.source_id:undefined,youtube_visibility:v.youtube_visibility,category:v.category,access_mode:v.access_mode,duration_seconds:v.duration_seconds,created_at:v.created_at},share_url:'https://learn.hglobal1985.com/'+v.id});
+   return json({video:{id:v.id,title:v.title,description:v.description,source_type:v.source_type,source_id:v.source_type==='youtube'?v.source_id:undefined,youtube_visibility:v.youtube_visibility,category:v.category,access_mode:v.access_mode,audience:v.audience,duration_seconds:v.duration_seconds,created_at:v.created_at},share_url:'https://learn.hglobal1985.com/'+v.id});
   }
   if(!action&&method==='PATCH')return updateVideo(req,env,vid,viewer);
   if(action==='publish'&&method==='POST')return publishVideo(env,vid,viewer);

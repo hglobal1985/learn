@@ -16,7 +16,7 @@ function Choice<T extends string>({value,options,onSelect}:{value:T;options:{val
 export default function Admin(){
  const {demoOwner}=useSession();const [,setRevision]=useState(0);
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('一般');
- const [source,setSource]=useState<Source>('youtube'),[url,setUrl]=useState(''),[mode,setMode]=useState<Mode>('rank'),[minRank,setMinRank]=useState('');
+ const [source,setSource]=useState<Source>('youtube'),[url,setUrl]=useState(''),[mode,setMode]=useState<Mode>('rank'),[audience,setAudience]=useState<'everyone'|'hglobal_verified'>('hglobal_verified'),[minRank,setMinRank]=useState('');
  const [visibility,setVisibility]=useState<'public'|'unlisted'>('public'),[risk,setRisk]=useState(false);
  const [muxAssetId,setMuxAssetId]=useState('');
  const [selected,setSelected]=useState<DocumentPicker.DocumentPickerAsset|null>(null),[progress,setProgress]=useState<number|null>(null),[info,setInfo]=useState(''),[busy,setBusy]=useState(false);
@@ -57,7 +57,7 @@ export default function Admin(){
   try{
    const imported=await request<{video_id:string}>('videos/mux/import','POST',{
     asset_id:muxAssetId.trim(),title,description,category,access_mode:mode,
-    min_rank_code:mode==='rank'?(minRank||null):null
+    audience:mode==='rank'?audience:'everyone',min_rank_code:mode==='rank'&&audience==='hglobal_verified'?(minRank||null):null
    });
    setInfo('已匯入為草稿：'+imported.video_id);
    setMuxAssetId('');
@@ -70,7 +70,7 @@ export default function Admin(){
    demoDrafts.unshift({id,title,description,category,source_type:source,access_mode:mode,youtube_url:source==='youtube'?url:undefined,youtube_visibility:visibility,accept_unlisted_risk:risk});
    setRevision(x=>x+1);setInfo('草稿已建立');
   }else{
-   const body={title,description,category,source_type:source,access_mode:mode,min_rank_code:mode==='rank'?(minRank||null):null,
+   const body={title,description,category,source_type:source,access_mode:mode,audience:mode==='rank'?audience:'everyone',min_rank_code:mode==='rank'&&audience==='hglobal_verified'?(minRank||null):null,
     youtube_url:source==='youtube'?url:undefined,youtube_visibility:visibility,accept_unlisted_risk:risk};
    const draft=await request<{video_id:string}>('videos','POST',body);
    if(source==='mux'){
@@ -100,7 +100,7 @@ export default function Admin(){
   <Button title="匯入既有 Mux 影片" outline disabled={busy||!muxAssetId.trim()||!title.trim()} onPress={()=>void importMux()}/>
   </>}
   <Text style={{fontWeight:'600',color:C.ink}}>觀看權限</Text><Choice value={mode} options={MODES} onSelect={setMode}/>
-  {mode==='rank'&&<Field value={minRank} onChangeText={setMinRank} placeholder="最低獎銜代碼（模擬）"/>}
+  {mode==='rank'&&<><Text style={{color:C.ink}}>限定對象</Text><Choice value={audience} options={[{value:'hglobal_verified',label:'已審核會員'},{value:'everyone',label:'所有登入會員'}]} onSelect={setAudience}/>{audience==='hglobal_verified'&&<Field value={minRank} onChangeText={setMinRank} placeholder="最低獎銜代碼（模擬）"/>}</>}
   <Button title={busy?'處理中…':'儲存草稿'} disabled={busy||!title.trim()||(visibility==='unlisted'&&mode!=='public'&&!risk&&source==='youtube')} onPress={()=>void save()}/>
   {!!info&&<P>{info}</P>}
  </View>

@@ -1,21 +1,25 @@
 /** Shared permission logic. All rank checks must be decided by the central membership service. */
 export type AccessMode='public'|'members'|'rank';
+export type Audience='everyone'|'hglobal_verified';
 export type VideoSource='mux'|'youtube';
 export type VideoStatus='draft'|'published'|'unlisted';
 export type VideoRecord={
- id:string;title:string;description:string;access_mode:AccessMode;min_rank_code:string|null;
+ id:string;title:string;description:string;access_mode:AccessMode;min_rank_code:string|null;audience?:Audience;
  source_type:VideoSource;source_id:string;youtube_visibility:'public'|'unlisted'|null;
  category:string;status:VideoStatus;accepted_unlisted_risk?:number;mux_asset_id?:string|null;
  mux_playback_policy?:'signed'|'public'|null;duration_seconds?:number|null;created_at?:string;
 };
 export type Viewer={sub:string}|null;
-export type EligibilityCheck=(rule:{audience:'hglobal_verified';min_rank:string|null},sub:string)=>Promise<boolean>;
+export type EligibilityCheck=(rule:{audience:Audience;min_rank:string|null},sub:string)=>Promise<boolean>;
 export async function canView(video:VideoRecord,viewer:Viewer,check:EligibilityCheck):Promise<boolean>{
  if(video.status!=='published')return false;
  if(video.access_mode==='public')return true;
  if(!viewer?.sub)return false;
  if(video.access_mode==='members')return true;
- try{return (await check({audience:'hglobal_verified',min_rank:video.min_rank_code},viewer.sub))===true;}
+ const audience=video.audience??'hglobal_verified';
+ if(audience!=='everyone'&&audience!=='hglobal_verified')return false;
+ if(audience==='everyone'&&video.min_rank_code!==null)return false;
+ try{return (await check({audience,min_rank:audience==='everyone'?null:video.min_rank_code},viewer.sub))===true;}
  catch{return false;}
 }
 export type AdminPermission='upload'|'videos.manage'|'videos.publish'|'videos.access'|'comments.moderate'|'admins.manage';
