@@ -1,4 +1,4 @@
-import {getViewer,allowed} from './auth/backend.mjs';
+import {getViewer,allowed,canPreviewAsSuperadmin} from './auth/backend.mjs';
 import {AUTH_BROWSER_JS} from './auth/web-client.mjs';
 import {ADMIN_BROWSER_JS} from './admin/browser.mjs';
 import {ADMIN_PAGE} from './admin/page.mjs';
@@ -80,8 +80,13 @@ async function queryCatalog(env,request){
  const qlike='%'+q+'%';
  const rows=await env.DB.prepare(sql).bind(q,qlike,qlike,category,category).all();
  const candidates=rows.results||[];
- const flags=await Promise.all(candidates.map(v=>allowed(request,v,viewer)));
- return {videos:candidates.filter((_,i)=>flags[i]),q,category};
+ // Privileged editorial preview is confirmed by Central on this request only.
+ // Regular viewers continue to pass every individual Central eligibility check.
+ const needsReview=!!viewer&&candidates.some(v=>v.access_mode!=='public');
+ const adminPreview=needsReview&&await canPreviewAsSuperadmin(request,viewer);
+ const flags=adminPreview?candidates.map(v=>v.status==='published'):
+  await Promise.all(candidates.map(v=>allowed(request,v,viewer)));
+ return {videos:candidates.filter((_,i)=>flags[i]),q,category,adminPreview:!!adminPreview};
 }
 function courseCard(v){
  const title=esc(v.title),description=esc(v.description||''),category=esc(v.category),url='/'+encodeURIComponent(v.id);
@@ -127,7 +132,7 @@ async function publicApi(req,env,path){
  if(path==='/v1/session')return json({authenticated:!!viewer,member_sub:viewer?.sub||null});
  if(path==='/v1/videos'){
   const data=await queryCatalog(env,req);
-  return json({videos:data.videos.map(v=>({id:v.id,title:v.title,description:v.description,category:v.category,source_type:v.source_type,access_mode:v.access_mode})),total:data.videos.length});
+  return json({videos:data.videos.map(v=>({id:v.id,title:v.title,description:v.description,category:v.category,source_type:v.source_type,access_mode:v.access_mode})),total:data.videos.length,admin_preview:data.adminPreview});
  }
  if(path==='/v1/admin/handoff'&&req.method==='GET'){
   if(!viewer)return json({error:{code:'unauthenticated',message:'請先登入'}},401);
@@ -141,7 +146,11 @@ async function publicApi(req,env,path){
  if(!m)return json({error:{code:'not_found',message:'找不到此功能'}},404);
  const v=await findVideo(env,m[1]);
  if(!v)return json({error:{code:'not_found',message:'影片不存在'}},404);
- if(!await allowed(req,v,viewer))return json({error:{code:'forbidden',message:'需要符合資格才能瀏覽此內容'}},403);
+ if(v.status!=='published')return json({error:{code:'forbidden',message:'需要符合資格才能瀏覽此內容'}},403);
+ // Superadmin editorial preview is separate from a member's Amway rank.
+ // If Central cannot attest either privilege, deny every playback/detail request.
+ if(!await allowed(req,v,viewer)&&!await canPreviewAsSuperadmin(req,viewer))
+  return json({error:{code:'forbidden',message:'需要符合資格才能瀏覽此內容'}},403);
  if(m[2]==='comments'){
   if(req.method!=='GET')return json({error:{code:'unauthenticated',message:'尚未開放留言'}},401);
   const rs=await env.DB.prepare("SELECT id,body,parent_comment_id,created_at FROM comments WHERE video_id=? AND status='visible' ORDER BY created_at ASC LIMIT 200").bind(v.id).all();
