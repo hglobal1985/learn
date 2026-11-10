@@ -161,12 +161,13 @@ export default{
   const u=new URL(request.url),path=u.pathname;
   try{
    if(!env.DB)return json({error:{code:'db_unavailable',message:'資料庫未連線'}},503);
+   if(path.startsWith('/v1/admin/')&&path!=='/v1/admin/handoff')return adminRoute(request,env);
    if(request.method==='GET'||request.method==='HEAD'){
     if(path==='/favicon.ico')return new Response(null,{status:204});
     if(path==='/login')return render('<main class="wrap main"><h1 class="title">使用 H-Global1985 登入</h1><p id="auth-message">正在開啟中央會員登入…</p></main>','會員登入');
     if(path==='/auth/done')return render('<main class="wrap main"><h1 class="title">正在驗證登入</h1><p id="auth-message">請勿分享登入網址</p></main>','登入驗證');
-    if(path==='/settings')return render('<main class="wrap main"><h1 class="title">我的學習</h1><p id="auth-message" class="muted"></p><p>會員識別碼：<span id="member-id">尚未登入</span></p><p><button class="pill" id="logout" hidden>登出此裝置</button></p><p><a class="navlink" href="https://id.hglobal1985.com/me">修改會員資料／申請刪除帳號</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy">隱私權政策</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy/amway">完整隱私說明</a></p></main>','我的學習');
-    if(path==='/admin')return render('<main class="wrap main"><h1 class="title">管理後台</h1><p>需要 H-Global1985 超級管理員權限。</p><p id="auth-message"></p><a class="pill" href="/login">使用 H-Global1985 登入</a><p id="handoff-status"></p></main>','管理後台');
+    if(path==='/settings')return render('<main class="wrap main"><a class="back" href="/">← 返回課程</a><h1 class="title">我的學習與帳號設定</h1><div class="details"><p id="auth-message" class="muted"></p><p>會員識別碼：<span id="member-id">尚未登入</span></p><p><a class="pill" id="settings-login" href="/login">使用 H-Global1985 登入</a></p><p><button class="pill" id="logout" hidden>登出此裝置</button></p><p><a class="pill" id="manage-link" href="/admin" hidden>超級管理員｜影片管理與上傳</a></p></div><div class="details"><h2>帳號與隱私</h2><p><a class="navlink" href="https://id.hglobal1985.com/me">修改會員資料／申請刪除帳號</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy">隱私權政策</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy/amway">完整隱私說明</a></p></div></main>','我的學習與帳號設定');
+    if(path==='/admin')return render(ADMIN_PAGE,'影片管理');
     if(path.startsWith('/v1/'))return publicApi(request,env,path);
     if(path==='/')return homepage(env,request);
     if(/^\/[A-Za-z0-9_-]{3,64}\/?$/.test(path))return detail(env,request,path.slice(1).replace(/\/$/,''));
