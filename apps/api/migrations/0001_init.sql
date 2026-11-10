@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS videos (
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_videos_catalog ON videos(status,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_mux_asset ON videos(mux_asset_id) WHERE mux_asset_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS comments (
  id TEXT PRIMARY KEY,
  video_id TEXT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
