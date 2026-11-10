@@ -8,6 +8,8 @@ export const CENTRAL_URL='https://id.hglobal1985.com';
 export const APP_ID='learn';
 export const INTEGRATION_VERSION='2026-11-10.2';
 const REFRESH_KEY='hglobal.learn.refresh';
+const ACCESS_KEY='hglobal.learn.access';
+const ACCESS_EXPIRY_KEY='hglobal.learn.access-expiry';
 const WEB_PENDING='hglobal.learn.pending';
 const WEB_DONE='https://learn.hglobal1985.com/auth/done';
 const MOBILE_DONE='learn://auth/google';
@@ -62,11 +64,18 @@ export async function clearLocal(){
  access=null;expiry=0;memberId=null;
  if(Platform.OS==='web')window.sessionStorage.removeItem(WEB_PENDING);
  await setRefresh(null);
+ if(Platform.OS!=='web'){
+  await Promise.all([SecureStore.deleteItemAsync(ACCESS_KEY),SecureStore.deleteItemAsync(ACCESS_EXPIRY_KEY)]);
+ }
 }
 async function remember(pair:AppTokenPair,sub?:string){
  // Persist rotating refresh token BEFORE allowing another authenticated request.
  await setRefresh(pair.refresh_token);
  access=pair.access_token;expiry=Date.now()+Math.max(0,pair.expires_in-30)*1000;
+ if(Platform.OS!=='web'){
+  await SecureStore.setItemAsync(ACCESS_KEY,pair.access_token);
+  await SecureStore.setItemAsync(ACCESS_EXPIRY_KEY,String(expiry));
+ }
  if(sub)memberId=sub;
 }
 export async function refresh():Promise<boolean>{
@@ -85,6 +94,10 @@ export async function refresh():Promise<boolean>{
 }
 export async function token():Promise<string|null>{
  if(signedIn())return access;
+ if(Platform.OS!=='web'){
+  const [saved,storedExpiry]=await Promise.all([SecureStore.getItemAsync(ACCESS_KEY),SecureStore.getItemAsync(ACCESS_EXPIRY_KEY)]);
+  if(saved&&Number(storedExpiry)>Date.now()){access=saved;expiry=Number(storedExpiry);return access}
+ }
  return await refresh()?access:null;
 }
 export async function login():Promise<'redirecting'|'ok'|'cancelled'>{
