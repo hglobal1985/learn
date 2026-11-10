@@ -70,8 +70,16 @@ export const AUTH_BROWSER_JS=String.raw`
   const send=t=>fetch(isLocal?path:BASE+path,{method,headers:{Authorization:'Bearer '+t,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   let r=await send(t);
   if(r.status===401&&await rotate())r=await send(access);
-  if(!r.ok)throw Error('目前沒有瀏覽資格');
-  return r.json();
+  if(!r.ok){
+   let problem=null;
+   try{problem=await r.json()}catch{}
+   // Only show the API's safe, user-facing message. Never display tokens or eligibility reasons.
+   const safeMessage=typeof problem?.error?.message==='string'?problem.error.message.slice(0,160):null;
+   const error=new Error(safeMessage||(r.status===401?'請重新登入 H-Global1985':r.status===403?'沒有此操作的權限':'服務暫時無法使用'));
+   error.status=r.status;
+   throw error;
+  }
+  return r.status===204?null:r.json();
  }
  window.__learnApi=Object.freeze({protectedCall});
  async function start(){
