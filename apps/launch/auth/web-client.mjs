@@ -211,7 +211,18 @@ export const AUTH_BROWSER_JS=String.raw`
          iframe.allowFullscreen=true;iframe.referrerPolicy='no-referrer';
          player.textContent='';player.append(iframe);
         }else player.textContent='影片尚未提供播放';
-       }catch{player.textContent='影片播放服務尚未準備好'}
+       }catch(error){
+        player.textContent='';
+        const notice=document.createElement('p');
+        notice.className='player-error';
+        notice.setAttribute('role','alert');
+        notice.textContent=error instanceof Error&&error.message?
+         error.message:'影片播放服務暫時無法使用';
+        const retry=document.createElement('button');
+        retry.className='pill';retry.type='button';retry.textContent='重新嘗試播放';
+        retry.addEventListener('click',()=>location.reload());
+        player.append(notice,retry);
+       }
 
       }
      }catch{}
