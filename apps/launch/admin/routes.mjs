@@ -3,7 +3,6 @@ import {getMuxAsset,listMuxAssets,safeMuxPlayback,videoForm} from './media.mjs';
 
 const CENTRAL='https://id.hglobal1985.com';
 const OWNER_CHECK='/v1/apps/learn/handoff?integrated=2026-11-10.2';
-const ID=/^[A-Za-z0-9_-]{3,64}$/;
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{
  'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'
 }});
