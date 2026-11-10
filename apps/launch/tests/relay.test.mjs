@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {generateKeyPairSync,createSign} from 'node:crypto';
 import {getViewer,allowed} from '../auth/backend.mjs';
 import worker from '../worker.mjs';
+import {AUTH_BROWSER_JS} from '../auth/web-client.mjs';
 
 const issuer='https://id.hglobal1985.com';
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});
@@ -56,4 +57,12 @@ test('no raw video playback ID, title or Mux token returned for unauthorized ran
  assert.equal(res.status,403);
  const body=await res.text();
  assert.doesNotMatch(body,/私密影片|secret123|playback_token/);
+});
+
+test('browser relay code parses, scrubs hash and navigates via History API',()=>{
+ assert.doesNotThrow(()=>new Function(AUTH_BROWSER_JS));
+ assert.match(AUTH_BROWSER_JS,/history\.replaceState/);
+ assert.match(AUTH_BROWSER_JS,/history\.pushState/);
+ assert.match(AUTH_BROWSER_JS,/sessionStorage/);
+ assert.doesNotMatch(AUTH_BROWSER_JS,/localStorage|HGLOBAL_ID_CLIENT_SECRET|oauth\/authorize/);
 });
