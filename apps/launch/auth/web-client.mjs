@@ -7,6 +7,12 @@ export const AUTH_BROWSER_JS=String.raw`
  const byId=id=>document.getElementById(id);
  const safePath=path=>path&&path.startsWith('/')&&!path.startsWith('//')&&!path.includes('\\')?path:'/';
  const show=message=>{const el=byId('auth-message');if(el)el.textContent=message;};
+ document.addEventListener('click',e=>{
+  const a=e.target&&e.target.closest&&e.target.closest('a[href="/login"]');
+  if(a&&location.pathname!=='/login'&&location.pathname!=='/auth/done'){
+   sessionStorage.setItem('hglobal.learn.return',location.pathname+location.search);
+  }
+ });
  async function call(path,opts={}){
   const r=await fetch(BASE+path,{...opts,credentials:'omit'});
   if(!r.ok){const e=await r.json().catch(()=>({}));const error=new Error(e.error&&e.error.message||'中央會員暫時無法使用');error.status=r.status;error.code=e.error&&e.error.code;throw error;}
@@ -121,11 +127,34 @@ export const AUTH_BROWSER_JS=String.raw`
        const h=document.createElement('h1');h.className='title';h.textContent=info.video.title;
        const desc=document.createElement('p');desc.textContent=info.video.description||'';
        restricted.append(h,desc);
-       const player=document.createElement('div');player.className='video';player.textContent='影片播放功能等待安全簽章服務設定';
+       const player=document.createElement('div');player.className='video';player.textContent='正在取得播放授權…';
        restricted.append(player);
+       try{
+        const playback=await protectedCall('/v1/videos/'+id+'/playback','POST');
+        if(playback.type==='youtube'&&/^[-_A-Za-z0-9]{11}$/.test(playback.video_id)){
+         const iframe=document.createElement('iframe');iframe.title=info.video.title;
+         iframe.src='https://www.youtube-nocookie.com/embed/'+playback.video_id;iframe.allowFullscreen=true;
+         player.textContent='';player.append(iframe);
+        }else if(playback.type==='mux'&&/^[A-Za-z0-9]+$/.test(playback.playback_id)&&
+          (playback.public||playback.playback_token)){
+         const iframe=document.createElement('iframe');iframe.title=info.video.title;
+         iframe.src='https://player.mux.com/'+playback.playback_id+
+           (playback.playback_token?'?playback-token='+encodeURIComponent(playback.playback_token):'?preload=none');
+         iframe.allowFullscreen=true;iframe.referrerPolicy='no-referrer';
+         player.textContent='';player.append(iframe);
+        }else player.textContent='影片尚未提供播放';
+       }catch{player.textContent='影片播放服務尚未準備好'}
+
       }
      }catch{}
     }
+   if(path==='/admin'){
+    try{
+     const data=await protectedCall('/v1/admin/handoff');
+     const target=byId('handoff-status');
+     if(target)target.textContent=data.up_to_date?'中央會員串接指令已是最新版本':'有新版串接指令可更新';
+    }catch{}
+   }
    }catch{clear()}
   }
   const signout=byId('logout');
