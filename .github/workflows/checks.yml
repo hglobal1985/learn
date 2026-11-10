@@ -23,3 +23,5 @@ jobs:
       - run: npm run typecheck -w @learn/mobile
       - run: npm run lint
       - run: npm run build:web -w @learn/mobile
+      - run: node --check apps/launch/worker.mjs
+      - run: node --test apps/launch/tests/*.test.mjs
