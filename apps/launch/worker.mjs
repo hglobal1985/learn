@@ -1,5 +1,8 @@
 import {getViewer,allowed} from './auth/backend.mjs';
 import {AUTH_BROWSER_JS} from './auth/web-client.mjs';
+import {ADMIN_BROWSER_JS} from './admin/browser.mjs';
+import {ADMIN_PAGE} from './admin/page.mjs';
+import {adminRoute} from './admin/routes.mjs';
 import {muxPlayback} from './access/mux.mjs';
 import {canViewPublic} from './access/policy.mjs';
 const BASE = 'https://learn.hglobal1985.com';
@@ -30,17 +33,40 @@ h2{font-size:25px;margin:0 0 20px}h1.title{font-size:clamp(26px,4vw,39px);margin
 .comments{background:white;border:1px solid var(--line);padding:26px;margin-top:22px;border-radius:15px}.comment{border-top:1px solid var(--line);padding:16px 0}
 .comment-name{font-weight:750}.muted{color:var(--muted)}.share-row{margin-top:20px}
 .footer{padding:24px 0;border-top:1px solid var(--line);background:white;color:var(--muted)}
-@media(max-width:570px){.wrap{padding:0 17px}.nav{min-height:72px}.brand{font-size:17px}.mark{width:38px;height:38px;font-size:21px}.hero{padding:36px 0}.main{padding:27px 0 52px}.search{flex-wrap:wrap}.search .btn{width:100%}.details,.comments{padding:20px}.actions{gap:8px}}
+[hidden]{display:none!important}
+.mobile-tabs{display:none}
+.admin-form{display:grid;gap:17px}.field-label{font-weight:700;display:grid;gap:7px}
+.field-label input,.field-label select,.field-label textarea{display:block;width:100%;font:inherit;padding:12px;border-radius:10px;border:1px solid #becddd;background:#fff;color:var(--ink);min-width:0}
+.field-label input,.field-label select{min-height:48px}.field-label textarea{resize:vertical}
+.source-box{display:grid;gap:12px;padding:16px;background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.check-row{display:flex;gap:12px;align-items:flex-start;line-height:1.45}.check-row input{width:22px;height:22px;flex:none}
+.admin-submit{min-height:49px}.admin-submit:disabled{opacity:.55}.notice{margin:14px 0;padding:13px;border-radius:10px;background:#edf4fb;color:#244971}
+.video-list{display:grid;gap:13px}.video-item{border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:16px}
+.video-item h3{margin:0 0 8px;line-height:1.35}.video-item p{margin:5px 0}.admin-controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.admin-controls .pill{min-height:44px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.admin-controls .pill:disabled{opacity:.6}
+@media(max-width:680px){
+ .wrap{padding:0 17px}.nav{min-height:72px}.brand{font-size:17px}.mark{width:38px;height:38px;font-size:21px}
+ .hero{padding:36px 0}.main{padding:27px 0 calc(110px + env(safe-area-inset-bottom))}
+ .search{flex-wrap:wrap}.search .btn{width:100%}.details,.comments{padding:20px}.actions{gap:8px}
+ .actions #account-link,.actions #admin-nav-link{display:none}
+ .actions #auth-link{font-size:13px;padding:8px 10px}
+ .mobile-tabs{display:flex;position:fixed;bottom:0;left:0;right:0;z-index:50;background:white;border-top:1px solid var(--line);padding:9px 7px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -3px 15px rgba(0,0,0,.05);justify-content:space-evenly}
+ .mobile-tabs a{display:flex;flex:1;min-height:48px;align-items:center;justify-content:center;font-size:14px;text-align:center;font-weight:750;color:var(--blue);padding:5px 9px}
+ .footer{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+ .admin-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .admin-controls .pill{padding:9px 12px;min-width:0;white-space:normal}
+}
 `;
 const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ID=/^[A-Za-z0-9_-]{3,64}$/;
-const head=(nonce,title)=>'<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#182e49"><title>'+esc(title)+'｜寰宇行動大學</title><style nonce="'+nonce+'">'+CSS+'</style></head><body>';
-const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><a class="pill" id="auth-link" href="/login">使用 H-Global1985 登入</a><a class="navlink" href="/settings">我的學習</a></div></div></header>';
-const foot='<footer class="footer"><div class="wrap">寰宇行動大學</div></footer>';
+const head=(nonce,title)=>'<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#182e49"><title>'+esc(title)+'｜寰宇行動大學</title><style nonce="'+nonce+'">'+CSS+'</style></head><body>';
+const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><a class="pill" id="auth-link" href="/login">使用 H-Global1985 登入</a><a class="navlink" id="account-link" href="/settings">我的學習／帳號設定</a><a class="navlink" id="admin-nav-link" href="/admin" hidden>影片管理</a></div></div></header>';
+const foot='<footer class="footer"><div class="wrap">寰宇行動大學</div></footer><nav class="mobile-tabs" aria-label="手機快速導覽"><a href="/">探索課程</a><a href="/settings">我的學習／帳號</a><a id="admin-tab" href="/admin" hidden>影片管理</a></nav>';
 const nonce=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/=+$/,'');
 const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com https://image.mux.com data:; frame-src https://www.youtube-nocookie.com https://player.mux.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com https://id.hglobal1985.com"});
 const render=(markup,title,status=200,script='')=>{
- const n=nonce(); const js='<script nonce="'+n+'">'+AUTH_BROWSER_JS+'\n'+script+'</script>';
+ const n=nonce(); const js='<script nonce="'+n+'">'+AUTH_BROWSER_JS+'\n'+ADMIN_BROWSER_JS+'\n'+script+'</script>';
  return new Response(head(n,title)+nav+markup+foot+js+'</body></html>',{status,headers:headers(n)});
 };
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}});
