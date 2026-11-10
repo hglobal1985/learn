@@ -3,7 +3,7 @@ import {DEMO_MODE} from './session';
 import type {DemoIdentity} from './demo';
 export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'';
 export async function request<T>(path:string,method='GET',body?:unknown):Promise<T>{
- const r=await fetch(`{API_ORIGIN}/v1/`{path},{
+ const r=await fetch(`${API_ORIGIN}/v1/${path}`,{
   method,credentials:'include',headers:{...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined
  });
  const value=await r.json();if(!r.ok)throw Error(value?.error?.message||`請求失敗：${r.status}`);
