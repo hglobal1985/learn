@@ -1,12 +1,19 @@
 import {DEMO_VIDEOS,demoPublished,demoCanView,demoComments,addDemoComment,type CatalogItem,type DemoComment} from './demo';
 import {DEMO_MODE} from './session';
+import {Platform} from 'react-native';
 import type {DemoIdentity} from './demo';
-export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'';
+import {token,refresh} from './central-auth';
+export const API_ORIGIN=process.env.EXPO_PUBLIC_API_ORIGIN||'https://learn.hglobal1985.com';
 export async function request<T>(path:string,method='GET',body?:unknown):Promise<T>{
- const r=await fetch(`${API_ORIGIN}/v1/${path}`,{
-  method,credentials:'include',headers:{...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined
+ const send=async(bearer:string|null)=>fetch(`${API_ORIGIN}/v1/${path}`,{
+  method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(bearer?{Authorization:'Bearer '+bearer}:{})},
+  body:body?JSON.stringify(body):undefined
  });
- const value=await r.json();if(!r.ok)throw Error(value?.error?.message||`請求失敗：${r.status}`);
+ let bearer=await token();
+ let r=await send(bearer);
+ if(r.status===401&&bearer&&await refresh()){bearer=await token();r=await send(bearer)}
+ const value=await r.json();
+ if(!r.ok)throw Error(value?.error?.message||`請求失敗：${r.status}`);
  return value as T;
 }
 export async function listCatalog(identity:DemoIdentity,search='',category=''):Promise<CatalogItem[]>{
@@ -20,7 +27,15 @@ export async function getCatalogVideo(id:string,identity:DemoIdentity):Promise<C
 }
 export async function getPlayback(videoId:string):Promise<{type:'mux'|'youtube';url?:string;video_id?:string}>{
  if(DEMO_MODE)throw Error('目前尚未連接正式影片來源');
- return request(`videos/${encodeURIComponent(videoId)}/playback`,'POST');
+ const data=await request<{type:'mux'|'youtube';playback_id?:string;playback_token?:string;public?:boolean;video_id?:string}>(`videos/${encodeURIComponent(videoId)}/playback`,'POST');
+ if(data.type==='youtube')return {type:'youtube',video_id:data.video_id};
+ if(!data.playback_id||!/^[A-Za-z0-9]+$/.test(data.playback_id))throw Error('影片播放資訊無效');
+ const key=data.playback_token;
+ if(!data.public&&!key)throw Error('影片授權尚未就緒');
+ const url=Platform.OS==='web'?'https://player.mux.com/'+data.playback_id+(key?'?playback-token='+encodeURIComponent(key):'?preload=none'):
+  'https://stream.mux.com/'+data.playback_id+'.m3u8'+(key?'?token='+encodeURIComponent(key):'');
+ return {type:'mux',url};
+
 }
 export async function listComments(videoId:string):Promise<DemoComment[]>{
  if(DEMO_MODE)return demoComments.filter(c=>c.video_id===videoId);

@@ -7,5 +7,6 @@ export default function RootLayout(){
   <Stack.Screen name="[videoId]" options={{title:'課程內容'}}/>
   <Stack.Screen name="admin" options={{title:'影片管理'}}/>
   <Stack.Screen name="settings" options={{title:'我的學習'}}/>
+  <Stack.Screen name="auth/done" options={{title:'登入驗證'}}/>
  </Stack></SessionProvider>;
 }

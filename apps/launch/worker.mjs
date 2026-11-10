@@ -1,4 +1,6 @@
-import {currentSession} from './auth/session.mjs';
+import {getViewer,allowed} from './auth/backend.mjs';
+import {AUTH_BROWSER_JS} from './auth/web-client.mjs';
+import {muxPlayback} from './access/mux.mjs';
 import {canViewPublic} from './access/policy.mjs';
 const BASE = 'https://learn.hglobal1985.com';
 const CSS = `
@@ -33,20 +35,25 @@ h2{font-size:25px;margin:0 0 20px}h1.title{font-size:clamp(26px,4vw,39px);margin
 const esc=(v)=>String(v==null?'':v).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ID=/^[A-Za-z0-9_-]{3,64}$/;
 const head=(nonce,title)=>'<!doctype html><html lang="zh-Hant-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#182e49"><title>'+esc(title)+'｜寰宇行動大學</title><style nonce="'+nonce+'">'+CSS+'</style></head><body>';
-const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><button class="pill" disabled>登入尚未開放</button></div></div></header>';
+const nav='<header class="top"><div class="wrap nav"><a href="/" class="brand"><span class="mark">▶</span>寰宇行動大學</a><div class="actions"><a class="navlink" href="/">所有課程</a><a class="pill" id="auth-link" href="/login">使用 H-Global1985 登入</a><a class="navlink" href="/settings">我的學習</a></div></div></header>';
 const foot='<footer class="footer"><div class="wrap">寰宇行動大學</div></footer>';
 const nonce=()=>btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(18)))).replace(/=+$/,'');
-const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com https://image.mux.com data:; frame-src https://www.youtube-nocookie.com https://player.mux.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com"});
+const headers=(n)=>({'content-type':'text/html; charset=utf-8','x-content-type-options':'nosniff','referrer-policy':'no-referrer','x-frame-options':'DENY','strict-transport-security':'max-age=31536000; includeSubDomains','cache-control':'no-store','content-security-policy':"default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; style-src 'nonce-"+n+"'; script-src 'nonce-"+n+"'; img-src 'self' https://i.ytimg.com https://image.mux.com data:; frame-src https://www.youtube-nocookie.com https://player.mux.com; media-src https://stream.mux.com; connect-src 'self' https://stream.mux.com https://id.hglobal1985.com"});
 const render=(markup,title,status=200,script='')=>{
- const n=nonce(); const js=script?'<script nonce="'+n+'">'+script+'</script>':'';
+ const n=nonce(); const js='<script nonce="'+n+'">'+AUTH_BROWSER_JS+'\n'+script+'</script>';
  return new Response(head(n,title)+nav+markup+foot+js+'</body></html>',{status,headers:headers(n)});
 };
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}});
 const filter=(request)=>{const u=new URL(request.url);return {q:(u.searchParams.get('q')||'').trim().slice(0,100),category:(u.searchParams.get('category')||'').trim().slice(0,60)}};
 async function queryCatalog(env,request){
- const {q,category}=filter(request);const sql="SELECT id,title,description,category,source_type,source_id,mux_playback_policy FROM videos WHERE status='published' AND access_mode='public' AND (?='' OR title LIKE ? OR description LIKE ?) AND (?='' OR category=?) ORDER BY created_at DESC LIMIT 100";
- const qlike='%'+q+'%';const rows=await env.DB.prepare(sql).bind(q,qlike,qlike,category,category).all();
- return {videos:rows.results||[],q,category};
+ const {q,category}=filter(request);
+ const viewer=await getViewer(request);
+ const sql="SELECT id,title,description,category,access_mode,audience,min_rank_code,source_type,source_id,mux_playback_policy,status FROM videos WHERE status='published'"+(viewer?"":" AND access_mode='public'")+" AND (?='' OR title LIKE ? OR description LIKE ?) AND (?='' OR category=?) ORDER BY created_at DESC LIMIT 100";
+ const qlike='%'+q+'%';
+ const rows=await env.DB.prepare(sql).bind(q,qlike,qlike,category,category).all();
+ const candidates=rows.results||[];
+ const flags=await Promise.all(candidates.map(v=>allowed(request,v,viewer)));
+ return {videos:candidates.filter((_,i)=>flags[i]),q,category};
 }
 function courseCard(v){
  const title=esc(v.title),description=esc(v.description||''),category=esc(v.category),url='/'+encodeURIComponent(v.id);
@@ -63,18 +70,17 @@ async function homepage(env,req){
  const chips='<a class="chip'+(!category?' active':'')+'" href="'+esc(urlFor(''))+'">全部</a>'+cats.map(c=>'<a class="chip'+(c===category?' active':'')+'" href="'+esc(urlFor(c))+'">'+esc(c)+'</a>').join('');
  const markup='<section class="hero"><div class="wrap"><h1>寰宇行動大學</h1><p>隨時隨地，讓學習持續發生。</p></div></section>'+
  '<main class="wrap main"><h2>探索課程</h2><form class="search" method="get" action="/"><input aria-label="搜尋課程" name="q" placeholder="搜尋課程" maxlength="100" value="'+esc(q)+'"><input type="hidden" name="category" value="'+esc(category)+'"><button class="btn" type="submit">搜尋</button></form>'+
- '<div class="filters">'+chips+'</div>'+(videos.length?'<div class="grid">'+videos.map(courseCard).join('')+'</div>':'<div class="empty">目前尚未上架公開課程</div>')+'</main>';
+ '<div class="filters">'+chips+'</div><div id="catalog">'+(videos.length?'<div class="grid">'+videos.map(courseCard).join('')+'</div>':'<div class="empty">目前尚未上架公開課程</div>')+'</div></main>';
  return render(markup,'探索課程');
 }
 async function findVideo(env,id){
  if(!ID.test(id))return null;
  return env.DB.prepare('SELECT * FROM videos WHERE id=?').bind(id).first();
 }
-const shareScript='document.getElementById("share")?.addEventListener("click",async function(){const url=location.href;try{if(navigator.share){await navigator.share({url,title:document.title});return}await navigator.clipboard.writeText(url);this.textContent="已複製網址"}catch(e){if(e.name!=="AbortError")this.textContent="請複製網址"}})';
 async function detail(env,req,id){
  const v=await findVideo(env,id);
  if(!v)return render('<main class="wrap main"><h1 class="title">找不到影片</h1><a class="back" href="/">返回課程</a></main>','找不到影片',404);
- if(!canViewPublic(v))return render('<main class="wrap main"><h1 class="title">需要符合資格才能瀏覽此內容</h1><a class="back" href="/">返回課程</a></main>','沒有觀看資格',403);
+ if(!canViewPublic(v))return render('<main class="wrap main" id="restricted-video"><h1 class="title">需要符合資格才能瀏覽此內容</h1><a class="pill" href="/login">使用 H-Global1985 登入</a><p id="auth-message" class="muted"></p><a class="back" href="/">返回課程</a></main>','沒有觀看資格',403);
  let player='<div class="placeholder">影片尚未提供播放</div>';
  if(v.source_type==='youtube'&&/^[A-Za-z0-9_-]{11}$/.test(v.source_id)){
   player='<iframe title="'+esc(v.title)+'" src="https://www.youtube-nocookie.com/embed/'+v.source_id+'?rel=0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>';
@@ -85,26 +91,44 @@ async function detail(env,req,id){
  const comments=(rows.results||[]).map(c=>'<div class="comment"><div class="comment-name">會員</div><div>'+esc(c.body)+'</div></div>').join('')||'<p class="muted">目前沒有留言</p>';
  const markup='<main class="wrap main"><a class="back" href="/">← 返回課程</a><div class="video">'+player+'</div><div class="details"><span class="category">'+esc(v.category)+'</span><h1 class="title">'+esc(v.title)+'</h1><div class="desc">'+esc(v.description||'')+'</div><div class="share-row"><button id="share" class="btn">分享影片</button></div></div>'+
  '<section class="comments"><h2>學習心得與討論</h2>'+comments+'<button class="pill" disabled>登入後留言</button></section></main>';
- return render(markup,esc(v.title),200,shareScript);
+ return render(markup,esc(v.title));
 }
 async function publicApi(req,env,path){
- if(path==='/v1/health')return json({status:'ok',project:'learn',phase:'public-web',central_auth:'pending',contract_version:'2026-11-10.1'});
- if(path==='/v1/session')return json(currentSession());
+ if(path==='/v1/health')return json({status:'ok',project:'learn',phase:'central-relay',central_auth:'relay',contract_version:'2026-11-10.2'});
+ const viewer=await getViewer(req);
+ if(path==='/v1/session')return json({authenticated:!!viewer,member_sub:viewer?.sub||null});
  if(path==='/v1/videos'){
   const data=await queryCatalog(env,req);
-  return json({videos:data.videos.map(v=>({id:v.id,title:v.title,description:v.description,category:v.category,source_type:v.source_type,access_mode:'public'})),total:data.videos.length});
+  return json({videos:data.videos.map(v=>({id:v.id,title:v.title,description:v.description,category:v.category,source_type:v.source_type,access_mode:v.access_mode})),total:data.videos.length});
  }
- let m=path.match(/^\/v1\/videos\/([A-Za-z0-9_-]{3,64})(?:\/(comments|playback))?$/);
+ if(path==='/v1/admin/handoff'&&req.method==='GET'){
+  if(!viewer)return json({error:{code:'unauthenticated',message:'請先登入'}},401);
+  try{
+   const central=await fetch('https://id.hglobal1985.com/v1/apps/learn/handoff?integrated=2026-11-10.2',{headers:{Authorization:req.headers.get('authorization')},signal:AbortSignal.timeout(5000)});
+   if(!central.ok)return json({error:{code:'forbidden',message:'沒有管理權限'}},403);
+   return json(await central.json());
+  }catch{return json({error:{code:'central_unavailable',message:'服務暫時無法使用'}},503)}
+ }
+ const m=path.match(/^\/v1\/videos\/([A-Za-z0-9_-]{3,64})(?:\/(comments|playback))?$/);
  if(!m)return json({error:{code:'not_found',message:'找不到此功能'}},404);
  const v=await findVideo(env,m[1]);
  if(!v)return json({error:{code:'not_found',message:'影片不存在'}},404);
- if(v.status!=='published'||v.access_mode!=='public')return json({error:{code:'forbidden',message:'需要符合資格才能瀏覽此內容'}},403);
+ if(!await allowed(req,v,viewer))return json({error:{code:'forbidden',message:'需要符合資格才能瀏覽此內容'}},403);
  if(m[2]==='comments'){
+  if(req.method!=='GET')return json({error:{code:'unauthenticated',message:'尚未開放留言'}},401);
   const rs=await env.DB.prepare("SELECT id,body,parent_comment_id,created_at FROM comments WHERE video_id=? AND status='visible' ORDER BY created_at ASC LIMIT 200").bind(v.id).all();
   return json({comments:(rs.results||[]).map(x=>({id:x.id,body:x.body,parent_comment_id:x.parent_comment_id,created_at:x.created_at,is_mine:false}))});
  }
- if(m[2]==='playback')return json({error:{code:'not_available',message:'影片串流功能尚未啟用'}},503);
- return json({video:{id:v.id,title:v.title,description:v.description,source_type:v.source_type,source_id:v.source_type==='youtube'?v.source_id:undefined,category:v.category,access_mode:'public',created_at:v.created_at},share_url:BASE+'/'+v.id});
+ if(m[2]==='playback'){
+  if(req.method!=='POST')return json({error:{code:'invalid_method',message:'請求方式無效'}},405);
+  try{
+   const playback=await muxPlayback(env,v);
+   if(!playback)return json({error:{code:'not_available',message:'影片串流功能尚未啟用'}},503);
+   return json(playback);
+  }catch{return json({error:{code:'not_available',message:'影片串流功能尚未啟用'}},503)}
+ }
+ if(req.method!=='GET')return json({error:{code:'invalid_method',message:'請求方式無效'}},405);
+ return json({video:{id:v.id,title:v.title,description:v.description,source_type:v.source_type,source_id:v.source_type==='youtube'?v.source_id:undefined,category:v.category,access_mode:v.access_mode,created_at:v.created_at},share_url:BASE+'/'+v.id});
 }
 export default{
  async fetch(request,env){
@@ -113,11 +137,18 @@ export default{
    if(!env.DB)return json({error:{code:'db_unavailable',message:'資料庫未連線'}},503);
    if(request.method==='GET'||request.method==='HEAD'){
     if(path==='/favicon.ico')return new Response(null,{status:204});
+    if(path==='/login')return render('<main class="wrap main"><h1 class="title">使用 H-Global1985 登入</h1><p id="auth-message">正在開啟中央會員登入…</p></main>','會員登入');
+    if(path==='/auth/done')return render('<main class="wrap main"><h1 class="title">正在驗證登入</h1><p id="auth-message">請勿分享登入網址</p></main>','登入驗證');
+    if(path==='/settings')return render('<main class="wrap main"><h1 class="title">我的學習</h1><p id="auth-message" class="muted"></p><p>會員識別碼：<span id="member-id">尚未登入</span></p><p><button class="pill" id="logout" hidden>登出此裝置</button></p><p><a class="navlink" href="https://id.hglobal1985.com/me">修改會員資料／申請刪除帳號</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy">隱私權政策</a></p><p><a class="navlink" href="https://id.hglobal1985.com/privacy/amway">完整隱私說明</a></p></main>','我的學習');
+    if(path==='/admin')return render('<main class="wrap main"><h1 class="title">管理後台</h1><p>需要 H-Global1985 超級管理員權限。</p><p id="auth-message"></p><a class="pill" href="/login">使用 H-Global1985 登入</a><p id="handoff-status"></p></main>','管理後台');
     if(path.startsWith('/v1/'))return publicApi(request,env,path);
     if(path==='/')return homepage(env,request);
     if(/^\/[A-Za-z0-9_-]{3,64}\/?$/.test(path))return detail(env,request,path.slice(1).replace(/\/$/,''));
    }
-   if(path.startsWith('/v1/'))return json({error:{code:'unauthenticated',message:'請先登入'}},401);
+   if(path.startsWith('/v1/')){
+    if(request.method==='POST'&&/^\/v1\/videos\/[A-Za-z0-9_-]{3,64}\/playback$/.test(path))return publicApi(request,env,path);
+    return json({error:{code:'unauthenticated',message:'請先登入'}},401);
+   }
    return render('<main class="wrap main"><h1>找不到頁面</h1><a class="back" href="/">返回課程</a></main>','找不到頁面',404);
   }catch{
    return path.startsWith('/v1/')?json({error:{code:'server_error',message:'暫時無法使用'}},503):
