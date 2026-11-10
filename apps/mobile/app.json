@@ -6,9 +6,42 @@
     "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
-    "plugins": ["expo-router", "expo-document-picker"],
-    "web": {"bundler": "metro", "output": "single", "name": "寰宇行動大學"},
-    "ios": {"supportsTablet": true, "bundleIdentifier": "com.hglobal1985.learn", "associatedDomains": ["applinks:learn.hglobal1985.com"]},
-    "android": {"package": "com.hglobal1985.learn", "intentFilters": [{"action": "VIEW", "autoVerify": true, "data": [{"scheme": "https", "host": "learn.hglobal1985.com"}], "category": ["BROWSABLE", "DEFAULT"]}]}
+    "plugins": [
+      "expo-router",
+      "expo-document-picker",
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "寰宇行動大學"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hglobal1985.learn",
+      "associatedDomains": [
+        "applinks:learn.hglobal1985.com"
+      ]
+    },
+    "android": {
+      "package": "com.hglobal1985.learn",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "learn.hglobal1985.com"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    }
   }
 }
