@@ -47,7 +47,16 @@ export async function allowed(req,video,viewer){
  if(video.status!=='published')return false;
  if(video.access_mode==='public')return true;
  if(!viewer?.sub)return false;
- if(video.access_mode==='members')return true;
+ try{
+  const r=await fetch(ISSUER+'/v1/apps/learn/config',{signal:AbortSignal.timeout(5000)});
+  if(!r.ok||(await r.json()).status!=='active')return false;
+ }catch{return false}
+ if(video.access_mode==='members'){
+  try{
+   const r=await fetch(ISSUER+'/v1/me/profile',{headers:{Authorization:req.headers.get('authorization')||''},signal:AbortSignal.timeout(5000)});
+   return r.ok;
+  }catch{return false}
+ }
  if(video.access_mode!=='rank')return false;
  const audience=video.audience||'hglobal_verified';
  if(!['everyone','hglobal_verified'].includes(audience)||audience==='everyone'&&video.min_rank_code!=null)return false;
