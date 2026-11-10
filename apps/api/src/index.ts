@@ -85,6 +85,36 @@ async function publishVideo(env:Env,vid:string,viewer:Viewer):Promise<Response>{
  await env.DB.prepare("UPDATE videos SET status='published',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(vid).run();
  return json({ok:true,video_id:vid});
 }
+
+async function importExistingMux(req:Request,env:Env,viewer:Viewer):Promise<Response>{
+ await requirePermission(env,viewer,'upload');
+ const b=await bodyJson(req);
+ const title=cleanText(b.title,120);
+ const description=cleanText(b.description??'',3000,0);
+ const category=cleanText(b.category??'一般',60);
+ const assetId=cleanText(b.asset_id,128);
+ assert(/^[A-Za-z0-9]+$/.test(assetId),422,'invalid_asset_id','Mux 資產識別碼無效');
+ const access=b.access_mode??'rank';
+ assert(isMode(access),422,'invalid_access_mode','影片權限無效');
+ const minRank=access==='rank'&&b.min_rank_code!=null?cleanText(b.min_rank_code,32):null;
+ const existing=await env.DB.prepare('SELECT id FROM videos WHERE mux_asset_id=?').bind(assetId).first<{id:string}>();
+ assert(!existing,409,'already_imported','這部 Mux 影片已經匯入');
+ const asset=await inspectMuxAsset(env,assetId);
+ assert(asset.status==='ready',422,'mux_not_ready','Mux 影片尚未完成處理');
+ const playbackIds=asset.playback_ids||[];
+ const candidate:VideoRecord={
+  id:'checking',title,description,access_mode:access,min_rank_code:minRank,source_type:'mux',
+  source_id:'',youtube_visibility:null,category,status:'draft',mux_asset_id:assetId
+ };
+ assert(isMuxPublishable(candidate,playbackIds.map(p=>p.policy)),409,'mux_public_playback_exists','限定影片仍有公開播放 ID，無法匯入');
+ const selected=playbackIds.find(p=>p.policy==='signed')||playbackIds.find(p=>p.policy==='public');
+ assert(selected?.id,422,'mux_no_playback','Mux 影片沒有可用的播放 ID');
+ const videoId=id();
+ await env.DB.prepare("INSERT INTO videos(id,title,description,access_mode,min_rank_code,source_type,source_id,mux_asset_id,mux_playback_policy,category,duration_seconds,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft')")
+  .bind(videoId,title,description,access,minRank,'mux',selected.id,assetId,selected.policy,category,Math.ceil(asset.duration||0)).run();
+ return json({video_id:videoId,status:'draft',share_url:'https://learn.hglobal1985.com/'+videoId},201);
+}
+
 async function playback(req:Request,env:Env,vid:string,viewer:Viewer):Promise<Response>{
  const v=await requireVideo(req,env,vid,viewer);
  if(v.source_type==='youtube')return json({type:'youtube',video_id:v.source_id});
@@ -200,6 +230,7 @@ async function handle(req:Request,env:Env):Promise<Response>{
   else await env.DB.prepare('DELETE FROM admin_grants WHERE member_sub=? AND permission=?').bind(sub,permission).run();
   return json({ok:true});
  }
+ if(method==='POST'&&path==='/v1/videos/mux/import')return importExistingMux(req,env,viewer);
  if(method==='POST'&&path==='/v1/uploads/mux'){
   const admin=await requirePermission(env,viewer,'upload');
   const b=await bodyJson(req),vid=cleanText(b.video_id,64);
