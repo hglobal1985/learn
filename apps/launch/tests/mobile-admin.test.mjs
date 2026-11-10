@@ -138,7 +138,8 @@ test('central profile calls are never sent to learn API, and owner checks do not
 test('publishing errors are visible inline at the tapped video card and API messages are retained',()=>{
  assert.match(ADMIN_BROWSER_JS,/publish-status/);
  assert.match(ADMIN_BROWSER_JS,/status\(message\)/);
- assert.match(ADMIN_BROWSER_JS,/正在.*處理中…/s);
+ assert.match(ADMIN_BROWSER_JS,/b\.textContent='處理中…'/);
+ assert.match(ADMIN_BROWSER_JS,/status\('正在'/);
  assert.match(ADMIN_BROWSER_JS,/scrollIntoView/);
  assert.match(AUTH_BROWSER_JS,/problem\?\.error\?\.message/);
  assert.doesNotThrow(()=>new Function(ADMIN_BROWSER_JS));
