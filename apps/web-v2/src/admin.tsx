@@ -1,6 +1,372 @@
-import {useState} from 'react';import {Link,useNavigate,useParams} from 'react-router-dom';import {Plus,ArrowRight} from 'lucide-react';import {useStore} from './store';import {ranks,reviewOrder,type Course,type Rank} from './domain';import {Page,Empty} from './components';import {orderStatus} from './commerce';
-export function Admin(){const {state}=useStore();const pending=state.orders.filter(o=>o.status==='pending');return <Page title="超級管理員後台" subtitle="隔離測試後台 · 不修改正式資料或中央會員"><nav className="tabs"><Link to="/admin">總覽</Link><Link to="/admin/courses">課程管理</Link><Link to="/admin/orders">訂單審核</Link><Link to="/notifications">站內通知</Link></nav><div className="stats"><div><strong>{state.courses.length}</strong><span>測試課程</span></div><div><strong>{pending.length}</strong><span>待審核訂單</span></div><div><strong>{state.orders.filter(o=>o.status==='opened').length}</strong><span>已開通訂單</span></div></div><section className="panel"><h2>管理你的課程與學員旅程</h2><p>新增課程可指定最低獎銜。正式資格將交由中央會員判定；此處使用測試獎銜順序，不作為正式授權依據。</p><Link className="primary" to="/admin/courses/new"><Plus size={17}/>新增課程</Link><Link className="secondary" to="/admin/orders">處理待審核訂單<ArrowRight size={17}/></Link></section></Page>}
-export function AdminCourses(){const {state,update}=useStore();return <Page title="課程管理"><div className="section-title"><Link to="/admin">← 返回後台</Link><Link className="primary" to="/admin/courses/new"><Plus size={17}/>新增課程</Link></div>{state.courses.map(c=><article className="panel admin-row" key={c.id}><div><span className="tag">{c.published?'已上架':'草稿'}</span><h3>{c.title}</h3><p>{c.category} · NT$ {c.price} · {c.rank==='不限獎銜'?c.rank:`${c.rank}以上`}</p></div><div><Link className="secondary" to={`/admin/courses/${c.id}`}>編輯</Link><button className="secondary" onClick={()=>update(s=>({...s,courses:s.courses.map(x=>x.id===c.id?{...x,published:!x.published}:x)}))}>{c.published?'下架':'上架'}</button></div></article>)}</Page>}
-export function EditCourse(){const {id}=useParams();const {state,update}=useStore();const navigate=useNavigate();const existing=state.courses.find(c=>c.id===id);const [error,setError]=useState('');if(id&&id!=='new'&&!existing)return <Page title="找不到課程"/>;function save(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const price=Number(f.get('price'));const rank=String(f.get('rank')) as Rank;const title=String(f.get('title')).trim();if(!title||!Number.isInteger(price)||price<0||!ranks.includes(rank)){setError('請確認課名、有效獎銜與非負整數金額');return}const lessonTitles=String(f.get('lessons')).split('\n').map(x=>x.trim()).filter(Boolean);if(!lessonTitles.length){setError('至少需要一堂課程單元');return}const c:Course={id:existing?.id||`course-${crypto.randomUUID().slice(0,8)}`,title,subtitle:String(f.get('subtitle')).trim(),teacher:String(f.get('teacher')).trim(),category:String(f.get('category')),price,rank,theme:String(f.get('theme')),published:f.get('published')==='on',lessons:lessonTitles.map((name,i)=>({id:existing?.lessons[i]?.id||`lesson-${i+1}`,title:name,minutes:existing?.lessons[i]?.minutes||10}))};update(s=>({...s,courses:existing?s.courses.map(x=>x.id===c.id?c:x):[...s.courses,c]}));navigate('/admin/courses')}
-return <Page title={existing?'編輯課程':'新增課程'}><Link to="/admin/courses">← 返回課程管理</Link><form className="panel editor" onSubmit={save}><label>課程名稱<input name="title" required maxLength={100} defaultValue={existing?.title}/></label><label>課程簡介<textarea name="subtitle" required maxLength={600} defaultValue={existing?.subtitle}/></label><label>講師名稱<input name="teacher" required maxLength={80} defaultValue={existing?.teacher}/></label><div className="form-grid"><label>分類<select name="category" defaultValue={existing?.category}>{['自我成長','溝通表達','團隊領導','健康生活'].map(x=><option key={x}>{x}</option>)}</select></label><label>價格（0 元自動開通）<input name="price" type="number" min="0" step="1" required defaultValue={existing?.price||0}/></label><label>最低獎銜限制<select name="rank" defaultValue={existing?.rank||'不限獎銜'}>{ranks.map(r=><option key={r}>{r}</option>)}</select></label><label>封面配色<select name="theme" defaultValue={existing?.theme||'sage'}>{[['sage','森林綠'],['rose','玫瑰'],['gold','暖金'],['blue','海洋藍'],['clay','陶土'],['violet','紫藤']].map(([v,l])=><option value={v} key={v}>{l}</option>)}</select></label></div><p className="fine">獎銜為測試選項；正式代碼與資格查詢需後續依中央會員規格串接，不會由瀏覽器決定正式觀看權限。</p><label>課程章節（每行一堂）<textarea name="lessons" required rows={5} defaultValue={existing?.lessons.map(l=>l.title).join('\n')||'課前導讀\n核心觀念\n情境練習'}/></label><section className="notice-inline"><h3>影片來源</h3><p>目前使用原創示範影片。正式 Mux Signed／YouTube 媒體指派保留既有後端機制，尚未接入此編輯器。</p></section><label className="checkbox"><input type="checkbox" name="published" defaultChecked={existing?.published??false}/>上架至測試課程目錄</label>{error&&<p className="error" role="alert">{error}</p>}<button className="primary">儲存測試課程</button></form></Page>}
-export function AdminOrders(){const {state,update}=useStore();const {id}=useParams();const [filter,setFilter]=useState('pending');const [error,setError]=useState('');const orders=state.orders.filter(o=>(!id||o.id===id)&&(id||filter==='all'||o.status===filter));function review(e:React.FormEvent<HTMLFormElement>,oid:string){e.preventDefault();const f=new FormData(e.currentTarget);const decision=f.get('decision');try{const next=reviewOrder(state,oid,decision==='approve',String(f.get('reason')||''));update(()=>next);setError('')}catch(err){setError((err as Error).message)}}return <Page title="訂單審核" subtitle="確認收到款項後才開通付費課程；0 元訂單不需人工處理。"><Link to="/admin">← 返回後台</Link><nav className="tabs">{[['pending','待審核'],['opened','已開通'],['rejected','未通過'],['all','全部']].map(([v,l])=><button className={filter===v?'active':''} onClick={()=>setFilter(v)} key={v}>{l}</button>)}</nav>{error&&<p role="alert" className="error">{error}</p>}{!orders.length?<Empty title="目前沒有待處理訂單" body="測試學員送出付費訂單後，會出現在這裡。" to="/admin" action="返回後台"/>:orders.map(o=><article className="panel" key={o.id}><div className="summary-row"><h2>{o.id}</h2><span className="tag">{orderStatus[o.status]}</span></div><p>測試學員：{o.memberId} · NT$ {o.total}</p>{o.items.map(i=><p key={i.courseId}>{i.title} · NT$ {i.price}</p>)}{o.status==='pending'?<form onSubmit={e=>review(e,o.id)}><label>審核決定<select name="decision"><option value="approve">已確認付款，開通課程</option><option value="reject">未通過</option></select></label><label>審核說明（未通過必填）<textarea name="reason" maxLength={500}/></label><label className="checkbox"><input type="checkbox" required/>我確認此次操作僅處理隔離測試訂單。</label><button className="primary">確認審核並通知學員</button></form>:<p>{o.reason||'此訂單已處理，無法重複審核。'}</p>}</article>)}</Page>}
+import { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Plus, ArrowRight } from "lucide-react";
+import { useStore } from "./store";
+import { ranks, reviewOrder, type Course, type Rank } from "./domain";
+import { Page, Empty } from "./components";
+import { orderStatus } from "./commerce";
+export function Admin() {
+  const { state } = useStore();
+  const pending = state.orders.filter((o) => o.status === "pending");
+  return (
+    <Page
+      title="超級管理員後台"
+      subtitle="隔離測試後台 · 不修改正式資料或中央會員"
+    >
+      <nav className="tabs">
+        <Link to="/admin">總覽</Link>
+        <Link to="/admin/courses">課程管理</Link>
+        <Link to="/admin/orders">訂單審核</Link>
+        <Link to="/notifications">站內通知</Link>
+      </nav>
+      <div className="stats">
+        <div>
+          <strong>{state.courses.length}</strong>
+          <span>測試課程</span>
+        </div>
+        <div>
+          <strong>{pending.length}</strong>
+          <span>待審核訂單</span>
+        </div>
+        <div>
+          <strong>
+            {state.orders.filter((o) => o.status === "opened").length}
+          </strong>
+          <span>已開通訂單</span>
+        </div>
+      </div>
+      <section className="panel">
+        <h2>管理你的課程與學員旅程</h2>
+        <p>
+          新增課程可指定最低獎銜。正式資格將交由中央會員判定；此處使用測試獎銜順序，不作為正式授權依據。
+        </p>
+        <Link className="primary" to="/admin/courses/new">
+          <Plus size={17} />
+          新增課程
+        </Link>
+        <Link className="secondary" to="/admin/orders">
+          處理待審核訂單
+          <ArrowRight size={17} />
+        </Link>
+      </section>
+    </Page>
+  );
+}
+export function AdminCourses() {
+  const { state, update } = useStore();
+  return (
+    <Page title="課程管理">
+      <div className="section-title">
+        <Link to="/admin">← 返回後台</Link>
+        <Link className="primary" to="/admin/courses/new">
+          <Plus size={17} />
+          新增課程
+        </Link>
+      </div>
+      {state.courses.map((c) => (
+        <article className="panel admin-row" key={c.id}>
+          <div>
+            <span className="tag">{c.published ? "已上架" : "草稿"}</span>
+            <h3>{c.title}</h3>
+            <p>
+              {c.category} · NT$ {c.price} ·{" "}
+              {c.rank === "不限獎銜" ? c.rank : `${c.rank}以上`}
+            </p>
+          </div>
+          <div>
+            <Link className="secondary" to={`/admin/courses/${c.id}`}>
+              編輯
+            </Link>
+            <button
+              className="secondary"
+              onClick={() =>
+                update((s) => ({
+                  ...s,
+                  courses: s.courses.map((x) =>
+                    x.id === c.id ? { ...x, published: !x.published } : x,
+                  ),
+                }))
+              }
+            >
+              {c.published ? "下架" : "上架"}
+            </button>
+          </div>
+        </article>
+      ))}
+    </Page>
+  );
+}
+export function EditCourse() {
+  const { id } = useParams();
+  const { state, update } = useStore();
+  const navigate = useNavigate();
+  const existing = state.courses.find((c) => c.id === id);
+  const [error, setError] = useState("");
+  if (id && id !== "new" && !existing) return <Page title="找不到課程" />;
+  function save(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const price = Number(f.get("price"));
+    const rank = String(f.get("rank")) as Rank;
+    const title = String(f.get("title")).trim();
+    if (
+      !title ||
+      !Number.isInteger(price) ||
+      price < 0 ||
+      !ranks.includes(rank)
+    ) {
+      setError("請確認課名、有效獎銜與非負整數金額");
+      return;
+    }
+    const lessonTitles = String(f.get("lessons"))
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (!lessonTitles.length) {
+      setError("至少需要一堂課程單元");
+      return;
+    }
+    const c: Course = {
+      id: existing?.id || `course-${crypto.randomUUID().slice(0, 8)}`,
+      title,
+      subtitle: String(f.get("subtitle")).trim(),
+      teacher: String(f.get("teacher")).trim(),
+      category: String(f.get("category")),
+      price,
+      rank,
+      theme: String(f.get("theme")),
+      published: f.get("published") === "on",
+      lessons: lessonTitles.map((name, i) => ({
+        id: existing?.lessons[i]?.id || `lesson-${i + 1}`,
+        title: name,
+        minutes: existing?.lessons[i]?.minutes || 10,
+      })),
+    };
+    update((s) => ({
+      ...s,
+      courses: existing
+        ? s.courses.map((x) => (x.id === c.id ? c : x))
+        : [...s.courses, c],
+    }));
+    navigate("/admin/courses");
+  }
+  return (
+    <Page title={existing ? "編輯課程" : "新增課程"}>
+      <Link to="/admin/courses">← 返回課程管理</Link>
+      <form className="panel editor" onSubmit={save}>
+        <label>
+          課程名稱
+          <input
+            name="title"
+            required
+            maxLength={100}
+            defaultValue={existing?.title}
+          />
+        </label>
+        <label>
+          課程簡介
+          <textarea
+            name="subtitle"
+            required
+            maxLength={600}
+            defaultValue={existing?.subtitle}
+          />
+        </label>
+        <label>
+          講師名稱
+          <input
+            name="teacher"
+            required
+            maxLength={80}
+            defaultValue={existing?.teacher}
+          />
+        </label>
+        <div className="form-grid">
+          <label>
+            分類
+            <select name="category" defaultValue={existing?.category}>
+              {["自我成長", "溝通表達", "團隊領導", "健康生活"].map((x) => (
+                <option key={x}>{x}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            價格（0 元自動開通）
+            <input
+              name="price"
+              type="number"
+              min="0"
+              step="1"
+              required
+              defaultValue={existing?.price || 0}
+            />
+          </label>
+          <label>
+            最低獎銜限制
+            <select name="rank" defaultValue={existing?.rank || "不限獎銜"}>
+              {ranks.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            封面配色
+            <select name="theme" defaultValue={existing?.theme || "sage"}>
+              {[
+                ["sage", "森林綠"],
+                ["rose", "玫瑰"],
+                ["gold", "暖金"],
+                ["blue", "海洋藍"],
+                ["clay", "陶土"],
+                ["violet", "紫藤"],
+              ].map(([v, l]) => (
+                <option value={v} key={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="fine">
+          獎銜為測試選項；正式代碼與資格查詢需後續依中央會員規格串接，不會由瀏覽器決定正式觀看權限。
+        </p>
+        <label>
+          課程章節（每行一堂）
+          <textarea
+            name="lessons"
+            required
+            rows={5}
+            defaultValue={
+              existing?.lessons.map((l) => l.title).join("\n") ||
+              "課前導讀\n核心觀念\n情境練習"
+            }
+          />
+        </label>
+        <section className="notice-inline">
+          <h3>影片來源</h3>
+          <p>
+            目前使用原創示範影片。正式 Mux Signed／YouTube
+            媒體指派保留既有後端機制，尚未接入此編輯器。
+          </p>
+        </section>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            name="published"
+            defaultChecked={existing?.published ?? false}
+          />
+          上架至測試課程目錄
+        </label>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="primary">儲存測試課程</button>
+      </form>
+    </Page>
+  );
+}
+export function AdminOrders() {
+  const { state, update } = useStore();
+  const { id } = useParams();
+  const [filter, setFilter] = useState("pending");
+  const [error, setError] = useState("");
+  const orders = state.orders.filter(
+    (o) =>
+      (!id || o.id === id) && (id || filter === "all" || o.status === filter),
+  );
+  function review(e: React.FormEvent<HTMLFormElement>, oid: string) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const decision = f.get("decision");
+    try {
+      const next = reviewOrder(
+        state,
+        oid,
+        decision === "approve",
+        String(f.get("reason") || ""),
+      );
+      update(() => next);
+      setError("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+  return (
+    <Page
+      title="訂單審核"
+      subtitle="確認收到款項後才開通付費課程；0 元訂單不需人工處理。"
+    >
+      <Link to="/admin">← 返回後台</Link>
+      <nav className="tabs">
+        {[
+          ["pending", "待審核"],
+          ["opened", "已開通"],
+          ["rejected", "未通過"],
+          ["all", "全部"],
+        ].map(([v, l]) => (
+          <button
+            className={filter === v ? "active" : ""}
+            onClick={() => setFilter(v)}
+            key={v}
+          >
+            {l}
+          </button>
+        ))}
+      </nav>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      {!orders.length ? (
+        <Empty
+          title="目前沒有待處理訂單"
+          body="測試學員送出付費訂單後，會出現在這裡。"
+          to="/admin"
+          action="返回後台"
+        />
+      ) : (
+        orders.map((o) => (
+          <article className="panel" key={o.id}>
+            <div className="summary-row">
+              <h2>{o.id}</h2>
+              <span className="tag">{orderStatus[o.status]}</span>
+            </div>
+            <p>
+              測試學員：{o.memberId} · NT$ {o.total}
+            </p>
+            {o.items.map((i) => (
+              <p key={i.courseId}>
+                {i.title} · NT$ {i.price}
+              </p>
+            ))}
+            {o.status === "pending" ? (
+              <form onSubmit={(e) => review(e, o.id)}>
+                <label>
+                  審核決定
+                  <select name="decision">
+                    <option value="approve">已確認付款，開通課程</option>
+                    <option value="reject">未通過</option>
+                  </select>
+                </label>
+                <label>
+                  審核說明（未通過必填）
+                  <textarea name="reason" maxLength={500} />
+                </label>
+                <label className="checkbox">
+                  <input type="checkbox" required />
+                  我確認此次操作僅處理隔離測試訂單。
+                </label>
+                <button className="primary">確認審核並通知學員</button>
+              </form>
+            ) : (
+              <p>{o.reason || "此訂單已處理，無法重複審核。"}</p>
+            )}
+          </article>
+        ))
+      )}
+    </Page>
+  );
+}
