@@ -6,3 +6,4 @@ node_modules/
 *.local
 .build-tests/
 .DS_Store
+dist/

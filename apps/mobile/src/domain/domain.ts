@@ -140,7 +140,7 @@ export function initialState(): State {
   return {
     version: 1,
     member: null,
-    courses: structuredClone(initialCourses),
+    courses: clone(initialCourses),
     cart: [],
     orders: [],
     notices: [],
@@ -281,9 +281,23 @@ export interface LearningGateway {
 // Production adapter intentionally absent: never fetch central identity or sign video URLs here.
 export const sandboxGateway: LearningGateway = {
   async getCatalog() {
-    return structuredClone(initialCourses);
+    return clone(initialCourses);
   },
   async getPlayback() {
     throw Error("正式影片尚未接入；目前僅提供原創導讀示範。");
   },
 };
+// Hermes (iOS/Android) does not guarantee structuredClone; the data is plain JSON.
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+export const demoMembers: Member[] = [
+  { id: "demo-student", name: "測試學員", rank: "白金", role: "student" },
+  { id: "demo-silver", name: "測試學員（銀章）", rank: "銀章", role: "student" },
+  { id: "admin", name: "測試管理員", rank: "鑽石", role: "admin" },
+];
+export function noticesFor(state: State): Notice[] {
+  const m = state.member;
+  if (!m) return [];
+  return state.notices.filter((n) => n.recipient === m.id || (m.role === "admin" && n.recipient === "admin"));
+}
