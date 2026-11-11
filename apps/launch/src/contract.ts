@@ -54,6 +54,7 @@ export type Order = {
 
 export type Notice = { id: string; title: string; body: string; link: string; read: boolean; createdAt: string };
 
+/** url 可能是相對路徑（以 API 網域為準），App 端以 resolveUrl 轉成完整網址。 */
 export type Playback = { kind: "demo"; url: string; label: string };
 
 export type ApiError = { error: { code: string; message: string } };

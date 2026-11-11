@@ -13,10 +13,6 @@ export interface D1Database {
   prepare(query: string): D1PreparedStatement;
   batch(statements: D1PreparedStatement[]): Promise<D1Result[]>;
 }
-export interface AssetsBinding {
-  fetch(request: Request): Promise<Response>;
-}
 export interface Env {
   DB: D1Database;
-  ASSETS: AssetsBinding;
 }

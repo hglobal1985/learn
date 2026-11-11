@@ -32,7 +32,7 @@
 2. ✅ 畫面：課程列表／詳情、領課／結帳、訂單、通知、學習播放（先用示範播放器）、我的學習、管理員訂單審核與課程獎銜設定、模擬登入。
 3. ✅ 付費流程以平台判斷：Web 顯示，iOS/Android 隱藏。
 4. ✅ 後端：重新設計資料表，新增課程、章節、獎銜、訂單、通知 API。
-5. 之後：中央會員、Mux 簽名播放、YouTube、帳號刪除入口、上架資料。
+5. 下一步：中央會員、Mux 簽名播放、YouTube、帳號刪除入口、上架資料。
 6. 部署驗證：實際用瀏覽器與裝置測試後，才宣稱完成。
 
 ## 注意
@@ -56,4 +56,7 @@
 - 播放：示範影片 `apps/mobile/public/media/orientation.mp4`（原創幾何動畫），API 需已開通才給網址；Worker 為 `/media/*` 補上 Range（206），iOS Safari 需要。
 - 帳號刪除：`DELETE /api/v2/me` 刪除該會員在本 App 的資料（「我的」→「刪除帳號資料」）。串中央會員後要再加上導向中央官方刪除流程。
 - 測試：`npm test -w @learn/launch`（11 項，node:sqlite 模擬 D1）；Playwright 在本機 `wrangler dev` 走完整流程（免費領取→播放→完成章節→加入購物車結帳→管理員審核→學員收到通知→調整獎銜→獎銜不足被拒→刪除資料）全部通過、無主控台錯誤。
-- 部署指令：`npm run deploy -w @learn/launch`（先輸出 Web、套 migration、再 `wrangler deploy`）。需要有 Workers Scripts/D1 編輯權限的 Cloudflare API Token。
+- 部署指令：`npm run deploy -w @learn/launch`（輸出 Web → `scripts/embed-static.mjs` 把 `apps/mobile/dist` 打包進 Worker → 套 migration → `wrangler deploy`）。雲端 session 的 Cloudflare 權限由環境的 network secret 注入，執行時設 `CLOUDFLARE_API_TOKEN=proxy-injected`、`CLOUDFLARE_ACCOUNT_ID=650a3b03d439a5f517b4f8a28244f9fe`。
+- 為何不用 Workers Static Assets：靜態資源上傳 API 需要另一把一次性 JWT 放在 Authorization，雲端 proxy 會覆蓋成 API Token 導致 401。所以改為把網頁檔（約 1.7MB，gzip 後整個 Worker 約 830KB）打包進 Worker，由 `src/site.ts` 提供（含 SPA 回退、快取標頭、Range）。若之後改在本機部署，可以改回 assets。
+- 2026-11-11 已部署：Worker `learn` 版本 `68976806-6e3d-4721-86f8-72a29d3b62ce`，`learn.hglobal1985.com`（custom domain）；`/privacy` 仍由 `learn-legal` 提供（已確認）。已用 Playwright（iPhone 13 尺寸）對正式站跑完整流程全部通過、示範影片可載入、Range 回 206。
+- 尚未驗證：iOS/Android 實機或模擬器（此環境沒有）。

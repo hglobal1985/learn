@@ -1,34 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import worker from "../src/index.ts";
-import type { Env } from "../src/d1.ts";
+import { createWorker } from "../src/worker.ts";
 import { createTestDb } from "./sqlite-d1.ts";
 
-const bytes = new Uint8Array(100).map((_, i) => i);
-const env: Env = {
-  DB: createTestDb(),
-  ASSETS: { fetch: async () => new Response(bytes, { headers: { "content-type": "video/mp4" } }) },
-};
-const get = (range?: string) =>
-  worker.fetch(new Request("https://learn.test/media/orientation.mp4", { headers: range ? { range } : {} }), env);
+const video = Buffer.from(new Uint8Array(100).map((_, i) => i)).toString("base64");
+const html = Buffer.from("<!doctype html><title>app</title>").toString("base64");
+const worker = createWorker({
+  "/index.html": { type: "text/html; charset=utf-8", data: html },
+  "/media/orientation.mp4": { type: "video/mp4", data: video },
+  "/_expo/static/js/web/entry-abc.js": { type: "text/javascript", data: html },
+});
+const env = { DB: createTestDb() };
+const get = (path: string, headers: Record<string, string> = {}) => worker.fetch(new Request(`https://learn.test${path}`, { headers }), env);
 
 test("影片支援 Range（iOS Safari 需要 206）", async () => {
-  const full = await get();
+  const full = await get("/media/orientation.mp4");
   assert.equal(full.status, 200);
   assert.equal(full.headers.get("accept-ranges"), "bytes");
-  const first = await get("bytes=0-1");
+  const first = await get("/media/orientation.mp4", { range: "bytes=0-1" });
   assert.equal(first.status, 206);
   assert.equal(first.headers.get("content-range"), "bytes 0-1/100");
   assert.deepEqual([...new Uint8Array(await first.arrayBuffer())], [0, 1]);
-  const open = await get("bytes=90-");
-  assert.equal(open.headers.get("content-range"), "bytes 90-99/100");
-  const suffix = await get("bytes=-5");
-  assert.equal(suffix.headers.get("content-range"), "bytes 95-99/100");
-  assert.equal((await get("bytes=200-300")).status, 416);
+  assert.equal((await get("/media/orientation.mp4", { range: "bytes=90-" })).headers.get("content-range"), "bytes 90-99/100");
+  assert.equal((await get("/media/orientation.mp4", { range: "bytes=-5" })).headers.get("content-range"), "bytes 95-99/100");
+  assert.equal((await get("/media/orientation.mp4", { range: "bytes=200-300" })).status, 416);
 });
 
-test("非 API 的 /api 路徑回 404，網頁加上安全標頭", async () => {
-  assert.equal((await worker.fetch(new Request("https://learn.test/api/v1/videos"), env)).status, 404);
-  const page = await worker.fetch(new Request("https://learn.test/courses"), env);
+test("App 路由回傳 index.html；缺檔 404；舊 /api 404；安全與快取標頭", async () => {
+  const page = await get("/course/lead");
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /<title>app<\/title>/);
   assert.equal(page.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(page.headers.get("cache-control"), "public, max-age=0, must-revalidate");
+  assert.equal((await get("/missing.png")).status, 404);
+  assert.equal((await get("/api/v1/videos")).status, 404);
+  assert.match((await get("/_expo/static/js/web/entry-abc.js")).headers.get("cache-control") ?? "", /immutable/);
+  assert.equal((await get("/api/v2/health")).status, 200);
 });

@@ -5,12 +5,7 @@
   "compatibility_date": "2026-11-01",
   "workers_dev": false,
   "routes": [{ "pattern": "learn.hglobal1985.com", "custom_domain": true }],
-  "assets": {
-    "directory": "../mobile/dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": true
-  },
+  "alias": { "learn:static": "./.generated/static-files.js" },
   "d1_databases": [
     { "binding": "DB", "database_name": "learn-v2", "database_id": "f1283fdd-94f1-4a43-97b4-3072d1876ced", "migrations_dir": "migrations" }
   ],

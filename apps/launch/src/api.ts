@@ -438,7 +438,7 @@ const routes: [string, RegExp, Handler][] = [
       const lesson = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先領取這門課程");
       if (lesson.media_type !== "demo") fail(501, "media_not_ready", "正式影片尚未接入");
-      return { kind: "demo", url: new URL(DEMO_VIDEO_PATH, ctx.url).toString(), label: "示範影片（非正式課程內容）" };
+      return { kind: "demo", url: DEMO_VIDEO_PATH, label: "示範影片（非正式課程內容）" };
     },
   ],
   ["POST", /^\/orders$/, async (ctx) => createOrders(ctx, await readJson(ctx.req))],

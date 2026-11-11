@@ -6,7 +6,7 @@ import type { Env } from "../src/d1.ts";
 import { createTestDb } from "./sqlite-d1.ts";
 
 function setup() {
-  const env: Env = { DB: createTestDb(), ASSETS: { fetch: async () => new Response("asset") } };
+  const env: Env = { DB: createTestDb() };
   const call = async <T = unknown,>(method: string, path: string, opts: { token?: string; body?: unknown; platform?: string } = {}) => {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
@@ -107,7 +107,7 @@ test("播放與進度需先開通課程", async () => {
   assert.equal((await call("GET", "/courses/start/lessons/start-welcome/playback", { token })).status, 403);
   await call("POST", "/orders", { token, body: { courseIds: ["start"] } });
   const p = await call<{ url: string }>("GET", "/courses/start/lessons/start-welcome/playback", { token });
-  assert.equal(p.data.url, "https://learn.test/media/orientation.mp4");
+  assert.equal(p.data.url, "/media/orientation.mp4");
   assert.equal((await call("GET", "/courses/start/lessons/talk-welcome/playback", { token })).status, 404, "章節必須屬於該課程");
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
@@ -133,7 +133,7 @@ test("未知路徑 404、錯誤方法 405、壞 JSON 400", async () => {
   const { call } = setup();
   assert.equal((await call("GET", "/nope")).status, 404);
   assert.equal((await call("PUT", "/courses")).status, 405);
-  const env: Env = { DB: createTestDb(), ASSETS: { fetch: async () => new Response("") } };
+  const env: Env = { DB: createTestDb() };
   const res = await handleApi(new Request("https://x/api/v2/auth/demo", { method: "POST", body: "{" }), env);
   assert.equal(res.status, 400);
 });

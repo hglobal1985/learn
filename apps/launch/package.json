@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --no-warnings --test tests/*.test.ts",
-    "dev": "wrangler dev",
-    "deploy": "npm run build:web -w @learn/mobile && wrangler d1 migrations apply learn-v2 --remote && wrangler deploy"
+    "dev": "npm run embed && wrangler dev",
+    "embed": "node scripts/embed-static.mjs",
+    "deploy": "npm run build:web -w @learn/mobile && npm run embed && wrangler d1 migrations apply learn-v2 --remote && wrangler deploy"
   }
 }

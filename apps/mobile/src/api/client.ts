@@ -21,6 +21,11 @@ const TOKEN_KEY = "hglobal:learn:session-token";
 
 let token: string | null = null;
 
+/** 把 API 回傳的相對路徑（例如 /media/x.mp4）轉成完整網址；Web 版維持同網域相對路徑。 */
+export function resolveUrl(url: string): string {
+  return /^https?:\/\//.test(url) ? url : `${API_BASE}${url}`;
+}
+
 export async function loadToken(): Promise<string | null> {
   token = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
   return token;
