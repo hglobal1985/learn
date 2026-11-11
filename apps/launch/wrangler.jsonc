@@ -9,7 +9,7 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "learn-v2", "database_id": "f1283fdd-94f1-4a43-97b4-3072d1876ced", "migrations_dir": "migrations" }
   ],
-  "vars": { "DEMO_LOGIN": "on" },
+  "vars": { "DEMO_LOGIN": "off" },
   // MUX_SIGNING_KEY_ID 由業主在 Cloudflare 後台設定；部署時保留後台的變數，避免被清掉。
   "keep_vars": true,
   "observability": { "enabled": true }
