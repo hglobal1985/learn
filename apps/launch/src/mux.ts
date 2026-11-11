@@ -56,7 +56,8 @@ export function parsePrivateKey(secret: string): Uint8Array<ArrayBuffer> {
 
 let cachedKey: { id: string; key: CryptoKey } | null = null;
 
-export async function muxPlaybackUrl(env: Env, playbackId: string, seconds = 6 * 3600): Promise<string | null> {
+/** 簽出 Mux JWT：aud "v" 播放、"t" 縮圖。金鑰未設定或無效時回傳 null。 */
+async function signToken(env: Env, playbackId: string, aud: "v" | "t", seconds: number): Promise<string | null> {
   const keyId = env.MUX_SIGNING_KEY_ID?.trim();
   if (!keyId || !env.MUX_SIGNING_PRIVATE_KEY) return null;
   try {
@@ -65,12 +66,90 @@ export async function muxPlaybackUrl(env: Env, playbackId: string, seconds = 6 *
       cachedKey = { id: keyId, key };
     }
     const now = Math.floor(Date.now() / 1000);
-    const unsigned = `${b64urlJson({ alg: "RS256", typ: "JWT", kid: keyId })}.${b64urlJson({ sub: playbackId, aud: "v", exp: now + seconds })}`;
+    const unsigned = `${b64urlJson({ alg: "RS256", typ: "JWT", kid: keyId })}.${b64urlJson({ sub: playbackId, aud, exp: now + seconds })}`;
     const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cachedKey.key, new TextEncoder().encode(unsigned)));
-    return `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8?token=${unsigned}.${b64url(sig)}`;
+    return `${unsigned}.${b64url(sig)}`;
   } catch (e) {
     // 只記錄錯誤種類，不記錄金鑰內容。
     console.error("mux signing failed", e instanceof Error ? e.name : "unknown");
     return null;
   }
+}
+
+export async function muxPlaybackUrl(env: Env, playbackId: string, seconds = 6 * 3600): Promise<string | null> {
+  const token = await signToken(env, playbackId, "v", seconds);
+  return token ? `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8?token=${token}` : null;
+}
+
+// ---------- Mux 影片清單（管理員匯入用） ----------
+
+type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
+let muxFetch: Fetch = (input, init) => fetch(input, init);
+/** 測試用：替換對 Mux API 的請求。 */
+export function setMuxFetch(f: Fetch): void {
+  muxFetch = f;
+}
+
+export type MuxAsset = {
+  assetId: string;
+  title: string;
+  durationSeconds: number | null;
+  createdAt: string | null;
+  status: string;
+  /** 可以匯入的 Signed Playback ID；只有公開播放 ID 的影片為 null（不能用於需授權的課程）。 */
+  signedPlaybackId: string | null;
+  thumbnailUrl: string | null;
+};
+
+type RawAsset = {
+  id: string;
+  status?: string;
+  duration?: number;
+  created_at?: string;
+  passthrough?: string;
+  meta?: { title?: string };
+  playback_ids?: { id: string; policy: string }[];
+};
+
+export class MuxApiError extends Error {
+  code: "mux_api_not_configured" | "mux_api_unauthorized" | "mux_api_unavailable";
+  constructor(code: MuxApiError["code"]) {
+    super(code);
+    this.code = code;
+  }
+}
+
+/** 讀取 Mux 帳號中的影片（需要 MUX_TOKEN_ID 與 MUX_TOKEN_SECRET，建議只給 Video 讀取權限）。 */
+export async function listMuxAssets(env: Env, cursor?: string): Promise<{ assets: MuxAsset[]; nextCursor: string | null }> {
+  const id = env.MUX_TOKEN_ID?.trim();
+  const secret = env.MUX_TOKEN_SECRET?.trim();
+  if (!id || !secret) throw new MuxApiError("mux_api_not_configured");
+  const url = new URL("https://api.mux.com/video/v1/assets");
+  url.searchParams.set("limit", "50");
+  if (cursor) url.searchParams.set("cursor", cursor);
+  let res: Response;
+  try {
+    res = await muxFetch(url.toString(), { headers: { authorization: `Basic ${btoa(`${id}:${secret}`)}` }, signal: AbortSignal.timeout(10000) });
+  } catch {
+    throw new MuxApiError("mux_api_unavailable");
+  }
+  if (res.status === 401 || res.status === 403) throw new MuxApiError("mux_api_unauthorized");
+  if (!res.ok) throw new MuxApiError("mux_api_unavailable");
+  const body = (await res.json()) as { data?: RawAsset[]; next_cursor?: string | null };
+  const assets = await Promise.all(
+    (body.data ?? []).map(async (a): Promise<MuxAsset> => {
+      const signed = a.playback_ids?.find((p) => p.policy === "signed")?.id ?? null;
+      const thumb = signed ? await signToken(env, signed, "t", 3600) : null;
+      return {
+        assetId: a.id,
+        title: (a.meta?.title || a.passthrough || "").trim().slice(0, 120),
+        durationSeconds: typeof a.duration === "number" ? a.duration : null,
+        createdAt: a.created_at ? new Date(Number(a.created_at) * 1000).toISOString() : null,
+        status: a.status ?? "unknown",
+        signedPlaybackId: signed,
+        thumbnailUrl: signed && thumb ? `https://image.mux.com/${encodeURIComponent(signed)}/thumbnail.jpg?token=${thumb}` : null,
+      };
+    }),
+  );
+  return { assets, nextCursor: body.next_cursor ?? null };
 }

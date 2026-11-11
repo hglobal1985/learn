@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
@@ -10,7 +10,7 @@ import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, P
 const kinds: { key: MediaType; label: string; hint: string }[] = [
   { key: "demo", label: "示範短片", hint: "" },
   { key: "youtube", label: "YouTube", hint: "貼上 YouTube 影片網址（建議設為「不公開」）" },
-  { key: "mux", label: "Mux", hint: "貼上 Mux 的 Playback ID（Signed）" },
+  { key: "mux", label: "Mux", hint: "" },
 ];
 
 /** 管理員：設定每一堂課的影片來源。學員只會拿到後端授權後的播放資訊。 */
@@ -24,9 +24,9 @@ export default function LessonMediaScreen() {
   return (
     <Screen header={false}>
       <Stack.Screen options={{ title: course.data.title }} />
-      <NoticeBox text="YouTube 影片任何拿到網址的人都能看；需要保護的課程請用 Mux（簽名播放）。" />
+      <NoticeBox text="Mux：點「從 Mux 選擇影片」直接挑選，會自動帶入影片與長度。YouTube 影片任何拿到網址的人都能看，需要保護的課程請用 Mux。" />
       {course.data.lessons.map((l) => (
-        <LessonEditor key={l.id} lesson={l} onSaved={invalidate} />
+        <LessonEditor key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.minutes}`} lesson={l} onSaved={invalidate} />
       ))}
     </Screen>
   );
@@ -79,7 +79,21 @@ function LessonEditor({ lesson, onSaved }: { lesson: Lesson; onSaved: () => void
           );
         })}
       </View>
-      {kind !== "demo" ? (
+      {kind === "mux" ? (
+        <View style={{ gap: space.sm }}>
+          {lesson.media?.type === "mux" && lesson.media.ref ? (
+            <AppText variant="callout" tone="muted">
+              目前影片：{lesson.media.ref.slice(0, 8)}…（{lesson.minutes} 分鐘）
+            </AppText>
+          ) : null}
+          <Button
+            label={lesson.media?.type === "mux" ? "更換 Mux 影片" : "從 Mux 選擇影片"}
+            icon="cloud-download-outline"
+            onPress={() => router.push({ pathname: "/admin/mux-picker", params: { lessonId: lesson.id, lessonTitle: lesson.title } })}
+          />
+        </View>
+      ) : null}
+      {kind === "youtube" ? (
         <TextInput
           value={ref}
           onChangeText={setRef}
@@ -92,9 +106,11 @@ function LessonEditor({ lesson, onSaved }: { lesson: Lesson; onSaved: () => void
         />
       ) : null}
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
-      <View style={styles.row}>
-        <Button variant="secondary" label="儲存" icon="save-outline" loading={busy} onPress={save} />
-      </View>
+      {kind !== "mux" ? (
+        <View style={styles.row}>
+          <Button variant="secondary" label="儲存" icon="save-outline" loading={busy} onPress={save} />
+        </View>
+      ) : null}
     </Card>
   );
 }

@@ -77,3 +77,8 @@
 - 業主確認：Google 登入成功、App 名稱維持、Mux 金鑰已設定。
 - 之後再做（業主指示）：iOS/Android 打包上架與 Google Play 12 人 14 天封閉測試；正式上架時關閉 `DEMO_LOGIN`、移除首頁「內部測試版」標示、換上正式課程。
 - 選做：會員中心串接說明 3.5 的共用登入（SSO）。
+
+## Mux 影片匯入（2026-11-11）
+- 管理員在「各堂影片」選 Mux → 「從 Mux 選擇影片」，系統讀取 Mux 帳號內所有影片（`GET /api/v2/admin/mux/assets`，每頁 50 支、可載入更多、可搜尋），點一下就把該影片的 Signed Playback ID 與長度（分鐘無條件進位）帶入該堂。不再需要手動貼 ID。
+- 只有 Signed 播放 ID、狀態 ready 的影片可以匯入；只有公開播放 ID 的影片會標示「請先在 Mux 加上 Signed 播放 ID」。縮圖用簽名金鑰簽 aud "t" 的 1 小時 token。
+- 需要 Mux API 存取權杖：Cloudflare Worker `learn` 設定 `MUX_TOKEN_ID`（一般變數即可）與 `MUX_TOKEN_SECRET`（Secret）。權杖只需 Mux Video「Read」權限。未設定時清單頁會顯示設定說明，API 回 503 `mux_api_not_configured`。

@@ -30,6 +30,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin/orders/[id]" options={{ title: "審核訂單" }} />
             <Stack.Screen name="admin/courses" options={{ title: "課程設定" }} />
             <Stack.Screen name="admin/course/[id]" options={{ title: "各堂影片" }} />
+            <Stack.Screen name="admin/mux-picker" options={{ title: "從 Mux 選擇影片" }} />
             <Stack.Screen name="auth/done" options={{ headerShown: false }} />
             <Stack.Screen name="auth/google" options={{ headerShown: false }} />
           </Stack>

@@ -10,7 +10,7 @@ import {
 } from "./contract.ts";
 import { displayName, isAdmin, looksLikeJwt, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
-import { muxPlaybackUrl } from "./mux.ts";
+import { listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
 const SESSION_DAYS = 30;
 const DEMO_VIDEO_PATH = "/media/orientation.mp4";
@@ -583,7 +583,9 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/lessons\/([\w-]+)$/,
     async (ctx, [id]) => {
       const admin = requireAdmin(ctx);
-      const body = await readJson<{ mediaType?: unknown; mediaRef?: unknown }>(ctx.req);
+      const body = await readJson<{ mediaType?: unknown; mediaRef?: unknown; minutes?: unknown }>(ctx.req);
+      const minutes = body.minutes === undefined ? null : Number(body.minutes);
+      if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1000)) fail(400, "invalid_minutes", "影片長度不正確");
       const type = body.mediaType;
       const ref = typeof body.mediaRef === "string" ? body.mediaRef.trim() : "";
       if (type !== "demo" && type !== "youtube" && type !== "mux") fail(400, "invalid_media", "影片來源不正確");
@@ -595,11 +597,30 @@ const routes: [string, RegExp, Handler][] = [
         mediaRef = ref;
       }
       const [res] = await ctx.db.batch([
-        ctx.db.prepare("UPDATE lessons SET media_type = ?, media_ref = ? WHERE id = ?").bind(type, mediaRef, id),
+        ctx.db
+          .prepare("UPDATE lessons SET media_type = ?, media_ref = ?, duration_minutes = COALESCE(?, duration_minutes) WHERE id = ?")
+          .bind(type, mediaRef, minutes, id),
         audit(ctx.db, admin.sub, "lesson.media", "lesson", id, String(type)),
       ]);
       if (res.meta?.changes === 0) fail(404, "not_found", "找不到這個章節");
       return { ok: true, mediaType: type, mediaRef };
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/mux\/assets$/,
+    async (ctx) => {
+      requireAdmin(ctx);
+      const cursor = ctx.url.searchParams.get("cursor") ?? undefined;
+      if (cursor && !/^[\w-]{1,200}$/.test(cursor)) fail(400, "invalid_cursor", "分頁參數不正確");
+      try {
+        return await listMuxAssets(ctx.env, cursor);
+      } catch (e) {
+        if (!(e instanceof MuxApiError)) throw e;
+        if (e.code === "mux_api_not_configured") return fail(503, e.code, "尚未設定 Mux API 存取權杖，無法讀取影片清單");
+        if (e.code === "mux_api_unauthorized") return fail(503, e.code, "Mux API 存取權杖無效或權限不足");
+        return fail(503, e.code, "Mux 暫時無法連線，請稍後再試");
+      }
     },
   ],
   ["GET", /^\/admin\/courses$/, async (ctx) => (requireAdmin(ctx), listCourses(ctx, true))],

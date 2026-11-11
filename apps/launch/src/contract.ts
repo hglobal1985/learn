@@ -68,6 +68,17 @@ export type Playback = { kind: "demo"; url: string; label: string } | { kind: "y
 
 export type AppConfig = { demoLogin: boolean };
 
+export type MuxAsset = {
+  assetId: string;
+  title: string;
+  durationSeconds: number | null;
+  createdAt: string | null;
+  status: string;
+  signedPlaybackId: string | null;
+  thumbnailUrl: string | null;
+};
+export type MuxAssetPage = { assets: MuxAsset[]; nextCursor: string | null };
+
 export type ApiError = { error: { code: string; message: string } };
 
 export const DEMO_MEMBERS: { sub: string; name: string; rankCode: string; role: Role }[] = [

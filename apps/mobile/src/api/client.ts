@@ -11,6 +11,8 @@ export type {
   Lesson,
   MediaType,
   Member,
+  MuxAsset,
+  MuxAssetPage,
   Notice,
   Order,
   OrderStatus,

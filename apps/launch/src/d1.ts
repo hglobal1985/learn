@@ -19,4 +19,7 @@ export interface Env {
   DEMO_LOGIN?: string;
   MUX_SIGNING_KEY_ID?: string;
   MUX_SIGNING_PRIVATE_KEY?: string;
+  /** Mux API 存取權杖（讀取影片清單用）：ID 可為一般變數，SECRET 必須是 Secret。 */
+  MUX_TOKEN_ID?: string;
+  MUX_TOKEN_SECRET?: string;
 }
