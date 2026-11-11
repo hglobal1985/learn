@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Tabs } from "expo-router/tabs";
 import type { ComponentProps } from "react";
-import { useStore } from "@/state/store";
+import { useUnreadCount } from "@/state/unread";
 import { useTheme } from "@/theme/theme";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -16,7 +16,7 @@ const tabs: { name: string; title: string; icon: IconName; active: IconName }[] 
 /** Web：與手機相同的五個底部分頁（原生分頁在 Web 沒有圖示，所以改用 JS 分頁列）。 */
 export default function TabsLayout() {
   const { c } = useTheme();
-  const { unreadCount } = useStore();
+  const unreadCount = useUnreadCount();
   return (
     <Tabs
       screenOptions={{

@@ -1,11 +1,11 @@
 import { NativeTabs } from "expo-router/native-tabs";
-import { useStore } from "@/state/store";
+import { useUnreadCount } from "@/state/unread";
 import { useTheme } from "@/theme/theme";
 
 /** iOS / Android：系統原生分頁列（最流暢）。Web 版見 _layout.web.tsx。 */
 export default function TabsLayout() {
   const { c } = useTheme();
-  const { unreadCount } = useStore();
+  const unreadCount = useUnreadCount();
   return (
     <NativeTabs tintColor={c.accentText}>
       <NativeTabs.Trigger name="index">

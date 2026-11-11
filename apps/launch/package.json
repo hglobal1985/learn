@@ -1,0 +1,12 @@
+{
+  "name": "@learn/launch",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --no-warnings --test tests/*.test.ts",
+    "dev": "wrangler dev",
+    "deploy": "npm run build:web -w @learn/mobile && wrangler d1 migrations apply learn-v2 --remote && wrangler deploy"
+  }
+}

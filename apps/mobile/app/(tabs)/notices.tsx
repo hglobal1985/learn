@@ -1,50 +1,56 @@
-import { router } from "expo-router";
-import { View } from "react-native";
-import { noticesFor } from "@/domain/domain";
-import { useStore } from "@/state/store";
-import { Button, Card, EmptyState, ListRow, Screen } from "@/ui";
+import { router, type Href } from "expo-router";
+import { api, type Notice } from "@/api/client";
+import { dateTime, noticeTarget } from "@/features/format";
+import { useApi, useSession } from "@/state/session";
+import { Button, Card, EmptyState, ErrorView, ListRow, LoadingView, Screen } from "@/ui";
 
 export default function NoticesScreen() {
-  const { state, update, unreadCount } = useStore();
-  const list = noticesFor(state);
-  const markAllRead = () =>
-    update((s) => {
-      const ids = new Set(noticesFor(s).map((n) => n.id));
-      return { ...s, notices: s.notices.map((n) => (ids.has(n.id) ? { ...n, read: true } : n)) };
-    });
-  return (
-    <Screen
-      title="站內通知"
-      subtitle={state.member ? (unreadCount ? `${unreadCount} 則未讀` : "全部已讀") : undefined}
-      right={unreadCount ? <Button variant="ghost" label="全部已讀" onPress={markAllRead} /> : undefined}
-    >
-      {!state.member ? (
+  const { member, invalidate } = useSession();
+  const { data, error, loading, reload } = useApi<Notice[]>(member ? "/notifications" : null);
+  const unread = (data ?? []).filter((n) => !n.read).length;
+  const open = async (n: Notice) => {
+    if (!n.read) await api("POST", `/notifications/${n.id}/read`).catch(() => undefined);
+    invalidate();
+    router.push(noticeTarget(n.link) as Href);
+  };
+  const markAll = async () => {
+    await api("POST", "/notifications/read-all").catch(() => undefined);
+    invalidate();
+  };
+  if (!member)
+    return (
+      <Screen title="站內通知">
         <EmptyState
           icon="notifications-outline"
           title="尚未登入"
           body="登入後可在這裡收到開課、訂單審核等通知。"
           action={<Button label="前往登入" onPress={() => router.navigate("/me")} />}
         />
-      ) : list.length ? (
+      </Screen>
+    );
+  return (
+    <Screen
+      title="站內通知"
+      subtitle={data ? (unread ? `${unread} 則未讀` : "全部已讀") : undefined}
+      right={unread ? <Button variant="ghost" label="全部標為已讀" onPress={markAll} /> : undefined}
+    >
+      {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
+      {loading && !data ? <LoadingView /> : null}
+      {data && !data.length ? <EmptyState icon="notifications-outline" title="目前沒有通知" body="領取課程或訂單有進度時，會在這裡通知你。" /> : null}
+      {data?.length ? (
         <Card style={{ paddingVertical: 0 }}>
-          <View>
-            {list.map((n) => (
-              <ListRow
-                key={n.id}
-                icon={n.read ? "mail-open-outline" : "mail-unread-outline"}
-                title={n.title}
-                subtitle={n.body}
-                unread={!n.read}
-                onPress={() =>
-                  update((s) => ({ ...s, notices: s.notices.map((x) => (x.id === n.id ? { ...x, read: true } : x)) }))
-                }
-              />
-            ))}
-          </View>
+          {data.map((n) => (
+            <ListRow
+              key={n.id}
+              icon={n.read ? "mail-open-outline" : "mail-unread-outline"}
+              title={n.title}
+              subtitle={`${n.body}${n.body ? "\n" : ""}${dateTime(n.createdAt)}`}
+              unread={!n.read}
+              onPress={() => open(n)}
+            />
+          ))}
         </Card>
-      ) : (
-        <EmptyState icon="notifications-outline" title="目前沒有通知" body="領取課程或訂單有進度時，會在這裡通知你。" />
-      )}
+      ) : null}
     </Screen>
   );
 }
