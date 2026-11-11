@@ -15,6 +15,7 @@ function Review() {
   const { member, invalidate } = useSession();
   const { data, error, loading, reload } = useApi<Order>(member?.role === "admin" ? `/orders/${id}` : null);
   const [reason, setReason] = useState("");
+  const [done, setDone] = useState(false);
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [message, setMessage] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
 
@@ -26,6 +27,7 @@ function Review() {
     setMessage(null);
     try {
       await api<Order>("POST", `/admin/orders/${data.id}/review`, { approve, reason });
+      setDone(true);
       setMessage({ tone: "success", text: approve ? "已確認收款並開通課程，已通知學員。" : "已退回訂單，已通知學員。" });
       invalidate();
     } catch (e) {
@@ -39,7 +41,7 @@ function Review() {
     <Screen header={false}>
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       <OrderCard order={data} showMember />
-      {data.status === "pending" ? (
+      {data.status === "pending" && !done ? (
         <View style={{ gap: space.md }}>
           <AppText variant="headline">確認收款</AppText>
           <AppText variant="callout" tone="muted">

@@ -12,6 +12,7 @@ export default function CourseDetailScreen() {
   const { member, invalidate, cart, setCart } = useSession();
   const { data: course, error, loading, reload } = useApi<CourseDetail>(`/courses/${id}`);
   const [busy, setBusy] = useState(false);
+  const [claimed, setClaimed] = useState(false);
   const [message, setMessage] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
 
   if (!course)
@@ -21,7 +22,7 @@ export default function CourseDetailScreen() {
       </Screen>
     );
 
-  const opened = course.enrollment === "opened" || member?.role === "admin";
+  const opened = course.enrollment === "opened" || claimed || member?.role === "admin";
   const nextLesson = course.lessons.find((l) => !l.completed) ?? course.lessons[0];
   const inCart = cart.includes(course.id);
 
@@ -30,6 +31,7 @@ export default function CourseDetailScreen() {
     setMessage(null);
     try {
       await api<Order[]>("POST", "/orders", { courseIds: [course.id] });
+      setClaimed(true);
       setMessage({ tone: "success", text: "領取成功！課程已開通，可以開始上課了。" });
       invalidate();
     } catch (e) {
