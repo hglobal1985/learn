@@ -37,17 +37,21 @@ export type CourseSummary = {
   completedLessons: number;
 };
 
-export type MediaType = "demo" | "youtube" | "mux";
+export type MediaType = "demo" | "youtube" | "mux" | "audio";
 export type Lesson = {
   id: string;
   position: number;
   title: string;
   minutes: number;
   completed: boolean;
+  kind: "video" | "audio";
+  /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */
+  start: number | null;
+  end: number | null;
   /** 只有管理員會拿到（編輯影片來源用）。 */
   media?: { type: MediaType; ref: string | null };
 };
-export type CourseDetail = CourseSummary & { lessons: Lesson[] };
+export type CourseDetail = CourseSummary & { description: string; lessons: Lesson[] };
 
 export type OrderStatus = "pending" | "opened" | "rejected";
 export type Order = {
@@ -64,7 +68,9 @@ export type Order = {
 export type Notice = { id: string; title: string; body: string; link: string; read: boolean; createdAt: string };
 
 /** demo 的 url 可能是相對路徑（以 API 網域為準），App 端以 resolveUrl 轉成完整網址。hls 為 Mux 簽名播放網址。 */
-export type Playback = { kind: "demo"; url: string; label: string } | { kind: "youtube"; videoId: string } | { kind: "hls"; url: string };
+type Segment = { start: number | null; end: number | null };
+export type Playback = Segment &
+  ({ kind: "demo"; url: string; label: string } | { kind: "youtube"; videoId: string } | { kind: "hls"; url: string } | { kind: "audio"; url: string });
 
 export type AppConfig = { demoLogin: boolean };
 

@@ -3,8 +3,9 @@ import { WebView } from "react-native-webview";
 import { radius } from "@/theme/tokens";
 
 /** YouTube 內嵌播放（iOS/Android：WebView）。Web 版見 youtube-player.web.tsx。 */
-export function YouTubePlayer({ videoId }: { videoId: string }) {
-  const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?playsinline=1&rel=0&modestbranding=1`;
+export function YouTubePlayer({ videoId, start, end }: { videoId: string; start?: number | null; end?: number | null }) {
+  const range = `${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}`;
+  const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?playsinline=1&rel=0&modestbranding=1${range}`;
   return (
     <View style={styles.frame}>
       <WebView

@@ -18,7 +18,7 @@ export default function HomeScreen() {
       <SandboxBanner text="內部測試版：課程內容與影片目前為示範資料。" />
       {!member ? (
         <Card>
-          <AppText variant="headline">登入後即可領取課程</AppText>
+          <AppText variant="headline">登入後即可報名課程</AppText>
           <AppText variant="callout" tone="muted">
             使用 Google 帳號登入，課程資格會依會員中心的資料自動判斷。
           </AppText>

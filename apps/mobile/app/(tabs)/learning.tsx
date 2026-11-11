@@ -31,7 +31,7 @@ export default function LearningScreen() {
         <EmptyState
           icon="play-circle-outline"
           title="還沒有開通的課程"
-          body="到課程頁挑一門免費課程，領取後立刻就能開始。"
+          body="到課程頁挑一門免費課程，報名後立刻就能開始。"
           action={<Button label="去找課程" onPress={() => router.navigate("/courses")} />}
         />
       ) : null}

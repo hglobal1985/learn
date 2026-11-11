@@ -36,7 +36,7 @@ function Cart() {
   if (!items.length)
     return (
       <Screen header={false}>
-        <EmptyState icon="cart-outline" title="購物車是空的" action={<Button label="去逛課程" onPress={() => router.navigate("/courses")} />} />
+        <EmptyState icon="cart-outline" title="報名清單是空的" action={<Button label="去逛課程" onPress={() => router.navigate("/courses")} />} />
       </Screen>
     );
   return (
@@ -56,13 +56,13 @@ function Cart() {
         <AppText variant="headline">合計</AppText>
         <AppText variant="title">{ntd(total)}</AppText>
       </View>
-      <NoticeBox text="目前不接受線上刷卡。送出後會建立待審核訂單，請依客服提供的匯款資訊付款，管理員確認收款後開通（內部測試期間不需實際付款）。" />
+      <NoticeBox text="目前不接受線上刷卡。送出後會建立待審核報名，請依報名窗口說明繳費，管理員確認繳費後開通（內部測試期間不需實際繳費）。" />
       {error ? <NoticeBox tone="danger" text={error} /> : null}
       <View style={{ gap: space.sm }}>
         {member ? (
-          <Button label="送出訂單" icon="checkmark" loading={busy} onPress={checkout} fullWidth />
+          <Button label="送出報名" icon="checkmark" loading={busy} onPress={checkout} fullWidth />
         ) : (
-          <Button label="登入後結帳" onPress={() => router.navigate("/me")} fullWidth />
+          <Button label="登入後報名" onPress={() => router.navigate("/me")} fullWidth />
         )}
       </View>
     </Screen>

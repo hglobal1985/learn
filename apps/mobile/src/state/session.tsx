@@ -1,18 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { clearCentral, hasCentralSession, signInWithGoogle, signOutCentral } from "@/api/central";
+import { Platform } from "react-native";
+import { clearCentral, handleWebSsoReturn, hasCentralSession, signInWithGoogle, signOutCentral, webSsoCheck, webSsoLogout } from "@/api/central";
 import { api, loadToken, saveToken, type Member } from "@/api/client";
 
 /**
- * 登入狀態、資料重新整理訊號與（Web 限定的）購物車。
+ * 登入狀態、資料重新整理訊號與（Web 限定的）報名清單。
  * 正式登入：中央會員（Google）；內部測試另有模擬會員（伺服器開啟 DEMO_LOGIN 時才可用）。
  * 任何會改變資料的動作完成後呼叫 `invalidate()`，所有畫面會重新抓資料。
  */
 type Session = {
   ready: boolean;
   member: Member | null;
-  signInGoogle: () => Promise<void>;
+  /** returnTo：登入完成後要回到的頁面。 */
+  signInGoogle: (returnTo?: string) => Promise<void>;
   signInDemo: (sub: string) => Promise<void>;
   /** Web 登入回來後（/auth/done）重新載入會員。 */
   reloadMember: () => Promise<void>;
@@ -22,6 +24,8 @@ type Session = {
   invalidate: () => void;
   cart: string[];
   setCart: (ids: string[]) => void;
+  /** Web 共用登入回傳（/auth/sso）處理完後要前往的頁面。 */
+  ssoNext: string | null;
 };
 
 const SessionContext = createContext<Session | null>(null);
@@ -36,17 +40,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<Member | null>(null);
   const [version, setVersion] = useState(0);
   const [cart, setCartState] = useState<string[]>([]);
+  const [ssoNext, setSsoNext] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       const raw = await AsyncStorage.getItem(CART_KEY).catch(() => null);
       if (raw) setCartState(JSON.parse(raw) as string[]);
-      if ((await loadToken()) || (await hasCentralSession())) {
-        const m = await fetchMember();
-        if (!m) await saveToken(null);
-        setMember(m);
+      const demo = await loadToken();
+      let m = demo || (await hasCentralSession()) ? await fetchMember() : null;
+      if (demo && !m) await saveToken(null);
+      if (Platform.OS === "web" && !m?.demo) {
+        // 共用登入：處理會員中心回傳，或（5 分鐘節流）詢問這個瀏覽器目前登入的會員。
+        if (globalThis.location?.pathname === "/auth/sso") {
+          const r = await handleWebSsoReturn(m?.sub ?? null);
+          if (r.changed) m = await fetchMember();
+          setSsoNext(r.next);
+        } else if (await webSsoCheck()) return "redirecting";
       }
-    })().finally(() => setReady(true));
+      setMember(m);
+    })().then((r) => r !== "redirecting" && setReady(true), () => setReady(true));
   }, []);
 
   const invalidate = useCallback(() => setVersion((v) => v + 1), []);
@@ -58,9 +70,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMember(await fetchMember());
     invalidate();
   }, [invalidate]);
-  const signInGoogle = useCallback(async () => {
+  const signInGoogle = useCallback(async (returnTo = "/me") => {
     await saveToken(null);
-    const result = await signInWithGoogle("/me");
+    const result = await signInWithGoogle(returnTo);
     if (result !== "ok") return;
     const m = await fetchMember();
     if (!m) throw Error("登入沒有成功，請再試一次");
@@ -81,7 +93,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   const signOut = useCallback(async () => {
     if (member?.demo) await api("POST", "/auth/logout").catch(() => undefined);
-    else await signOutCentral();
+    else {
+      await signOutCentral();
+      if (Platform.OS === "web") {
+        await saveToken(null);
+        webSsoLogout("/me"); // 登出這個瀏覽器的所有 App
+        return;
+      }
+    }
     await saveToken(null);
     setMember(null);
     setCart([]);
@@ -98,8 +117,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [invalidate, setCart, member?.demo]);
 
   const value = useMemo(
-    () => ({ ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart }),
-    [ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart],
+    () => ({ ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext }),
+    [ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

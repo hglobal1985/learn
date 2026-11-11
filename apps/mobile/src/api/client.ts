@@ -52,15 +52,16 @@ export class RequestError extends Error {
   }
 }
 
-export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown, retried = false): Promise<T> {
+export async function api<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, retried = false): Promise<T> {
+  const raw = typeof Blob !== "undefined" && body instanceof Blob;
   const headers: Record<string, string> = { "x-client-platform": Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "web" };
   const central = token ? null : await centralToken();
   const bearer = token ?? central;
   if (bearer) headers.authorization = `Bearer ${bearer}`;
-  if (body !== undefined) headers["content-type"] = "application/json";
+  if (body !== undefined) headers["content-type"] = raw ? "application/octet-stream" : "application/json";
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}/api/v2${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(`${API_BASE}/api/v2${path}`, { method, headers, body: body === undefined ? undefined : raw ? (body as Blob) : JSON.stringify(body) });
   } catch {
     throw new RequestError(0, "network", "網路連線不穩定，請稍後再試");
   }

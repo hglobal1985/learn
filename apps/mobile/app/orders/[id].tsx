@@ -8,13 +8,13 @@ import { Button, ErrorView, LoadingView, NoticeBox, Screen } from "@/ui";
 function OrderDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, loading, reload } = useApi<Order>(`/orders/${id}`);
-  if (!data) return <Screen header={false}>{loading ? <LoadingView /> : <ErrorView message={error ?? "找不到訂單"} onRetry={reload} />}</Screen>;
+  if (!data) return <Screen header={false}>{loading ? <LoadingView /> : <ErrorView message={error ?? "找不到這筆報名"} onRetry={reload} />}</Screen>;
   return (
     <Screen header={false}>
       {data.status === "pending" ? (
         <NoticeBox
           tone="warning"
-          text={`訂單已送出，等待管理員確認收款。付款時請備註訂單編號 ${data.id}；客服信箱 service@hglobal1985.com。（內部測試期間不需實際付款）`}
+          text={`報名已送出，等待管理員確認繳費。繳費時請告知報名編號 ${data.id}；客服信箱 service@hglobal1985.com。（內部測試期間不需實際繳費）`}
         />
       ) : null}
       {data.status === "opened" ? <NoticeBox tone="success" text="課程已開通，可以開始上課了。" /> : null}

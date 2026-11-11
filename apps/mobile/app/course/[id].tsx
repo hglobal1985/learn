@@ -32,7 +32,7 @@ export default function CourseDetailScreen() {
     try {
       await api<Order[]>("POST", "/orders", { courseIds: [course.id] });
       setClaimed(true);
-      setMessage({ tone: "success", text: "領取成功！課程已開通，可以開始上課了。" });
+      setMessage({ tone: "success", text: "報名成功！課程已開通，可以開始上課了。" });
       invalidate();
     } catch (e) {
       setMessage({ tone: "danger", text: (e as Error).message });
@@ -42,7 +42,7 @@ export default function CourseDetailScreen() {
   };
 
   let action: React.ReactNode;
-  if (!member) action = <Button label="登入後領取" icon="log-in-outline" onPress={() => router.navigate("/me")} fullWidth />;
+  if (!member) action = <Button label="登入後報名" icon="log-in-outline" onPress={() => router.navigate({ pathname: "/me", params: { next: `/course/${course.id}` } })} fullWidth />;
   else if (opened && nextLesson)
     action = (
       <Button
@@ -55,19 +55,19 @@ export default function CourseDetailScreen() {
   else if (course.enrollment === "pending")
     action = (
       <>
-        <NoticeBox tone="warning" text="訂單等待管理員確認收款，開通後會通知你。" />
-        {Platform.OS === "web" ? <Button variant="secondary" label="查看我的訂單" onPress={() => router.push("/orders")} fullWidth /> : null}
+        <NoticeBox tone="warning" text="報名等待管理員確認繳費，開通後會通知你。" />
+        {Platform.OS === "web" ? <Button variant="secondary" label="查看我的報名" onPress={() => router.push("/orders")} fullWidth /> : null}
       </>
     );
-  else if (!course.eligible) action = <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜的會員領取。`} />;
-  else if (course.free) action = <Button label="免費領取" icon="gift-outline" loading={busy} onPress={claim} fullWidth />;
+  else if (!course.eligible) action = <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜的會員報名。`} />;
+  else if (course.free) action = <Button label="免費報名" icon="gift-outline" loading={busy} onPress={claim} fullWidth />;
   else if (Platform.OS === "web")
     action = inCart ? (
-      <Button label="前往購物車結帳" icon="cart" onPress={() => router.push("/cart")} fullWidth />
+      <Button label="前往報名清單送出" icon="cart" onPress={() => router.push("/cart")} fullWidth />
     ) : (
-      <Button label="加入購物車" icon="cart-outline" onPress={() => setCart([...cart, course.id])} fullWidth />
+      <Button label="加入報名清單" icon="cart-outline" onPress={() => setCart([...cart, course.id])} fullWidth />
     );
-  // iOS/Android：依商店規範不顯示購買方式，只說明尚未開通。
+  // iOS/Android：依商店規範不顯示報名方式，只說明尚未開通。
   else action = <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
 
   return (

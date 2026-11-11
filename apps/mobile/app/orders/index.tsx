@@ -11,7 +11,7 @@ function Orders() {
     <Screen header={false}>
       {loading && !data ? <LoadingView /> : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
-      {data && !data.length ? <EmptyState icon="receipt-outline" title="還沒有訂單" /> : null}
+      {data && !data.length ? <EmptyState icon="receipt-outline" title="還沒有報名紀錄" /> : null}
       {data?.map((o) => <OrderCard key={o.id} order={o} onPress={() => router.push(`/orders/${o.id}`)} />)}
     </Screen>
   );

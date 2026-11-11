@@ -38,6 +38,7 @@ export default function AdminCoursesScreen() {
 
   return (
     <Screen header={false}>
+      <Button label="新增課程" icon="add-circle-outline" onPress={() => router.push("/admin/course-edit")} fullWidth />
       <NoticeBox text="獎銜選項與會員中心一致；會員是否符合由會員中心即時判斷。" />
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {courses.data.map((course) => (
@@ -86,7 +87,8 @@ export default function AdminCoursesScreen() {
                 patch(course, { status: course.status === "published" ? "draft" : "published" }, course.status === "published" ? "已下架" : "已上架")
               }
             />
-            <Button variant="secondary" label="各堂影片" icon="videocam-outline" onPress={() => router.push(`/admin/course/${course.id}`)} />
+            <Button variant="secondary" label="編輯" icon="create-outline" onPress={() => router.push({ pathname: "/admin/course-edit", params: { id: course.id } })} />
+            <Button variant="secondary" label="章節與影片" icon="videocam-outline" onPress={() => router.push(`/admin/course/${course.id}`)} />
           </View>
         </Card>
       ))}

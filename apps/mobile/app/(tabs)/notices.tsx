@@ -23,7 +23,7 @@ export default function NoticesScreen() {
         <EmptyState
           icon="notifications-outline"
           title="尚未登入"
-          body="登入後可在這裡收到開課、訂單審核等通知。"
+          body="登入後可在這裡收到開課、報名審核等通知。"
           action={<Button label="前往登入" onPress={() => router.navigate("/me")} />}
         />
       </Screen>
@@ -36,7 +36,7 @@ export default function NoticesScreen() {
     >
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
-      {data && !data.length ? <EmptyState icon="notifications-outline" title="目前沒有通知" body="領取課程或訂單有進度時，會在這裡通知你。" /> : null}
+      {data && !data.length ? <EmptyState icon="notifications-outline" title="目前沒有通知" body="報名課程或報名有進度時，會在這裡通知你。" /> : null}
       {data?.length ? (
         <Card style={{ paddingVertical: 0 }}>
           {data.map((n) => (

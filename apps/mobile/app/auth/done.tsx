@@ -1,6 +1,6 @@
 import { router, type Href } from "expo-router";
 import { useEffect, useState } from "react";
-import { finishWebReturn } from "@/api/central";
+import { finishWebReturn, webSsoAdopt } from "@/api/central";
 import { useSession } from "@/state/session";
 import { Button, LoadingView, NoticeBox, Screen } from "@/ui";
 
@@ -12,7 +12,8 @@ export default function AuthDone() {
     finishWebReturn()
       .then(async (to) => {
         await reloadMember();
-        router.replace(to as Href);
+        // 讓會員中心記住這個瀏覽器，其他網頁版 App 也能自動登入；失敗時直接回原頁。
+        if (!(await webSsoAdopt(to))) router.replace(to as Href);
       })
       .catch((e: Error) => setError(e.message));
   }, [reloadMember]);

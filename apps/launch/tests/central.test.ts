@@ -139,7 +139,7 @@ test("管理員設定章節影片：YouTube 直接播放；Mux 未設金鑰回 5
     assert.equal((await call<CourseDetail>("GET", "/courses/start", { token: alice })).data.lessons[0].media, undefined, "學員看不到影片來源");
     await call("POST", "/orders", { token: alice, body: { courseIds: ["start"] } });
     const yt = await call<Playback>("GET", "/courses/start/lessons/start-welcome/playback", { token: alice });
-    assert.deepEqual(yt.data, { kind: "youtube", videoId: "dQw4w9WgXcQ" });
+    assert.deepEqual(yt.data, { kind: "youtube", videoId: "dQw4w9WgXcQ", start: null, end: null });
     const mux = await call<Playback>("GET", "/courses/start/lessons/start-foundation/playback", { token: alice });
     if (!("MUX_SIGNING_KEY_ID" in secrets)) {
       assert.equal(mux.status, 503);

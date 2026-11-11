@@ -15,7 +15,7 @@ export const orderStatusLabel: Record<OrderStatus, { label: string; tone: "warni
   rejected: { label: "未通過", tone: "danger" },
 };
 
-/** 通知連結在 App 上若指向 Web 限定頁面（訂單、審核），改帶到我的課程。 */
+/** 通知連結在 App 上若指向 Web 限定頁面（報名、審核），改帶到我的課程。 */
 export function noticeTarget(link: string): string {
   if (Platform.OS !== "web" && (link.startsWith("/orders") || link.startsWith("/admin/orders"))) return "/learning";
   return link;

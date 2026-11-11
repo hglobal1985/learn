@@ -54,7 +54,7 @@ test("混合購物車：免費先開通、付費待審並通知管理員；審�
   assert.equal(r.data.find((o) => o.status === "opened")!.items[0].courseId, "start");
   assert.equal((await call("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).status, 409, "待審訂單不可重複送出");
   const adminNotices = await call<Notice[]>("GET", "/notifications", { token: admin });
-  assert.equal(adminNotices.data.filter((n) => n.title === "有新的訂單待審核").length, 1);
+  assert.equal(adminNotices.data.filter((n) => n.title === "有新的報名待審核").length, 1);
   assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: student, body: { approve: true } })).status, 403);
   assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true }, platform: "android" })).status, 403);
   const ok = await call<Order>("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true } });
@@ -62,7 +62,7 @@ test("混合購物車：免費先開通、付費待審並通知管理員；審�
   assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true } })).status, 409);
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: student })).data.enrollment, "opened");
   const notes = await call<Notice[]>("GET", "/notifications", { token: student });
-  assert.equal(notes.data[0].title, "付款確認完成，課程已開通");
+  assert.equal(notes.data[0].title, "繳費確認完成，課程已開通");
 });
 
 test("拒絕需填原因且不開通", async () => {

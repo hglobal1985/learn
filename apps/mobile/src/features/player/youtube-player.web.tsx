@@ -3,11 +3,12 @@ import { StyleSheet, View } from "react-native";
 import { radius } from "@/theme/tokens";
 
 /** YouTube 內嵌播放（Web：iframe，使用不追蹤 Cookie 的網域）。 */
-export function YouTubePlayer({ videoId }: { videoId: string }) {
+export function YouTubePlayer({ videoId, start, end }: { videoId: string; start?: number | null; end?: number | null }) {
+  const range = `${start ? `&start=${start}` : ""}${end ? `&end=${end}` : ""}`;
   return (
     <View style={styles.frame}>
       {createElement("iframe", {
-        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&modestbranding=1`,
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&modestbranding=1${range}`,
         title: "課程影片",
         allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen",
         allowFullScreen: true,

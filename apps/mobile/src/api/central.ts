@@ -197,3 +197,105 @@ export async function signOutCentral(): Promise<void> {
   if (token) await central("/v1/auth/logout", "POST", undefined, token).catch(() => undefined);
   await clearCentral();
 }
+
+// ---------- 共用登入（網頁版，同一個瀏覽器內連動）----------
+// 會員中心記住這個瀏覽器；本站以整頁導向詢問（/auth/sso/check），回到 /auth/sso 處理結果。
+
+const SSO_RETURN = "https://learn.hglobal1985.com/auth/sso";
+const SSO_CHECKED = "hglobal.learn.sso-checked";
+const SSO_PENDING = "hglobal.learn.sso-pending";
+const SSO_NEXT = "hglobal.learn.sso-next";
+const SSO_INTERVAL = 5 * 60_000;
+type SsoPending = { nonce: string; state: string; created: number };
+
+const ss = () => globalThis.sessionStorage;
+const here = () => safePath(globalThis.location.pathname + globalThis.location.search);
+
+/** 載入頁面時（5 分鐘節流）向會員中心詢問這個瀏覽器目前登入的會員。會整頁導向時回傳 true。 */
+export async function webSsoCheck(): Promise<boolean> {
+  if (!web || !globalThis.location || globalThis.location.hostname !== "learn.hglobal1985.com") return false;
+  if (globalThis.location.pathname.startsWith("/auth/")) return false;
+  const last = Number(ss()?.getItem(SSO_CHECKED) ?? 0);
+  if (Date.now() - last < SSO_INTERVAL) return false;
+  ss()?.setItem(SSO_CHECKED, String(Date.now()));
+  try {
+    const { nonce } = await central<{ nonce: string }>("/v1/auth/nonce", "POST", { app_id: APP_ID });
+    const pending: SsoPending = { nonce, state: randomHex(), created: Date.now() };
+    ss()?.setItem(SSO_PENDING, JSON.stringify(pending));
+    ss()?.setItem(SSO_NEXT, here());
+    const digest = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce)).toLowerCase();
+    const url = new URL(`${CENTRAL_URL}/auth/sso/check`);
+    url.searchParams.set("app_id", APP_ID);
+    url.searchParams.set("nonce", digest);
+    url.searchParams.set("return", SSO_RETURN);
+    url.searchParams.set("state", pending.state);
+    globalThis.location.replace(url.toString());
+    return true;
+  } catch {
+    return false; // 會員中心連不上：照常使用，需要登入的功能由伺服器拒絕。
+  }
+}
+
+/**
+ * 處理 /auth/sso 的回傳（#sso_code／#sso_none／#sso_adopted），回傳之後要前往的頁面。
+ * currentMember：本機目前登入的會員 ID（沒有則 null）。
+ */
+export async function handleWebSsoReturn(currentMember: string | null): Promise<{ next: string; changed: boolean }> {
+  const params = new URLSearchParams(globalThis.location.hash.slice(1));
+  globalThis.history.replaceState(null, "", globalThis.location.pathname);
+  const next = safePath(ss()?.getItem(SSO_NEXT) ?? "/");
+  ss()?.removeItem(SSO_NEXT);
+  const raw = ss()?.getItem(SSO_PENDING);
+  ss()?.removeItem(SSO_PENDING);
+  const pending = raw ? (JSON.parse(raw) as SsoPending) : null;
+  if (params.get("sso_adopted")) return { next, changed: false };
+  if (!pending || params.get("state") !== pending.state || Date.now() - pending.created > 600_000) return { next, changed: false };
+  if (params.get("sso_none")) {
+    if (currentMember) {
+      await clearCentral();
+      return { next, changed: true };
+    }
+    return { next, changed: false };
+  }
+  const code = params.get("sso_code");
+  const member = params.get("sso_member");
+  if (!code || (member && member === currentMember)) return { next, changed: false };
+  try {
+    await remember(await central<TokenPair>("/v1/auth/sso/web-exchange", "POST", { app_id: APP_ID, code, nonce: pending.nonce }));
+    return { next, changed: true };
+  } catch {
+    return { next, changed: false };
+  }
+}
+
+/** 網頁版登入成功後：讓會員中心記住這個瀏覽器（之後其他 App 自動登入）。會整頁導向。 */
+export async function webSsoAdopt(next: string): Promise<boolean> {
+  if (!web) return false;
+  try {
+    const token = await centralToken();
+    if (!token) return false;
+    const { sso_token } = await central<{ sso_token: string }>("/v1/auth/sso/start", "POST", {}, token);
+    const { code } = await central<{ code: string }>("/v1/auth/sso/web-code", "POST", { sso_token }, token);
+    ss()?.setItem(SSO_NEXT, safePath(next));
+    ss()?.setItem(SSO_CHECKED, String(Date.now()));
+    const url = new URL(`${CENTRAL_URL}/auth/sso/adopt`);
+    url.searchParams.set("c", code);
+    url.searchParams.set("app_id", APP_ID);
+    url.searchParams.set("return", SSO_RETURN);
+    globalThis.location.replace(url.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 網頁版登出：清除本機後導向會員中心登出這個瀏覽器的所有 App。 */
+export function webSsoLogout(next = "/me"): void {
+  if (!web) return;
+  ss()?.setItem(SSO_NEXT, safePath(next));
+  ss()?.setItem(SSO_CHECKED, String(Date.now()));
+  const url = new URL(`${CENTRAL_URL}/auth/sso/logout`);
+  url.searchParams.set("app_id", APP_ID);
+  url.searchParams.set("return", SSO_RETURN);
+  globalThis.location.replace(url.toString());
+}

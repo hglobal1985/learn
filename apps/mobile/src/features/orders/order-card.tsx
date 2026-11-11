@@ -7,7 +7,7 @@ import { AppText, Card, Pill } from "@/ui";
 export function OrderCard({ order, onPress, showMember }: { order: Order; onPress?: () => void; showMember?: boolean }) {
   const s = orderStatusLabel[order.status];
   return (
-    <Card onPress={onPress} accessibilityLabel={`訂單 ${order.id}，${s.label}`}>
+    <Card onPress={onPress} accessibilityLabel={`報名 ${order.id}，${s.label}`}>
       <View style={styles.head}>
         <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
           {order.id} · {dateTime(order.createdAt)}

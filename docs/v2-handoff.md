@@ -84,3 +84,13 @@
 - 需要 Mux API 存取權杖：Cloudflare Worker `learn` 設定 `MUX_TOKEN_ID`（一般變數即可）與 `MUX_TOKEN_SECRET`（Secret）。權杖只需 Mux Video「Read」權限。未設定時清單頁會顯示設定說明，API 回 503 `mux_api_not_configured`。
 - 2026-11-11 業主已設定 `MUX_TOKEN_ID`／`MUX_TOKEN_SECRET`，正式站已讀到 Mux 帳號的影片清單。
 - **注意**：在 Cloudflare 後台修改變數會以「當時頁面上的版本」建立新部署；若頁面是在最近一次 `wrangler deploy` 之前開啟的，會把程式退回舊版（2026-11-11 發生過一次，已重新部署修正）。後台改完變數後，請確認 `/api/v2/admin/mux/assets` 等新功能仍正常，必要時重新 `wrangler deploy`（`keep_vars: true` 會保留後台變數，Secrets 不受影響）。
+
+## 2026-11-12：課程管理、時間軸分段、音檔、共用登入、用語
+- **用語**：一律「報名」，不用「購買」（已寫入 `CLAUDE.md`，畫面、通知、隱私權與客服頁都已改）。
+- **課程管理**：管理員「我的 → 課程設定」可新增（預設未上架）／編輯（名稱、副標題、講師、分類、費用、介紹、最低獎銜、封面色）／上下架／刪除課程。已有人報名的課程不能刪，只能下架。章節可新增、改名、上下移、刪除（自動重新編號）。API：`POST/PATCH/DELETE /api/v2/admin/courses[/:id]`、`POST /admin/courses/:id/lessons`、`POST /admin/courses/:id/lessons/order`、`PATCH/DELETE /admin/lessons/:id`。
+- **時間軸分段**：每堂可設定開始／結束（時分秒），長度自動計算；同一支影片可切多堂。播放器自動跳到開始、播到結束自動停止並提示（Mux／示範／音檔用自家播放器；YouTube 用內嵌 start/end 參數）。migration `0004`（重建 lessons 表時已備份並還原學習進度）。
+- **Mux 播放修正**：伺服器檢查（`GET /api/v2/admin/lessons/:id/check`，畫面「播放檢查」）確認 Mux 接受簽名；問題在網頁播放器，改為網頁一律用 hls.js 播 HLS。
+- **音檔（R2）**：章節可上傳音檔，分段上傳到 R2 bucket `learn`，學員以 6 小時簽名網址播放（`/api/v2/media/audio`，支援 Range）。**R2 尚未在 Cloudflare 啟用**：業主啟用後要（1）建立 bucket `learn`、（2）在 `wrangler.jsonc` 加 `r2_buckets: [{ binding: "MEDIA", bucket_name: "learn" }]`、（3）設定 Secret `MEDIA_URL_SECRET`（隨機字串）、（4）重新部署。未設定前上傳會顯示「音檔儲存空間尚未啟用」。
+- **共用登入（網頁版）**：登入後通知會員中心記住此瀏覽器（adopt）；每次載入頁面（每分頁 5 分鐘節流）向會員中心詢問（check → `/auth/sso`），沒有本機登入時自動用 web-exchange 登入；登出走會員中心 `/auth/sso/logout`（登出此瀏覽器所有 App）。手機版共用 Keychain 尚未做（需要 Apple Team ID，待打包時處理）。
+- **登入後回原頁**：未登入點「登入後報名」會帶 `next`，登入後回到該課程。
+- **五門系列課程已上架（測試用）**：會長翡翠鑽石會議（0 元，暫以翡翠以上判斷，會長身分待定案）、銅章會議（50 元，15% 以上，已放 Mux 影片）、翡翠達標班（100 元，金章以上，已放 Mux 影片）、海外旅遊特攻營（3500 元）、寰宇全球菁英會（3500 元）。

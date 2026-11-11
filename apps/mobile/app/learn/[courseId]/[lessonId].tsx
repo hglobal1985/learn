@@ -14,11 +14,13 @@ export default function LessonScreen() {
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playError, setPlayError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [segmentDone, setSegmentDone] = useState(false);
 
   // 等登入狀態載入完成再要播放授權（直接開啟連結或重新整理時）。
   useEffect(() => {
     if (!ready) return;
     setPlayback(null);
+    setSegmentDone(false);
     setPlayError(null);
     api<Playback>("GET", `/courses/${courseId}/lessons/${lessonId}/playback`)
       .then(setPlayback)
@@ -48,13 +50,14 @@ export default function LessonScreen() {
   return (
     <Screen header={false}>
       <Stack.Screen options={{ title: c.title }} />
-      {playback ? <LessonPlayer playback={playback} /> : playError ? <NoticeBox tone="danger" text={playError} /> : <LoadingView />}
+      {playback ? <LessonPlayer playback={playback} onSegmentEnd={() => setSegmentDone(true)} /> : playError ? <NoticeBox tone="danger" text={playError} /> : <LoadingView />}
       <View style={{ gap: space.xs }}>
         <AppText variant="caption" tone="muted">
           第 {lesson.position} 堂 · {lesson.minutes} 分鐘
         </AppText>
         <AppText variant="title">{lesson.title}</AppText>
       </View>
+      {segmentDone && !lesson.completed ? <NoticeBox tone="success" text="這一堂播放完畢，按「完成」記錄進度。" /> : null}
       <View style={styles.row}>
         {lesson.completed ? (
           next ? (

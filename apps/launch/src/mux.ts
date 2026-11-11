@@ -81,6 +81,21 @@ export async function muxPlaybackUrl(env: Env, playbackId: string, seconds = 6 *
   return token ? `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8?token=${token}` : null;
 }
 
+/** 管理員「播放檢查」：從伺服器向 Mux 取得簽名播放清單，回報 Mux 是否接受。 */
+export async function checkMuxPlayback(env: Env, playbackId: string): Promise<{ ok: boolean; message: string }> {
+  const url = await muxPlaybackUrl(env, playbackId);
+  if (!url) return { ok: false, message: "簽名金鑰未設定或格式不正確（MUX_SIGNING_KEY_ID／MUX_SIGNING_PRIVATE_KEY）" };
+  try {
+    const res = await muxFetch(url, { signal: AbortSignal.timeout(8000) });
+    if (res.ok) return { ok: true, message: "Mux 接受簽名，影片可以播放" };
+    if (res.status === 403) return { ok: false, message: "Mux 拒絕簽名（403）：請確認簽名金鑰與這支影片屬於同一個 Mux 環境" };
+    if (res.status === 404) return { ok: false, message: "Mux 找不到這支影片（404）：請重新從 Mux 選擇影片" };
+    return { ok: false, message: `Mux 回應 ${res.status}` };
+  } catch {
+    return { ok: false, message: "連不到 Mux，請稍後再試" };
+  }
+}
+
 // ---------- Mux 影片清單（管理員匯入用） ----------
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;

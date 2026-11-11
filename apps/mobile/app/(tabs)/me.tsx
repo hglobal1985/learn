@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { Alert, Linking, Platform, StyleSheet, View } from "react-native";
@@ -22,6 +22,8 @@ const openAccountCenter = () => (Platform.OS === "web" ? Linking.openURL(ACCOUNT
 
 export default function MeScreen() {
   const { member, ready, signInGoogle, signInDemo, signOut, deleteAccount } = useSession();
+  const { next } = useLocalSearchParams<{ next?: string }>();
+  const back = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
   const config = useApi<AppConfig>("/config");
   const demo = useApi<Member[]>(!member && config.data?.demoLogin ? "/demo-members" : null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -45,8 +47,8 @@ export default function MeScreen() {
     const ok = await confirm(
       "刪除學習資料",
       central
-        ? "將刪除你在本 App 的學習紀錄、訂單與通知，並登出。若要刪除整個會員帳號，請到「會員中心」辦理。"
-        : "將刪除這個測試帳號在本 App 的學習紀錄、訂單與通知。",
+        ? "將刪除你在本 App 的學習紀錄、報名紀錄與通知，並登出。若要刪除整個會員帳號，請到「會員中心」辦理。"
+        : "將刪除這個測試帳號在本 App 的學習紀錄、報名紀錄與通知。",
       "確定刪除",
     );
     if (ok) await run("delete", deleteAccount, central ? "已刪除你在本 App 的資料並登出。" : "已刪除測試帳號的資料。");
@@ -84,10 +86,13 @@ export default function MeScreen() {
           <Card>
             <AppText variant="headline">使用 Google 帳號登入</AppText>
             <AppText variant="callout" tone="muted">
-              登入後即可領取課程、記錄學習進度。課程的獎銜資格會依你在會員中心的資料自動判斷。
+              登入後即可報名課程、記錄學習進度。課程的獎銜資格會依你在會員中心的資料自動判斷。
             </AppText>
             <View style={styles.row}>
-              <Button label="使用 Google 登入" icon="logo-google" loading={busy === "google"} onPress={() => run("google", signInGoogle)} />
+              <Button label="使用 Google 登入" icon="logo-google" loading={busy === "google"} onPress={() => run("google", async () => {
+                await signInGoogle(back ?? "/me");
+                if (back) router.replace(back as Href);
+              })} />
             </View>
           </Card>
           {config.data?.demoLogin ? (
@@ -100,7 +105,10 @@ export default function MeScreen() {
                     icon={m.role === "admin" ? "shield-checkmark-outline" : "person-outline"}
                     title={m.name}
                     subtitle={m.rank ? `示範獎銜：${m.rank.name}` : undefined}
-                    onPress={() => run(`in-${m.sub}`, () => signInDemo(m.sub))}
+                    onPress={() => run(`in-${m.sub}`, async () => {
+                      await signInDemo(m.sub);
+                      if (back) router.replace(back as Href);
+                    })}
                     right={busy === `in-${m.sub}` ? <AppText tone="muted">登入中…</AppText> : undefined}
                   />
                 ))}
@@ -113,16 +121,16 @@ export default function MeScreen() {
       {member?.role === "admin" ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
-            {isWeb ? <ListRow icon="receipt-outline" title="訂單審核" subtitle="確認收款後開通課程" onPress={() => router.push("/admin/orders")} /> : null}
-            <ListRow icon="ribbon-outline" title="課程設定" subtitle="上下架、最低獎銜、各堂影片" onPress={() => router.push("/admin/courses")} />
+            {isWeb ? <ListRow icon="receipt-outline" title="報名審核" subtitle="確認繳費後開通課程" onPress={() => router.push("/admin/orders")} /> : null}
+            <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、章節、影片與音檔" onPress={() => router.push("/admin/courses")} />
           </Card>
         </Section>
       ) : null}
 
       {member && isWeb ? (
-        <Section title="訂單">
+        <Section title="報名">
           <Card style={{ paddingVertical: 0 }}>
-            <ListRow icon="document-text-outline" title="我的訂單" onPress={() => router.push("/orders")} />
+            <ListRow icon="document-text-outline" title="我的報名" onPress={() => router.push("/orders")} />
           </Card>
         </Section>
       ) : null}
@@ -133,7 +141,7 @@ export default function MeScreen() {
             {!member.demo ? (
               <ListRow icon="person-circle-outline" title="會員中心" subtitle="修改基本資料、刪除會員帳號" onPress={openAccountCenter} />
             ) : null}
-            <ListRow icon="trash-outline" title="刪除學習資料" subtitle="刪除本 App 的學習紀錄、訂單與通知" onPress={removeData} />
+            <ListRow icon="trash-outline" title="刪除學習資料" subtitle="刪除本 App 的學習紀錄、報名紀錄與通知" onPress={removeData} />
           </Card>
         </Section>
       ) : null}

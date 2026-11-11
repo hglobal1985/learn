@@ -44,7 +44,7 @@ function AdminOrders() {
       </View>
       {loading && !data ? <LoadingView /> : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
-      {data && !data.length ? <EmptyState icon="checkmark-done-outline" title="沒有符合的訂單" /> : null}
+      {data && !data.length ? <EmptyState icon="checkmark-done-outline" title="沒有符合的報名" /> : null}
       {data?.map((o) => <OrderCard key={o.id} order={o} showMember onPress={() => router.push(`/admin/orders/${o.id}`)} />)}
     </Screen>
   );

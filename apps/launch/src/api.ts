@@ -10,7 +10,8 @@ import {
 } from "./contract.ts";
 import { displayName, isAdmin, looksLikeJwt, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
-import { listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
+import { audioUrl, verifyAudioUrl } from "./media.ts";
+import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
 const SESSION_DAYS = 30;
 const DEMO_VIDEO_PATH = "/media/orientation.mp4";
@@ -153,11 +154,12 @@ type CourseRow = {
   min_rank_code: string;
   theme: string;
   status: "draft" | "published" | "archived";
+  description?: string;
   lesson_count: number;
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
@@ -225,9 +227,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     ranks(ctx.db),
     memberCourseState(ctx.db, ctx.session?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null }>(),
+      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>(),
     ctx.session
       ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(ctx.session.sub, id).all<{ lesson_id: string }>()
       : Promise.resolve({ results: [] as { lesson_id: string }[] }),
@@ -235,12 +237,16 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const completed = new Set(done.results.map((r) => r.lesson_id));
   return {
     ...summarize(row!, ctx, rankMap, state, await eligibilityFor(ctx.session, rankMap, [row!.min_rank_code])),
+    description: row!.description ?? "",
     lessons: lessons.results.map((l) => ({
       id: l.id,
       position: l.position,
       title: l.title,
       minutes: l.duration_minutes,
       completed: completed.has(l.id),
+      kind: l.media_type === "audio" ? ("audio" as const) : ("video" as const),
+      start: l.start_seconds,
+      end: l.end_seconds,
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(ctx.session?.role === "admin" ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
@@ -256,9 +262,9 @@ async function canWatch(ctx: Ctx, courseId: string): Promise<boolean> {
 
 async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
   const lesson = await ctx.db
-    .prepare("SELECT l.id, l.media_type, l.media_ref FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
+    .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
     .bind(lessonId, courseId)
-    .first<{ id: string; media_type: MediaType; media_ref: string | null }>();
+    .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
   return lesson ?? fail(404, "not_found", "找不到這個章節");
 }
 
@@ -298,7 +304,7 @@ const ORDER_SELECT = "SELECT id, status, total_twd, reject_reason, created_at, r
 async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Order[]> {
   const s = requireMember(ctx);
   const ids = Array.isArray(body.courseIds) ? [...new Set(body.courseIds.filter((x): x is string => typeof x === "string"))] : [];
-  if (!ids.length || ids.length > 20) fail(400, "invalid_courses", "請選擇要領取的課程");
+  if (!ids.length || ids.length > 20) fail(400, "invalid_courses", "請選擇要報名的課程");
   const marks = ids.map(() => "?").join(",");
   const [{ results: courses }, rankMap, state] = await Promise.all([
     ctx.db.prepare(`SELECT id, title, price_twd, min_rank_code FROM courses WHERE status = 'published' AND id IN (${marks})`).bind(...ids).all<{
@@ -312,11 +318,11 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Or
   ]);
   if (courses.length !== ids.length) fail(409, "unavailable", "課程已下架或不存在，請重新確認");
   const eligibility = await eligibilityFor(s, rankMap, courses.map((c) => c.min_rank_code));
-  if (courses.some((c) => eligibility.get(c.min_rank_code) !== true)) fail(403, "rank_required", "獎銜資格不符，無法領取這門課程");
-  if (courses.some((c) => state.enrolled.has(c.id) || state.pending.has(c.id))) fail(409, "duplicate", "已有已開通或待審核的訂單，請勿重複送出");
+  if (courses.some((c) => eligibility.get(c.min_rank_code) !== true)) fail(403, "rank_required", "此課程需要符合資格才能報名");
+  if (courses.some((c) => state.enrolled.has(c.id) || state.pending.has(c.id))) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
   const free = courses.filter((c) => c.price_twd === 0);
   const paid = courses.filter((c) => c.price_twd > 0);
-  if (paid.length && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版辦理");
+  if (paid.length && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
 
   const now = new Date();
   const statements: D1PreparedStatement[] = [];
@@ -342,15 +348,15 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Or
         statements.push(ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, source_order_id) VALUES (?, ?, ?)").bind(s.sub, c.id, id));
     }
     statements.push(
-      notify(ctx.db, { sub: s.sub }, isFree ? "課程已開通" : "訂單已送出，等待人工審核", titles, isFree ? "/learning" : `/orders/${id}`),
+      notify(ctx.db, { sub: s.sub }, isFree ? "課程已開通" : "報名已送出，等待審核", titles, isFree ? "/learning" : `/orders/${id}`),
       audit(ctx.db, s.sub, isFree ? "order.claim_free" : "order.submit", "order", id, titles),
     );
-    if (!isFree) statements.push(notify(ctx.db, { role: "admin" }, "有新的訂單待審核", `${s.name} · NT$${total.toLocaleString("en-US")}`, `/admin/orders/${id}`));
+    if (!isFree) statements.push(notify(ctx.db, { role: "admin" }, "有新的報名待審核", `${s.name} · NT$${total.toLocaleString("en-US")}`, `/admin/orders/${id}`));
   }
   try {
     await ctx.db.batch(statements);
   } catch {
-    fail(409, "duplicate", "這門課程已經領取過了");
+    fail(409, "duplicate", "這門課程已經報名過了");
   }
   const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE id IN (${created.map(() => "?").join(",")})`).bind(...created).all<OrderRow>();
   return hydrateOrders(ctx.db, results);
@@ -358,13 +364,13 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Or
 
 async function reviewOrder(ctx: Ctx, id: string, body: { approve?: unknown; reason?: unknown }): Promise<Order> {
   const admin = requireAdmin(ctx);
-  if (ctx.platform !== "web") fail(403, "web_only", "訂單審核請至網頁版辦理");
+  if (ctx.platform !== "web") fail(403, "web_only", "報名審核請至網頁版辦理");
   const approve = body.approve === true;
   const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
   if (!approve && !reason) fail(400, "reason_required", "請填寫未通過原因");
   const order = await ctx.db.prepare("SELECT id, member_sub, status FROM orders WHERE id = ?").bind(id).first<{ id: string; member_sub: string; status: string }>();
-  if (!order) return fail(404, "not_found", "找不到這筆訂單");
-  if (order.status !== "pending") fail(409, "already_reviewed", "訂單已處理");
+  if (!order) return fail(404, "not_found", "找不到這筆報名");
+  if (order.status !== "pending") fail(409, "already_reviewed", "這筆報名已審核過");
   const now = iso();
   const statements = [
     ctx.db
@@ -383,19 +389,19 @@ async function reviewOrder(ctx: Ctx, id: string, body: { approve?: unknown; reas
     notify(
       ctx.db,
       { sub: order.member_sub },
-      approve ? "付款確認完成，課程已開通" : "訂單審核未通過",
+      approve ? "繳費確認完成，課程已開通" : "報名審核未通過",
       approve ? "前往我的課程開始學習。" : reason,
       approve ? "/learning" : `/orders/${id}`,
     ),
     audit(ctx.db, admin.sub, approve ? "order.approve" : "order.reject", "order", id, reason),
   );
   const [update] = await ctx.db.batch(statements);
-  if (update.meta?.changes === 0) fail(409, "already_reviewed", "訂單已處理");
+  if (update.meta?.changes === 0) fail(409, "already_reviewed", "這筆報名已審核過");
   const row = await ctx.db.prepare(`${ORDER_SELECT} WHERE id = ?`).bind(id).first<OrderRow>();
   return (await hydrateOrders(ctx.db, [row!]))[0];
 }
 
-type MediaType = "demo" | "youtube" | "mux";
+type MediaType = "demo" | "youtube" | "mux" | "audio";
 
 /** 接受 YouTube 網址（watch、youtu.be、shorts、embed）或 11 碼 ID。 */
 export function youtubeId(input: string): string | null {
@@ -412,6 +418,139 @@ export function youtubeId(input: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ---------- admin: courses & lessons ----------
+
+const THEMES = ["sage", "rose", "gold", "blue", "clay", "violet"];
+function randomId(n: number): string {
+  const a = "abcdefghjkmnpqrstuvwxyz23456789";
+  return [...crypto.getRandomValues(new Uint8Array(n))].map((b) => a[b % a.length]).join("");
+}
+const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
+
+async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: boolean) {
+  const sets: [string, unknown][] = [];
+  const t = text(body.title, 120);
+  if (t !== undefined) {
+    if (!t) fail(400, "title_required", "請輸入課程名稱");
+    sets.push(["title", t]);
+  } else if (creating) fail(400, "title_required", "請輸入課程名稱");
+  for (const [k, col, max] of [["subtitle", "subtitle", 200], ["teacher", "teacher", 60], ["category", "category", 30], ["description", "description", 5000]] as const) {
+    const v = text(body[k], max);
+    if (v !== undefined) sets.push([col, v]);
+  }
+  if (body.priceTwd !== undefined) {
+    const n = Number(body.priceTwd);
+    if (!Number.isInteger(n) || n < 0 || n > 10_000_000) fail(400, "invalid_price", "費用請輸入 0 以上的整數");
+    sets.push(["price_twd", n]);
+  }
+  if (body.theme !== undefined) {
+    if (!THEMES.includes(String(body.theme))) fail(400, "invalid_theme", "封面顏色不正確");
+    sets.push(["theme", body.theme]);
+  }
+  if (body.minRankCode !== undefined) {
+    if (typeof body.minRankCode !== "string" || !(await ranks(ctx.db)).has(body.minRankCode)) fail(400, "invalid_rank", "獎銜不存在");
+    sets.push(["min_rank_code", body.minRankCode]);
+  }
+  if (body.status !== undefined) {
+    if (body.status !== "draft" && body.status !== "published" && body.status !== "archived") fail(400, "invalid_status", "狀態不正確");
+    sets.push(["status", body.status]);
+  }
+  return sets;
+}
+
+async function createCourse(ctx: Ctx, admin: Session) {
+  const body = await readJson<Record<string, unknown>>(ctx.req);
+  const sets = await courseFields(ctx, body, true);
+  const id = `c${randomId(7)}`;
+  const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
+  const cols = ["id", "sort_order", "status", ...sets.map(([c]) => c).filter((c) => c !== "status")];
+  const vals = [id, (max?.m ?? 0) + 1, sets.find(([c]) => c === "status")?.[1] ?? "draft", ...sets.filter(([c]) => c !== "status").map(([, v]) => v)];
+  await ctx.db.batch([
+    ctx.db.prepare(`INSERT INTO courses (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).bind(...vals),
+    ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type) VALUES (?, ?, 1, '第 1 堂', 0, 'demo')").bind(`${id}-${randomId(6)}`, id),
+    audit(ctx.db, admin.sub, "course.create", "course", id, String(body.title ?? "")),
+  ]);
+  return courseDetail(ctx, id);
+}
+
+async function updateCourse(ctx: Ctx, id: string, admin: Session) {
+  const body = await readJson<Record<string, unknown>>(ctx.req);
+  const sets = await courseFields(ctx, body, false);
+  if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
+  const [res] = await ctx.db.batch([
+    ctx.db.prepare(`UPDATE courses SET ${sets.map(([c]) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...sets.map(([, v]) => v), iso(), id),
+    audit(ctx.db, admin.sub, "course.update", "course", id, sets.map(([c]) => c).join(",")),
+  ]);
+  if (res.meta?.changes === 0) fail(404, "not_found", "找不到這門課程");
+  return courseDetail(ctx, id);
+}
+
+async function renumber(db: D1Database, courseId: string) {
+  const { results } = await db.prepare("SELECT id FROM lessons WHERE course_id = ? ORDER BY position").bind(courseId).all<{ id: string }>();
+  await db.batch([
+    db.prepare("UPDATE lessons SET position = -position WHERE course_id = ?").bind(courseId),
+    ...results.map((r, i) => db.prepare("UPDATE lessons SET position = ? WHERE id = ?").bind(i + 1, r.id)),
+  ]);
+}
+
+const seconds = (v: unknown): number | null | undefined => {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 24 * 3600) fail(400, "invalid_time", "時間格式不正確");
+  return n;
+};
+
+/** 修改章節：名稱、影片來源（示範／YouTube／Mux）、時間軸區間。音檔由上傳流程設定。 */
+async function updateLesson(ctx: Ctx, id: string, admin: Session) {
+  const body = await readJson<{ title?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
+  const cur = await ctx.db
+    .prepare("SELECT media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE id = ?")
+    .bind(id)
+    .first<{ media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
+  if (!cur) return fail(404, "not_found", "找不到這個章節");
+  const sets: [string, unknown][] = [];
+  const title = text(body.title, 120);
+  if (title !== undefined) {
+    if (!title) fail(400, "title_required", "請輸入章節名稱");
+    sets.push(["title", title]);
+  }
+  let type = cur.media_type;
+  if (body.mediaType !== undefined) {
+    const t = body.mediaType;
+    const ref = typeof body.mediaRef === "string" ? body.mediaRef.trim() : "";
+    if (t !== "demo" && t !== "youtube" && t !== "mux") fail(400, "invalid_media", "影片來源不正確");
+    let mediaRef: string | null = null;
+    if (t === "youtube") mediaRef = youtubeId(ref) ?? fail(400, "invalid_youtube", "請貼上 YouTube 影片網址或 11 碼影片 ID");
+    else if (t === "mux") {
+      if (!/^[A-Za-z0-9]{10,80}$/.test(ref)) fail(400, "invalid_mux", "請從 Mux 選擇影片");
+      mediaRef = ref;
+    }
+    type = t as MediaType;
+    sets.push(["media_type", t], ["media_ref", mediaRef]);
+  }
+  const start = seconds(body.startSeconds);
+  const end = seconds(body.endSeconds);
+  const finalStart = start === undefined ? cur.start_seconds : start;
+  const finalEnd = end === undefined ? cur.end_seconds : end;
+  if (finalStart != null && finalEnd != null && finalEnd <= finalStart) fail(400, "invalid_range", "結束時間必須晚於開始時間");
+  if (start !== undefined) sets.push(["start_seconds", start]);
+  if (end !== undefined) sets.push(["end_seconds", end]);
+  const minutes = body.minutes === undefined ? undefined : Number(body.minutes);
+  if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1000)) fail(400, "invalid_minutes", "影片長度不正確");
+  // 有設定區間時，章節長度＝區間長度（分鐘，無條件進位）。
+  if (finalEnd != null && (start !== undefined || end !== undefined)) sets.push(["duration_minutes", Math.max(1, Math.ceil((finalEnd - (finalStart ?? 0)) / 60))]);
+  else if (minutes !== undefined) sets.push(["duration_minutes", minutes]);
+  if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
+  await ctx.db.batch([
+    ctx.db.prepare(`UPDATE lessons SET ${sets.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...sets.map(([, v]) => v), id),
+    audit(ctx.db, admin.sub, "lesson.update", "lesson", id, sets.map(([c]) => c).join(",")),
+  ]);
+  if (cur.media_type === "audio" && type !== "audio" && cur.media_ref) await ctx.env.MEDIA?.delete(cur.media_ref).catch(() => undefined);
+  const row = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
+  return { ok: true, mediaType: row?.media_type, mediaRef: row?.media_ref };
 }
 
 // ---------- router ----------
@@ -482,7 +621,7 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [courseId, lessonId]) => {
       const s = requireMember(ctx);
       await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先領取這門課程");
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       await ctx.db
         .prepare("INSERT OR IGNORE INTO lesson_progress (member_sub, lesson_id, course_id) VALUES (?, ?, ?)")
         .bind(s.sub, lessonId, courseId)
@@ -495,14 +634,20 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/playback$/,
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先領取這門課程");
-      if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref };
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      const seg = { start: lesson.start_seconds, end: lesson.end_seconds };
+      if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref, ...seg };
       if (lesson.media_type === "mux" && lesson.media_ref) {
         const url = await muxPlaybackUrl(ctx.env, lesson.media_ref);
         if (!url) fail(503, "media_not_ready", "影片授權服務尚未設定，請稍後再試");
-        return { kind: "hls", url };
+        return { kind: "hls", url, ...seg };
       }
-      return { kind: "demo", url: DEMO_VIDEO_PATH, label: "示範影片（非正式課程內容）" };
+      if (lesson.media_type === "audio" && lesson.media_ref) {
+        const url = await audioUrl(ctx.env, lesson.media_ref);
+        if (!url) fail(503, "media_not_ready", "音檔服務尚未設定，請稍後再試");
+        return { kind: "audio", url, ...seg };
+      }
+      return { kind: "demo", url: DEMO_VIDEO_PATH, label: "示範影片（非正式課程內容）", ...seg };
     },
   ],
   ["POST", /^\/orders$/, async (ctx) => createOrders(ctx, await readJson(ctx.req))],
@@ -521,7 +666,7 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [id]) => {
       const s = requireMember(ctx);
       const row = await ctx.db.prepare(`${ORDER_SELECT} WHERE id = ? AND (member_sub = ? OR ? = 'admin')`).bind(id, s.sub, s.role).first<OrderRow>();
-      if (!row) fail(404, "not_found", "找不到這筆訂單");
+      if (!row) fail(404, "not_found", "找不到這筆報名");
       return (await hydrateOrders(ctx.db, [row!]))[0];
     },
   ],
@@ -581,29 +726,120 @@ const routes: [string, RegExp, Handler][] = [
   [
     "PATCH",
     /^\/admin\/lessons\/([\w-]+)$/,
+    async (ctx, [id]) => updateLesson(ctx, id, requireAdmin(ctx)),
+  ],
+  [
+    "DELETE",
+    /^\/admin\/lessons\/([\w-]+)$/,
     async (ctx, [id]) => {
       const admin = requireAdmin(ctx);
-      const body = await readJson<{ mediaType?: unknown; mediaRef?: unknown; minutes?: unknown }>(ctx.req);
-      const minutes = body.minutes === undefined ? null : Number(body.minutes);
-      if (minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1000)) fail(400, "invalid_minutes", "影片長度不正確");
-      const type = body.mediaType;
-      const ref = typeof body.mediaRef === "string" ? body.mediaRef.trim() : "";
-      if (type !== "demo" && type !== "youtube" && type !== "mux") fail(400, "invalid_media", "影片來源不正確");
-      let mediaRef: string | null = null;
-      if (type === "youtube") {
-        mediaRef = youtubeId(ref) ?? fail(400, "invalid_youtube", "請貼上 YouTube 影片網址或 11 碼影片 ID");
-      } else if (type === "mux") {
-        if (!/^[A-Za-z0-9]{10,80}$/.test(ref)) fail(400, "invalid_mux", "請貼上 Mux Playback ID");
-        mediaRef = ref;
+      const lesson = await ctx.db.prepare("SELECT course_id, media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ course_id: string; media_type: string; media_ref: string | null }>();
+      if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM lessons WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.delete", "lesson", id)]);
+      await renumber(ctx.db, lesson.course_id);
+      if (lesson.media_type === "audio" && lesson.media_ref) await ctx.env.MEDIA?.delete(lesson.media_ref).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/lessons\/([\w-]+)\/check$/,
+    async (ctx, [id]) => {
+      requireAdmin(ctx);
+      const l = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
+      if (!l) return fail(404, "not_found", "找不到這個章節");
+      if (l.media_type === "mux" && l.media_ref) return checkMuxPlayback(ctx.env, l.media_ref);
+      if (l.media_type === "audio" && l.media_ref) {
+        const head = await ctx.env.MEDIA?.head(l.media_ref);
+        return head ? { ok: true, message: `音檔正常（${Math.round(head.size / 1024 / 1024)} MB）` } : { ok: false, message: "找不到音檔，請重新上傳" };
       }
-      const [res] = await ctx.db.batch([
+      return { ok: true, message: "這個來源不需要檢查" };
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/lessons\/([\w-]+)\/audio\/start$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
+      const body = await readJson<{ fileName?: unknown; contentType?: unknown; size?: unknown }>(ctx.req);
+      const type = typeof body.contentType === "string" ? body.contentType : "";
+      if (!/^audio\/[\w.+-]+$/.test(type)) fail(400, "invalid_audio", "請選擇音訊檔（例如 MP3、M4A）");
+      if (typeof body.size !== "number" || body.size <= 0 || body.size > 2 * 1024 ** 3) fail(400, "invalid_size", "音檔大小需小於 2GB");
+      if (!(await ctx.db.prepare("SELECT 1 AS ok FROM lessons WHERE id = ?").bind(id).first())) fail(404, "not_found", "找不到這個章節");
+      const ext = (/\.([a-z0-9]{1,5})$/i.exec(String(body.fileName ?? ""))?.[1] ?? "audio").toLowerCase();
+      const key = `audio/${id}/${crypto.randomUUID()}.${ext}`;
+      const upload = await bucket.createMultipartUpload(key, { httpMetadata: { contentType: type } });
+      await audit(ctx.db, admin.sub, "lesson.audio_upload_start", "lesson", id, key).run();
+      return { key, uploadId: upload.uploadId };
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/lessons\/([\w-]+)\/audio\/part$/,
+    async (ctx, [id]) => {
+      requireAdmin(ctx);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
+      const key = ctx.url.searchParams.get("key") ?? "";
+      const uploadId = ctx.url.searchParams.get("uploadId") ?? "";
+      const part = Number(ctx.url.searchParams.get("part"));
+      if (!key.startsWith(`audio/${id}/`) || !uploadId || !Number.isInteger(part) || part < 1 || part > 10000) fail(400, "invalid_part", "上傳參數不正確");
+      const uploaded = await bucket.resumeMultipartUpload(key, uploadId).uploadPart(part, await ctx.req.arrayBuffer());
+      return { partNumber: uploaded.partNumber, etag: uploaded.etag };
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/lessons\/([\w-]+)\/audio\/complete$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
+      const body = await readJson<{ key?: unknown; uploadId?: unknown; parts?: unknown; durationSeconds?: unknown }>(ctx.req);
+      const key = typeof body.key === "string" ? body.key : "";
+      if (!key.startsWith(`audio/${id}/`) || typeof body.uploadId !== "string" || !Array.isArray(body.parts) || !body.parts.length) fail(400, "invalid_upload", "上傳參數不正確");
+      const parts = (body.parts as { partNumber: number; etag: string }[]).map((x) => ({ partNumber: Number(x.partNumber), etag: String(x.etag) }));
+      await bucket.resumeMultipartUpload(key, body.uploadId as string).complete(parts);
+      const old = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
+      const seconds = typeof body.durationSeconds === "number" && body.durationSeconds > 0 ? body.durationSeconds : null;
+      await ctx.db.batch([
         ctx.db
-          .prepare("UPDATE lessons SET media_type = ?, media_ref = ?, duration_minutes = COALESCE(?, duration_minutes) WHERE id = ?")
-          .bind(type, mediaRef, minutes, id),
-        audit(ctx.db, admin.sub, "lesson.media", "lesson", id, String(type)),
+          .prepare("UPDATE lessons SET media_type = 'audio', media_ref = ?, start_seconds = NULL, end_seconds = NULL, duration_minutes = COALESCE(?, duration_minutes) WHERE id = ?")
+          .bind(key, seconds ? Math.max(1, Math.ceil(seconds / 60)) : null, id),
+        audit(ctx.db, admin.sub, "lesson.audio_uploaded", "lesson", id, key),
       ]);
-      if (res.meta?.changes === 0) fail(404, "not_found", "找不到這個章節");
-      return { ok: true, mediaType: type, mediaRef };
+      if (old?.media_type === "audio" && old.media_ref && old.media_ref !== key) await bucket.delete(old.media_ref).catch(() => undefined);
+      return { ok: true, key };
+    },
+  ],
+  [
+    "GET",
+    /^\/media\/audio$/,
+    async (ctx) => {
+      // 以短效簽名網址授權（播放器無法帶 Authorization 標頭），支援 Range 以便拖曳進度。
+      const key = await verifyAudioUrl(ctx.env, ctx.url);
+      const bucket = ctx.env.MEDIA;
+      if (!key || !bucket) return new Response("Forbidden", { status: 403 });
+      const range = /^bytes=(\d*)-(\d*)$/.exec(ctx.req.headers.get("range") ?? "");
+      const head = await bucket.head(key);
+      if (!head) return new Response("Not found", { status: 404 });
+      const size = head.size;
+      let start = 0;
+      let end = size - 1;
+      if (range && (range[1] || range[2])) {
+        start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+        end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+        if (start > end) return new Response(null, { status: 416, headers: { "content-range": `bytes */${size}` } });
+      }
+      const obj = await bucket.get(key, { range: { offset: start, length: end - start + 1 } });
+      if (!obj) return new Response("Not found", { status: 404 });
+      const headers = new Headers({
+        "content-type": head.httpMetadata?.contentType ?? "audio/mpeg",
+        "accept-ranges": "bytes",
+        "content-length": String(end - start + 1),
+        "cache-control": "private, max-age=3600",
+      });
+      if (range && (range[1] || range[2])) headers.set("content-range", `bytes ${start}-${end}/${size}`);
+      return new Response(obj.body, { status: range && (range[1] || range[2]) ? 206 : 200, headers });
     },
   ],
   [
@@ -624,32 +860,60 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   ["GET", /^\/admin\/courses$/, async (ctx) => (requireAdmin(ctx), listCourses(ctx, true))],
+  ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireAdmin(ctx))],
+  ["PATCH", /^\/admin\/courses\/([\w-]+)$/, async (ctx, [id]) => updateCourse(ctx, id, requireAdmin(ctx))],
   [
-    "PATCH",
+    "DELETE",
     /^\/admin\/courses\/([\w-]+)$/,
     async (ctx, [id]) => {
       const admin = requireAdmin(ctx);
-      const body = await readJson<{ minRankCode?: unknown; status?: unknown }>(ctx.req);
-      const rankMap = await ranks(ctx.db);
-      const sets: string[] = [];
-      const values: unknown[] = [];
-      if (body.minRankCode !== undefined) {
-        if (typeof body.minRankCode !== "string" || !rankMap.has(body.minRankCode)) fail(400, "invalid_rank", "獎銜不存在");
-        sets.push("min_rank_code = ?");
-        values.push(body.minRankCode);
-      }
-      if (body.status !== undefined) {
-        if (body.status !== "draft" && body.status !== "published" && body.status !== "archived") fail(400, "invalid_status", "狀態不正確");
-        sets.push("status = ?");
-        values.push(body.status);
-      }
-      if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
-      const [res] = await ctx.db.batch([
-        ctx.db.prepare(`UPDATE courses SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`).bind(...values, iso(), id),
-        audit(ctx.db, admin.sub, "course.update", "course", id, JSON.stringify(body)),
-      ]);
+      const used = await ctx.db
+        .prepare("SELECT (SELECT COUNT(*) FROM order_items WHERE course_id = ?) + (SELECT COUNT(*) FROM enrollments WHERE course_id = ?) AS n")
+        .bind(id, id)
+        .first<{ n: number }>();
+      if ((used?.n ?? 0) > 0) fail(409, "in_use", "這門課程已有學員報名，不能刪除；請改用「下架」");
+      const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE course_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
+      const [res] = await ctx.db.batch([ctx.db.prepare("DELETE FROM courses WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "course.delete", "course", id)]);
       if (res.meta?.changes === 0) fail(404, "not_found", "找不到這門課程");
-      return courseDetail(ctx, id);
+      for (const a of audio.results) await ctx.env.MEDIA?.delete(a.media_ref).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/courses\/([\w-]+)\/lessons$/,
+    async (ctx, [courseId]) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ title?: unknown }>(ctx.req);
+      const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
+      if (!title) fail(400, "title_required", "請輸入章節名稱");
+      const course = await ctx.db.prepare("SELECT (SELECT COALESCE(MAX(position), 0) FROM lessons WHERE course_id = c.id) AS maxpos FROM courses c WHERE c.id = ?").bind(courseId).first<{ maxpos: number }>();
+      if (!course) return fail(404, "not_found", "找不到這門課程");
+      const id = `${courseId}-${randomId(6)}`;
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type) VALUES (?, ?, ?, ?, 0, 'demo')").bind(id, courseId, course.maxpos + 1, title),
+        audit(ctx.db, admin.sub, "lesson.create", "lesson", id, title),
+      ]);
+      return courseDetail(ctx, courseId);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/courses\/([\w-]+)\/lessons\/order$/,
+    async (ctx, [courseId]) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ ids?: unknown }>(ctx.req);
+      const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string") : [];
+      const current = await ctx.db.prepare("SELECT id FROM lessons WHERE course_id = ?").bind(courseId).all<{ id: string }>();
+      const set = new Set(current.results.map((r) => r.id));
+      if (ids.length !== set.size || new Set(ids).size !== ids.length || ids.some((i) => !set.has(i))) fail(400, "invalid_order", "章節順序不正確，請重新整理後再試");
+      // 先移到負數避開 UNIQUE(course_id, position)，再寫入新順序。
+      await ctx.db.batch([
+        ctx.db.prepare("UPDATE lessons SET position = -position WHERE course_id = ?").bind(courseId),
+        ...ids.map((id, i) => ctx.db.prepare("UPDATE lessons SET position = ? WHERE id = ?").bind(i + 1, id)),
+        audit(ctx.db, admin.sub, "lesson.reorder", "course", courseId),
+      ]);
+      return courseDetail(ctx, courseId);
     },
   ],
 ];
@@ -665,7 +929,7 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       ? {
           "access-control-allow-origin": origin,
           "access-control-allow-headers": "authorization, content-type, x-client-platform",
-          "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+          "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
           vary: "origin",
         }
       : {};
@@ -679,7 +943,8 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
       fail(404, "not_found", "找不到這個 API");
     }
     const [, re, handler] = route!;
-    res = json(await handler(await context(req, env, url), [...re.exec(path)!].slice(1)));
+    const out = await handler(await context(req, env, url), [...re.exec(path)!].slice(1));
+    res = out instanceof Response ? out : json(out);
   } catch (e) {
     if (e instanceof HttpError) res = json({ error: { code: e.code, message: e.message } }, e.status);
     else {

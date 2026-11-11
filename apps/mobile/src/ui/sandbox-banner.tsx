@@ -5,7 +5,7 @@ import { Icon } from "./icon";
 import { AppText } from "./text";
 
 /** 交接規範：模擬資料必須明確標示。 */
-export function SandboxBanner({ text = "內部測試版：課程、會員與訂單皆為示範資料，只存在這台裝置。" }: { text?: string }) {
+export function SandboxBanner({ text = "內部測試版：課程、會員與報名皆為示範資料，只存在這台裝置。" }: { text?: string }) {
   const { c } = useTheme();
   return (
     <View style={[styles.box, { backgroundColor: c.warningSoft }]} accessibilityRole="text">

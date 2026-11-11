@@ -24,7 +24,7 @@ export default function CoursesScreen() {
       subtitle={data ? `共 ${courses.length} 門課程` : undefined}
       right={
         Platform.OS === "web" && cart.length ? (
-          <Button variant="secondary" icon="cart-outline" label={`購物車 ${cart.length}`} onPress={() => router.push("/cart")} />
+          <Button variant="secondary" icon="cart-outline" label={`報名清單 ${cart.length}`} onPress={() => router.push("/cart")} />
         ) : undefined
       }
     >
