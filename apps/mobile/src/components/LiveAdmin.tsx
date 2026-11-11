@@ -13,7 +13,7 @@ function Selector<T extends string>({selected,items,onChange}:{selected:T;items:
  return <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{items.map(o=>
   <Pressable key={o.value} accessibilityRole="button" onPress={()=>onChange(o.value)}
    style={{borderColor:selected===o.value?C.blue:C.border,borderWidth:1,paddingVertical:12,paddingHorizontal:15,
-    minHeight:44,borderRadius:9,backgroundColor:selected===o.value?'#E6F1FF':'white'}}>
+    minHeight:44,borderRadius:9,backgroundColor:selected===o.value?'#e7f1ea':'white'}}>
    <Text style={{color:C.ink,fontWeight:selected===o.value?'700':'400'}}>{o.label}</Text>
   </Pressable>
  )}</View>;
