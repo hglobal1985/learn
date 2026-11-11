@@ -16,8 +16,8 @@ export function Field({value,onChangeText,placeholder,multiline=false}:{value:st
 export function Tag({text}:{text:string}){return <View style={styles.tag}><Text style={styles.tagText}>{text}</Text></View>}
 export function VideoTile({id,title,description,category,access_mode,source_type}:{id:string;title:string;description:string;category:string;access_mode:string;source_type:string}){
  return <Link href={{pathname:'/[videoId]',params:{videoId:id}}} asChild><Pressable style={styles.tile}>
-  <View style={styles.poster}><Text style={styles.posterIcon}>▶</Text><Text style={styles.posterSmall}>{category}</Text></View>
-  <View style={{flex:1,gap:6}}><Text style={styles.tileTitle}>{title}</Text><Text style={styles.tileDesc} numberOfLines={2}>{description}</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}><Tag text={access_mode==='public'?'公開':access_mode==='members'?'登入會員':'獎銜限定'}/><Tag text={source_type==='mux'?'MUX':'YouTube'}/></View></View>
+  <View style={styles.poster}><Text style={styles.posterIcon}>▶</Text></View>
+  <View style={{flex:1,gap:6}}><Text style={styles.tileTitle}>{title}</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:6}}><Tag text={access_mode==='public'?'公開':access_mode==='members'?'登入會員':'獎銜限定'}/></View></View>
  </Pressable></Link>;
 }
 const styles=StyleSheet.create({
