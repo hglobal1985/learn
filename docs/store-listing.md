@@ -6,7 +6,7 @@
 
 | 項目 | 內容 |
 | --- | --- |
-| App 名稱 | 寰宇行動大學（見下方「待業主決定」） |
+| App 名稱 | 寰宇行動大學（業主已確認） |
 | 副標題（Apple，30 字內） | 隨時隨地，持續成長 |
 | 套件識別碼 | iOS `com.hglobal1985.learn`／Android `com.hglobal1985.learn` |
 | 類別 | 教育（Education） |
@@ -80,12 +80,12 @@ Google Play「資料安全性」：同上；資料傳輸皆加密；可要求刪
 - [ ] **關閉模擬登入**：`apps/launch/wrangler.jsonc` 的 `vars.DEMO_LOGIN` 改成 `"off"` 後重新部署（關閉後「測試身分」與任何人都能當管理員的入口就會消失）。
 - [ ] 首頁「內部測試版」標示移除（`apps/mobile/app/(tabs)/index.tsx` 的 `SandboxBanner`）。
 - [ ] 示範課程換成正式課程，各堂設定 YouTube 或 Mux 影片（管理員：「我的」→「課程設定」→「各堂影片」）。
-- [ ] Mux 簽名播放需要在 Cloudflare 的 Worker `learn` 設定兩個 Secret：`MUX_SIGNING_KEY_ID`、`MUX_SIGNING_PRIVATE_KEY`（由業主在 Cloudflare 後台輸入，不要貼在對話或程式碼裡）。
+- [x] Mux 簽名金鑰已由業主在 Cloudflare 設定（`MUX_SIGNING_KEY_ID` 一般變數、`MUX_SIGNING_PRIVATE_KEY` Secret），後端已確認能簽出播放網址。
+- [ ] 用一支真實的 Mux 影片（Signed Playback ID）在 App 與網站各播放一次。
 - [ ] App Store 上架取得 App ID 後，把 `apps/mobile/src/features/app-gate.tsx` 的 iOS 更新網址改成商店網址。
 - [ ] 實機測試：iPhone 與 Android 各測一次 Google 登入、領課、播放（示範影片／YouTube／Mux）、通知、刪除資料。
 
 ## 待業主決定
 
-- **App 名稱與畫面上的品牌字樣**：會員中心的串接規範寫著「畫面上不要出現『寰宇』『H-Global1985』『hglobal』字樣（App 選單裡的選項與隱私權文件除外）」，但交接文件指定的 App 名稱是「寰宇行動大學」，示範課程講師也用了「寰宇○○團隊」。目前保留原名，請業主決定是否改名（例如只用「行動大學」）。
 - 是否支援 iPad（影響截圖數量）。
 - 付費課程的付款方式說明文字（目前寫「依客服提供的方式付款」）。
