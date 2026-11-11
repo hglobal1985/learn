@@ -12,7 +12,7 @@ import {LiveAdmin} from '../src/components/LiveAdmin';
 type Mode='public'|'members'|'rank';type Source='youtube'|'mux';
 const MODES:{value:Mode;label:string}[]=[{value:'public',label:'公開'},{value:'members',label:'登入會員'},{value:'rank',label:'獎銜限定'}];
 function Choice<T extends string>({value,options,onSelect}:{value:T;options:{value:T;label:string}[];onSelect:(v:T)=>void}){
- return <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{options.map(o=><Pressable key={o.value} onPress={()=>onSelect(o.value)} style={{padding:11,borderWidth:1,borderColor:value===o.value?C.blue:C.border,backgroundColor:value===o.value?'#e7f1ea':'white',borderRadius:9}}><Text style={{color:C.ink}}>{o.label}</Text></Pressable>)}</View>
+ return <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{options.map(o=><Pressable key={o.value} onPress={()=>onSelect(o.value)} style={{padding:11,borderWidth:1,borderColor:value===o.value?C.blue:C.border,backgroundColor:value===o.value?'#E8F2FE':'white',borderRadius:9}}><Text style={{color:C.ink}}>{o.label}</Text></Pressable>)}</View>
 }
 export default function Admin(){
  const {demoOwner}=useSession();const [,setRevision]=useState(0);

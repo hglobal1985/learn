@@ -32,7 +32,7 @@ export default function Settings(){
  }
  return <Page><H>我的學習與帳號設定</H>
  {DEMO_MODE?<View style={{gap:14,backgroundColor:'white',padding:18,borderRadius:12}}>
-  {modes.map(m=><Pressable key={m.key} onPress={()=>setIdentity(m.key)} style={{padding:14,backgroundColor:identity===m.key?'#e7f1ea':'white',borderWidth:1,borderColor:identity===m.key?C.blue:C.border,borderRadius:9}}>
+  {modes.map(m=><Pressable key={m.key} onPress={()=>setIdentity(m.key)} style={{padding:14,backgroundColor:identity===m.key?'#E6F1FF':'white',borderWidth:1,borderColor:identity===m.key?C.blue:C.border,borderRadius:9}}>
    <Text style={{fontWeight:'700',color:C.ink}}>{identity===m.key?'● ':'○ '}{m.label}</Text>
   </Pressable>)}
   <Pressable onPress={()=>setDemoOwner(!demoOwner)} style={{padding:14,backgroundColor:'#FAFAFA',borderRadius:8}}>

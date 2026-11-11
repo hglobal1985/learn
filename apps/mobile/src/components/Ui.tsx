@@ -11,7 +11,7 @@ export function Button({title,onPress,outline=false,disabled=false}:{title:strin
  return <Pressable onPress={onPress} disabled={disabled} style={[styles.button,outline&&styles.outline,disabled&&{opacity:.45}]}><Text style={[styles.buttonLabel,outline&&{color:C.blue}]}>{title}</Text></Pressable>
 }
 export function Field({value,onChangeText,placeholder,multiline=false}:{value:string;onChangeText:(s:string)=>void;placeholder:string;multiline?:boolean}){
- return <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#5d6b62" multiline={multiline} style={[styles.field,multiline&&{minHeight:90,textAlignVertical:'top'}]}/>;
+ return <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#8995A4" multiline={multiline} style={[styles.field,multiline&&{minHeight:90,textAlignVertical:'top'}]}/>;
 }
 export function Tag({text}:{text:string}){return <View style={styles.tag}><Text style={styles.tagText}>{text}</Text></View>}
 export function VideoTile({id,title,description,category,access_mode,source_type}:{id:string;title:string;description:string;category:string;access_mode:string;source_type:string}){
@@ -26,8 +26,8 @@ const styles=StyleSheet.create({
  button:{backgroundColor:C.blue,alignSelf:'flex-start',paddingHorizontal:18,paddingVertical:12,borderRadius:10},
  outline:{backgroundColor:C.white,borderWidth:1,borderColor:C.blue},buttonLabel:{fontWeight:'700',color:'white',fontSize:14},
  field:{backgroundColor:'white',borderWidth:1,borderColor:C.border,borderRadius:10,fontSize:15,padding:12,color:C.ink},
- tag:{backgroundColor:'#e7f1ea',paddingHorizontal:8,paddingVertical:4,borderRadius:5},tagText:{fontSize:13,color:'#094a2e',fontWeight:'600'},
+ tag:{backgroundColor:'#EAF2FC',paddingHorizontal:8,paddingVertical:4,borderRadius:5},tagText:{fontSize:13,color:'#335A86',fontWeight:'600'},
  tile:{backgroundColor:'white',borderWidth:1,borderColor:C.border,borderRadius:14,padding:12,gap:14,flexDirection:'row',alignItems:'center'},
  poster:{width:134,height:88,borderRadius:9,backgroundColor:C.navy,alignItems:'center',justifyContent:'center',gap:8},
- posterIcon:{color:C.white,fontSize:26},posterSmall:{fontSize:13,color:'#dbf6e7'},tileTitle:{fontSize:17,fontWeight:'700',color:C.ink},tileDesc:{fontSize:14,color:C.muted,lineHeight:20}
+ posterIcon:{color:C.white,fontSize:26},posterSmall:{fontSize:13,color:'#D9E7F8'},tileTitle:{fontSize:17,fontWeight:'700',color:C.ink},tileDesc:{fontSize:14,color:C.muted,lineHeight:20}
 });
