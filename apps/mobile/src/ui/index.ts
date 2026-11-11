@@ -11,3 +11,5 @@ export { ListRow } from "./list-row";
 export { CourseCover } from "./course-cover";
 export { LoadingView, ErrorView } from "./state-views";
 export { NoticeBox } from "./notice-box";
+export { Chips } from "./chips";
+export { Field } from "./field";

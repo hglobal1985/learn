@@ -1,12 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import type { ApiError } from "../../../launch/src/contract";
+export { DUTY_LABELS, HQ_UNIT, REVIEW_REASONS } from "../../../launch/src/contract";
 import { centralToken, refresh as refreshCentral } from "./central";
 
 export type {
   AppConfig,
   ClientPlatform,
   CourseDetail,
+  CourseRun,
+  Duty,
+  OrderEvent,
+  ReviewAction,
+  ReviewGroup,
+  ReviewReason,
   CourseSummary,
   Lesson,
   MediaType,
@@ -73,4 +80,19 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
     throw new RequestError(res.status, err?.code ?? "http_error", err?.message ?? "系統忙碌，請稍後再試");
   }
   return data as T;
+}
+
+/** 下載需要登入的檔案（例如 CSV 報表）；只在 Web 使用。 */
+export async function download(path: string, fileName: string): Promise<void> {
+  const bearer = token ?? (await centralToken());
+  const res = await fetch(`${API_BASE}/api/v2${path}`, { headers: { "x-client-platform": "web", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) } });
+  if (!res.ok) throw new RequestError(res.status, "download", "下載失敗，請稍後再試");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

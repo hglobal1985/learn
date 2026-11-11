@@ -1,14 +1,15 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { api, type CourseDetail, type Rank } from "@/api/client";
+import { api, HQ_UNIT, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
+import { parseLocal, toLocal } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, CourseCover, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { AppText, Button, Card, Chips, CourseCover, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -23,6 +24,8 @@ export default function CourseEditScreen() {
   const isAdmin = member?.role === "admin";
   const course = useApi<CourseDetail>(isAdmin && id ? `/courses/${id}` : null);
   const ranks = useApi<Rank[]>("/ranks");
+  const centers = useApi<string[]>(isAdmin ? "/centers" : null);
+  const groups = useApi<ReviewGroup[]>(isAdmin ? "/admin/review-groups" : null);
   const [form, setForm] = useState<Form>(empty);
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -32,11 +35,16 @@ export default function CourseEditScreen() {
     const d = course.data;
     if (d)
       setForm({
+        guidanceUnit: d.guidanceUnit,
+        hostUnit: d.hostUnit,
+        freeFrom: toLocal(d.admin?.freeFrom),
+        freeUntil: toLocal(d.admin?.freeUntil),
+        reviewGroupId: d.admin?.reviewGroupId ?? "",
         title: d.title,
         subtitle: d.subtitle,
         teacher: d.teacher,
         category: d.category,
-        priceTwd: String(d.priceTwd ?? 0),
+        priceTwd: String(d.admin?.basePriceTwd ?? d.priceTwd ?? 0),
         minRankCode: d.minRank.code,
         theme: d.theme,
         description: d.description ?? "",
@@ -49,10 +57,13 @@ export default function CourseEditScreen() {
   const set = (k: keyof Form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   const save = async (status?: "draft" | "published") => {
+    const freeFrom = parseLocal(form.freeFrom);
+    const freeUntil = parseLocal(form.freeUntil);
+    if (freeFrom === undefined || freeUntil === undefined) return setMsg({ tone: "danger", text: "限時免費的日期格式請用 2026-12-01 19:30" });
     setBusy(status ?? "save");
     setMsg(null);
     try {
-      const body = { ...form, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
+      const body = { ...form, freeFrom, freeUntil, reviewGroupId: form.reviewGroupId || null, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
       const d = id ? await api<CourseDetail>("PATCH", `/admin/courses/${id}`, body) : await api<CourseDetail>("POST", "/admin/courses", body);
       invalidate();
       if (!id) {
@@ -112,6 +123,41 @@ export default function CourseEditScreen() {
         {price === 0 ? <Pill label="免費課程：報名後立即開通" tone="accent" /> : <Pill label="付費課程：報名後需審核繳費才開通" tone="warning" />}
         {field("課程介紹", "description", { multiline: true, placeholder: "課程內容、上課時間、適合對象……" })}
       </Card>
+
+      <Section title="指導單位與主辦單位">
+        <Card>
+          <AppText variant="callout" tone="muted">
+            指導單位（會公開顯示）
+          </AppText>
+          <Chips label="指導單位" options={[{ key: HQ_UNIT, label: HQ_UNIT }, { key: "", label: "不顯示" }]} value={form.guidanceUnit} onChange={set("guidanceUnit")} />
+          {form.guidanceUnit === HQ_UNIT ? <NoticeBox text="由寰宇總部指導的課程，只有總部秘書與超級管理員可以指派審核人員。" /> : null}
+          <AppText variant="callout" tone="muted">
+            主辦單位（會公開顯示）
+          </AppText>
+          <Chips label="主辦單位" options={[{ key: "", label: "不顯示" }, { key: HQ_UNIT, label: HQ_UNIT }, ...(centers.data ?? []).map((x) => ({ key: x, label: x }))]} value={form.hostUnit} onChange={set("hostUnit")} />
+        </Card>
+      </Section>
+
+      {price > 0 ? (
+        <Section title="限時免費（選填）">
+          <Card>
+            <Field label="開始（空白＝立即）" value={form.freeFrom} onChange={set("freeFrom")} placeholder="2026-12-01 00:00" />
+            <Field label="結束（空白＝不設定）" value={form.freeUntil} onChange={set("freeUntil")} placeholder="2026-12-31 23:59" hint="期間內報名免費、自動開通；結束後恢復原價。兩欄都空白表示不啟用。" />
+          </Card>
+        </Section>
+      ) : null}
+
+      <Section title="報名審核群組">
+        <Card>
+          <Chips
+            label="審核群組"
+            options={[{ key: "", label: "未指定（由總部審核）" }, ...(groups.data ?? []).filter((g) => form.guidanceUnit !== HQ_UNIT || g.ownerCenter === null).map((g) => ({ key: g.id, label: g.name }))]}
+            value={form.reviewGroupId}
+            onChange={set("reviewGroupId")}
+          />
+          <Button variant="ghost" label="管理審核群組" icon="people-outline" onPress={() => router.push("/admin/review-groups")} />
+        </Card>
+      </Section>
 
       <Section title="報名資格">
         <Card>

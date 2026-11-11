@@ -334,7 +334,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
-    ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
+    ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, freeUntil: row.free_until, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
   };
 }
 
@@ -683,16 +683,20 @@ async function reviewList(ctx: Ctx): Promise<{ rows: OrderRow[]; scope: ReviewSc
   const q = ctx.url.searchParams;
   const conds = [w.sql, "o.total_twd > 0"];
   const args = [...w.args];
+  const add = (cond: string, ...values: unknown[]) => {
+    conds.push(cond);
+    args.push(...values);
+  };
   const status = q.get("status");
-  if (status === "pending") conds.push("o.status = 'pending' AND o.deferred = 0");
-  else if (status === "deferred") conds.push("o.status = 'pending' AND o.deferred = 1");
-  else if (status === "opened" || status === "rejected") (conds.push("o.status = ?"), args.push(status));
-  if (q.get("courseId")) (conds.push("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.course_id = ?)"), args.push(q.get("courseId")));
-  if (q.get("runId")) (conds.push("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.run_id = ?)"), args.push(q.get("runId")));
-  if (q.get("center")) (conds.push("o.center_key = ?"), args.push(centerKey(q.get("center")!)));
-  if (q.get("hglobal") === "0") conds.push("o.hglobal = 0");
+  if (status === "pending") add("o.status = 'pending' AND o.deferred = 0");
+  else if (status === "deferred") add("o.status = 'pending' AND o.deferred = 1");
+  else if (status === "opened" || status === "rejected") add("o.status = ?", status);
+  if (q.get("courseId")) add("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.course_id = ?)", q.get("courseId"));
+  if (q.get("runId")) add("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.run_id = ?)", q.get("runId"));
+  if (q.get("center")) add("o.center_key = ?", centerKey(q.get("center")!));
+  if (q.get("hglobal") === "0") add("o.hglobal = 0");
   const term = (q.get("q") ?? "").trim().slice(0, 50);
-  if (term) (conds.push("(o.member_name_snapshot LIKE ? OR o.id LIKE ?)"), args.push(`%${term}%`, `%${term}%`));
+  if (term) add("(o.member_name_snapshot LIKE ? OR o.id LIKE ?)", `%${term}%`, `%${term}%`);
   const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE ${conds.join(" AND ")} ORDER BY o.created_at DESC LIMIT 2000`).bind(...args).all<OrderRow>();
   return { rows: results, scope };
 }

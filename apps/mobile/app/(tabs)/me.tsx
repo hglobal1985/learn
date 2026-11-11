@@ -68,7 +68,8 @@ export default function MeScreen() {
           ) : null}
           <View style={styles.row}>
             {member.rank ? <Pill label={member.rank.name} tone="accent" /> : null}
-            <Pill label={member.role === "admin" ? "管理員" : "學員"} />
+            {member.titles.length ? member.titles.map((t) => <Pill key={t} label={t} />) : <Pill label={member.role === "admin" ? "管理員" : "學員"} />}
+            {member.center ? <Pill label={member.center} tone="accent" /> : null}
             {member.demo ? <Pill label="測試帳號" tone="warning" /> : null}
           </View>
           <View style={styles.row}>
@@ -118,11 +119,14 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
-      {member?.role === "admin" ? (
+      {member?.reviewer || member?.role === "admin" || member?.titles.includes("音控") ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
-            {isWeb ? <ListRow icon="receipt-outline" title="報名審核" subtitle="確認繳費後開通課程" onPress={() => router.push("/admin/orders")} /> : null}
-            <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、章節、影片與音檔" onPress={() => router.push("/admin/courses")} />
+            {isWeb && member.reviewer ? <ListRow icon="receipt-outline" title="報名審核" subtitle="確認繳費後開通、匯出對帳報表" onPress={() => router.push("/admin/orders")} /> : null}
+            {isWeb && (member.role === "admin" || member.titles.includes("會長") || member.titles.includes("音控")) ? (
+              <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />
+            ) : null}
+            {member.role === "admin" ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
         </Section>
       ) : null}

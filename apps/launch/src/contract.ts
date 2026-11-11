@@ -88,7 +88,7 @@ export type CourseDetail = CourseSummary & {
   lessons: Lesson[];
   runs: CourseRun[];
   /** 只有管理員會拿到。 */
-  admin?: { hostCenterKey: string | null; freeFrom: string | null; reviewGroupId: string | null; basePriceTwd: number };
+  admin?: { hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
 };
 
 export type OrderStatus = "pending" | "opened" | "rejected";

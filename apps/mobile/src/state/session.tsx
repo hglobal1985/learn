@@ -31,9 +31,18 @@ type Session = {
 const SessionContext = createContext<Session | null>(null);
 const CART_KEY = "hglobal:learn:cart";
 
-async function fetchMember(): Promise<Member | null> {
-  return (await api<{ member: Member | null }>("GET", "/me").catch(() => ({ member: null }))).member;
+/** 取得目前登入的會員。連線失敗時重試一次；仍失敗回傳 "offline"（不可因此清除登入）。 */
+async function fetchMember(): Promise<Member | null | "offline"> {
+  for (let i = 0; i < 2; i++) {
+    try {
+      return (await api<{ member: Member | null }>("GET", "/me")).member;
+    } catch {
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+  return "offline";
 }
+const known = (m: Member | null | "offline"): Member | null => (m === "offline" ? null : m);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -47,13 +56,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const raw = await AsyncStorage.getItem(CART_KEY).catch(() => null);
       if (raw) setCartState(JSON.parse(raw) as string[]);
       const demo = await loadToken();
-      let m = demo || (await hasCentralSession()) ? await fetchMember() : null;
-      if (demo && !m) await saveToken(null);
+      const first = demo || (await hasCentralSession()) ? await fetchMember() : null;
+      // 只有伺服器明確回覆「未登入」才清除；連線失敗時保留登入，下次再試。
+      if (demo && first === null) await saveToken(null);
+      let m = known(first);
       if (Platform.OS === "web" && !m?.demo) {
         // 共用登入：處理會員中心回傳，或（5 分鐘節流）詢問這個瀏覽器目前登入的會員。
         if (globalThis.location?.pathname === "/auth/sso") {
           const r = await handleWebSsoReturn(m?.sub ?? null);
-          if (r.changed) m = await fetchMember();
+          if (r.changed) m = known(await fetchMember());
           setSsoNext(r.next);
         } else if (await webSsoCheck()) return "redirecting";
       }
@@ -67,14 +78,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     AsyncStorage.setItem(CART_KEY, JSON.stringify(ids)).catch(() => undefined);
   }, []);
   const reloadMember = useCallback(async () => {
-    setMember(await fetchMember());
+    setMember(known(await fetchMember()));
     invalidate();
   }, [invalidate]);
   const signInGoogle = useCallback(async (returnTo = "/me") => {
     await saveToken(null);
     const result = await signInWithGoogle(returnTo);
     if (result !== "ok") return;
-    const m = await fetchMember();
+    const m = known(await fetchMember());
     if (!m) throw Error("登入沒有成功，請再試一次");
     setMember(m);
     setCart([]);
