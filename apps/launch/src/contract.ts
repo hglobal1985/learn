@@ -10,9 +10,9 @@ export type Rank = { code: string; name: string; order: number };
 export type Member = {
   sub: string;
   name: string;
-  rank: Rank;
+  /** 只有模擬會員有示範獎銜；中央會員的獎銜屬 Amway 資料，App 不取得（null）。 */
+  rank: Rank | null;
   role: Role;
-  /** 目前所有會員都是模擬會員；串接中央會員後為 false。 */
   demo: boolean;
 };
 
@@ -37,7 +37,16 @@ export type CourseSummary = {
   completedLessons: number;
 };
 
-export type Lesson = { id: string; position: number; title: string; minutes: number; completed: boolean };
+export type MediaType = "demo" | "youtube" | "mux";
+export type Lesson = {
+  id: string;
+  position: number;
+  title: string;
+  minutes: number;
+  completed: boolean;
+  /** 只有管理員會拿到（編輯影片來源用）。 */
+  media?: { type: MediaType; ref: string | null };
+};
 export type CourseDetail = CourseSummary & { lessons: Lesson[] };
 
 export type OrderStatus = "pending" | "opened" | "rejected";
@@ -54,8 +63,10 @@ export type Order = {
 
 export type Notice = { id: string; title: string; body: string; link: string; read: boolean; createdAt: string };
 
-/** url 可能是相對路徑（以 API 網域為準），App 端以 resolveUrl 轉成完整網址。 */
-export type Playback = { kind: "demo"; url: string; label: string };
+/** demo 的 url 可能是相對路徑（以 API 網域為準），App 端以 resolveUrl 轉成完整網址。hls 為 Mux 簽名播放網址。 */
+export type Playback = { kind: "demo"; url: string; label: string } | { kind: "youtube"; videoId: string } | { kind: "hls"; url: string };
+
+export type AppConfig = { demoLogin: boolean };
 
 export type ApiError = { error: { code: string; message: string } };
 

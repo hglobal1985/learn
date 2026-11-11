@@ -2,6 +2,7 @@ import { Stack } from "expo-router/stack";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AppGate } from "@/features/app-gate";
 import { SessionProvider } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 
@@ -14,6 +15,7 @@ export default function RootLayout() {
   };
   return (
     <SafeAreaProvider>
+      <AppGate>
       <SessionProvider>
         <ThemeProvider value={navTheme}>
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
@@ -26,10 +28,14 @@ export default function RootLayout() {
             <Stack.Screen name="orders/[id]" options={{ title: "訂單明細" }} />
             <Stack.Screen name="admin/orders/index" options={{ title: "訂單審核" }} />
             <Stack.Screen name="admin/orders/[id]" options={{ title: "審核訂單" }} />
-            <Stack.Screen name="admin/courses" options={{ title: "課程與獎銜設定" }} />
+            <Stack.Screen name="admin/courses" options={{ title: "課程設定" }} />
+            <Stack.Screen name="admin/course/[id]" options={{ title: "各堂影片" }} />
+            <Stack.Screen name="auth/done" options={{ headerShown: false }} />
+            <Stack.Screen name="auth/google" options={{ headerShown: false }} />
           </Stack>
         </ThemeProvider>
       </SessionProvider>
+      </AppGate>
     </SafeAreaProvider>
   );
 }

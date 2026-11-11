@@ -15,12 +15,12 @@ export default function HomeScreen() {
   const featured = courses.filter((c) => c.enrollment !== "opened").slice(0, 3);
   return (
     <Screen title="寰宇行動大學" subtitle={member ? `${member.name}，歡迎回來` : "隨時隨地，持續成長"}>
-      <SandboxBanner text="內部測試版：課程與會員為示範資料，影片為示範短片。" />
+      <SandboxBanner text="內部測試版：課程內容與影片目前為示範資料。" />
       {!member ? (
         <Card>
           <AppText variant="headline">登入後即可領取課程</AppText>
           <AppText variant="callout" tone="muted">
-            目前使用測試帳號登入，之後會改成寰宇中央會員。
+            使用 Google 帳號登入，課程資格會依會員中心的資料自動判斷。
           </AppText>
           <View style={styles.actions}>
             <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} />

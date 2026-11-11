@@ -9,5 +9,6 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "learn-v2", "database_id": "f1283fdd-94f1-4a43-97b4-3072d1876ced", "migrations_dir": "migrations" }
   ],
+  "vars": { "DEMO_LOGIN": "on" },
   "observability": { "enabled": true }
 }

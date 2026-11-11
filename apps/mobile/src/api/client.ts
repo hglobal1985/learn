@@ -1,12 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import type { ApiError } from "../../../launch/src/contract";
+import { centralToken, refresh as refreshCentral } from "./central";
 
 export type {
+  AppConfig,
   ClientPlatform,
   CourseDetail,
   CourseSummary,
   Lesson,
+  MediaType,
   Member,
   Notice,
   Order,
@@ -17,6 +20,7 @@ export type {
 
 /** Web 與網站同網域；App 連正式網域。開發時可用 EXPO_PUBLIC_API_BASE 指向本機 Worker。 */
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? (Platform.OS === "web" ? "" : "https://learn.hglobal1985.com");
+/** 模擬會員（內部測試）的 token；中央會員的 token 由 central.ts 管理。 */
 const TOKEN_KEY = "hglobal:learn:session-token";
 
 let token: string | null = null;
@@ -46,9 +50,11 @@ export class RequestError extends Error {
   }
 }
 
-export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown, retried = false): Promise<T> {
   const headers: Record<string, string> = { "x-client-platform": Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "web" };
-  if (token) headers.authorization = `Bearer ${token}`;
+  const central = token ? null : await centralToken();
+  const bearer = token ?? central;
+  if (bearer) headers.authorization = `Bearer ${bearer}`;
   if (body !== undefined) headers["content-type"] = "application/json";
   let res: Response;
   try {
@@ -56,6 +62,8 @@ export async function api<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: 
   } catch {
     throw new RequestError(0, "network", "網路連線不穩定，請稍後再試");
   }
+  // 中央 Access Token 過期：換發一次後重試。
+  if (res.status === 401 && central && !retried && (await refreshCentral())) return api<T>(method, path, body, true);
   const data = (await res.json().catch(() => null)) as T | ApiError | null;
   if (!res.ok) {
     const err = (data as ApiError | null)?.error;

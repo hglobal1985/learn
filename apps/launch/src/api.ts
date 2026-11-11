@@ -8,7 +8,9 @@ import {
   type Order,
   type Rank,
 } from "./contract.ts";
+import { displayName, isAdmin, looksLikeJwt, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
+import { muxPlaybackUrl } from "./mux.ts";
 
 const SESSION_DAYS = 30;
 const DEMO_VIDEO_PATH = "/media/orientation.mp4";
@@ -33,7 +35,10 @@ const fail = (status: number, code: string, message: string): never => {
   throw new HttpError(status, code, message);
 };
 
-type Session = { sub: string; name: string; rankCode: string; role: "student" | "admin" };
+/** demo：模擬會員（rankCode 為示範獎銜）；central：中央會員（不持有獎銜，資格每次向中央查詢）。 */
+type Session =
+  | { kind: "demo"; sub: string; name: string; rankCode: string; role: "student" | "admin" }
+  | { kind: "central"; sub: string; name: string; role: "student" | "admin"; token: string };
 type Ctx = { env: Env; db: D1Database; req: Request; url: URL; platform: ClientPlatform; session: Session | null };
 
 // ---------- helpers ----------
@@ -77,15 +82,26 @@ function requireAdmin(ctx: Ctx): Session {
   return s;
 }
 
-async function loadSession(db: D1Database, req: Request): Promise<Session | null> {
+const demoEnabled = (env: Env) => env.DEMO_LOGIN === "on";
+
+async function loadSession(env: Env, req: Request): Promise<Session | null> {
+  const db = env.DB;
   const auth = req.headers.get("authorization") ?? "";
+  const jwt = /^Bearer (\S+)$/.exec(auth)?.[1];
+  if (jwt && looksLikeJwt(jwt)) {
+    const sub = await verifyAccessToken(jwt);
+    if (!sub) return null;
+    const [name, admin] = await Promise.all([displayName(sub, jwt), isAdmin(sub, jwt)]);
+    return { kind: "central", sub, name, role: admin ? "admin" : "student", token: jwt };
+  }
+  if (!demoEnabled(env)) return null;
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(auth);
   if (!m) return null;
   const row = await db
     .prepare("SELECT member_sub, display_name, rank_code, role FROM sessions WHERE token_hash = ? AND expires_at > ?")
     .bind(await sha256(m[1]), iso())
     .first<{ member_sub: string; display_name: string; rank_code: string; role: "student" | "admin" }>();
-  return row ? { sub: row.member_sub, name: row.display_name, rankCode: row.rank_code, role: row.role } : null;
+  return row ? { kind: "demo", sub: row.member_sub, name: row.display_name, rankCode: row.rank_code, role: row.role } : null;
 }
 
 async function ranks(db: D1Database): Promise<Map<string, Rank>> {
@@ -98,7 +114,19 @@ async function ranks(db: D1Database): Promise<Map<string, Rank>> {
 }
 
 function memberOf(s: Session, rankMap: Map<string, Rank>): Member {
-  return { sub: s.sub, name: s.name, role: s.role, rank: rankMap.get(s.rankCode) ?? { code: s.rankCode, name: s.rankCode, order: 0 }, demo: true };
+  // 中央會員的獎銜屬 Amway 資料，App 不取得也不顯示；只有模擬會員帶示範獎銜。
+  if (s.kind === "central") return { sub: s.sub, name: s.name, role: s.role, rank: null, demo: false };
+  return { sub: s.sub, name: s.name, role: s.role, rank: rankMap.get(s.rankCode) ?? null, demo: true };
+}
+
+/** 各最低獎銜是否符合：模擬會員比對示範獎銜；中央會員向中央查詢（fail closed）。 */
+async function eligibilityFor(session: Session | null, rankMap: Map<string, Rank>, codes: string[]): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  if (!session) return out;
+  if (session.kind === "central") return rankEligibility(session.sub, session.token, codes);
+  const mine = rankMap.get(session.rankCode)?.order ?? -1;
+  for (const c of codes) out.set(c, c === "none" || mine >= (rankMap.get(c)?.order ?? Infinity));
+  return out;
 }
 
 function audit(db: D1Database, actor: string, action: string, type: string, id: string, detail = ""): D1PreparedStatement {
@@ -157,9 +185,9 @@ function summarize(
   ctx: Ctx,
   rankMap: Map<string, Rank>,
   state: Awaited<ReturnType<typeof memberCourseState>>,
+  eligibility: Map<string, boolean>,
 ): CourseSummary {
-  const minRank = rankMap.get(row.min_rank_code) ?? { code: row.min_rank_code, name: row.min_rank_code, order: 99 };
-  const myRank = ctx.session ? rankMap.get(ctx.session.rankCode)?.order ?? -1 : -1;
+  const minRank = rankMap.get(row.min_rank_code) ?? { code: row.min_rank_code, name: row.min_rank_code, order: 9999 };
   return {
     id: row.id,
     title: row.title,
@@ -173,7 +201,7 @@ function summarize(
     status: row.status,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
-    eligible: !!ctx.session && myRank >= minRank.order,
+    eligible: eligibility.get(row.min_rank_code) === true,
     enrollment: state.enrolled.has(row.id) ? "opened" : state.pending.has(row.id) ? "pending" : null,
     completedLessons: state.done.get(row.id) ?? 0,
   };
@@ -186,7 +214,8 @@ async function listCourses(ctx: Ctx, all: boolean): Promise<CourseSummary[]> {
     ranks(ctx.db),
     memberCourseState(ctx.db, ctx.session?.sub),
   ]);
-  return results.map((r) => summarize(r, ctx, rankMap, state));
+  const eligibility = await eligibilityFor(ctx.session, rankMap, results.map((r) => r.min_rank_code));
+  return results.map((r) => summarize(r, ctx, rankMap, state, eligibility));
 }
 
 async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
@@ -196,17 +225,25 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     ranks(ctx.db),
     memberCourseState(ctx.db, ctx.session?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number }>(),
+      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null }>(),
     ctx.session
       ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(ctx.session.sub, id).all<{ lesson_id: string }>()
       : Promise.resolve({ results: [] as { lesson_id: string }[] }),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
   return {
-    ...summarize(row!, ctx, rankMap, state),
-    lessons: lessons.results.map((l) => ({ id: l.id, position: l.position, title: l.title, minutes: l.duration_minutes, completed: completed.has(l.id) })),
+    ...summarize(row!, ctx, rankMap, state, await eligibilityFor(ctx.session, rankMap, [row!.min_rank_code])),
+    lessons: lessons.results.map((l) => ({
+      id: l.id,
+      position: l.position,
+      title: l.title,
+      minutes: l.duration_minutes,
+      completed: completed.has(l.id),
+      // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
+      ...(ctx.session?.role === "admin" ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
+    })),
   };
 }
 
@@ -219,9 +256,9 @@ async function canWatch(ctx: Ctx, courseId: string): Promise<boolean> {
 
 async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
   const lesson = await ctx.db
-    .prepare("SELECT l.id, l.media_type FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
+    .prepare("SELECT l.id, l.media_type, l.media_ref FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
     .bind(lessonId, courseId)
-    .first<{ id: string; media_type: string }>();
+    .first<{ id: string; media_type: MediaType; media_ref: string | null }>();
   return lesson ?? fail(404, "not_found", "找不到這個章節");
 }
 
@@ -274,8 +311,8 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Or
     memberCourseState(ctx.db, s.sub),
   ]);
   if (courses.length !== ids.length) fail(409, "unavailable", "課程已下架或不存在，請重新確認");
-  const myRank = rankMap.get(s.rankCode)?.order ?? -1;
-  if (courses.some((c) => (rankMap.get(c.min_rank_code)?.order ?? 99) > myRank)) fail(403, "rank_required", "獎銜資格不符，無法領取這門課程");
+  const eligibility = await eligibilityFor(s, rankMap, courses.map((c) => c.min_rank_code));
+  if (courses.some((c) => eligibility.get(c.min_rank_code) !== true)) fail(403, "rank_required", "獎銜資格不符，無法領取這門課程");
   if (courses.some((c) => state.enrolled.has(c.id) || state.pending.has(c.id))) fail(409, "duplicate", "已有已開通或待審核的訂單，請勿重複送出");
   const free = courses.filter((c) => c.price_twd === 0);
   const paid = courses.filter((c) => c.price_twd > 0);
@@ -358,16 +395,37 @@ async function reviewOrder(ctx: Ctx, id: string, body: { approve?: unknown; reas
   return (await hydrateOrders(ctx.db, [row!]))[0];
 }
 
+type MediaType = "demo" | "youtube" | "mux";
+
+/** 接受 YouTube 網址（watch、youtu.be、shorts、embed）或 11 碼 ID。 */
+export function youtubeId(input: string): string | null {
+  const s = input.trim();
+  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return s;
+  try {
+    const u = new URL(s);
+    const host = u.hostname.replace(/^(www|m)\./, "");
+    let id: string | null = null;
+    if (host === "youtu.be") id = u.pathname.slice(1);
+    else if (host === "youtube.com" || host === "youtube-nocookie.com")
+      id = u.searchParams.get("v") ?? /^\/(?:shorts|embed|live)\/([^/?#]+)/.exec(u.pathname)?.[1] ?? null;
+    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- router ----------
 
 type Handler = (ctx: Ctx, params: string[]) => Promise<unknown>;
 const routes: [string, RegExp, Handler][] = [
   ["GET", /^\/health$/, async () => ({ ok: true })],
   ["GET", /^\/ranks$/, async (ctx) => [...(await ranks(ctx.db)).values()]],
+  ["GET", /^\/config$/, async (ctx) => ({ demoLogin: demoEnabled(ctx.env) })],
   [
     "GET",
     /^\/demo-members$/,
     async (ctx) => {
+      if (!demoEnabled(ctx.env)) fail(404, "not_found", "找不到這個 API");
       const rankMap = await ranks(ctx.db);
       return DEMO_MEMBERS.map((m) => ({ sub: m.sub, name: m.name, role: m.role, rank: rankMap.get(m.rankCode), demo: true }));
     },
@@ -376,6 +434,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/auth\/demo$/,
     async (ctx) => {
+      if (!demoEnabled(ctx.env)) fail(404, "not_found", "找不到這個 API");
       const { sub } = await readJson<{ sub?: string }>(ctx.req);
       const m = DEMO_MEMBERS.find((x) => x.sub === sub) ?? fail(400, "unknown_member", "請選擇測試會員");
       const token = randomToken();
@@ -384,7 +443,7 @@ const routes: [string, RegExp, Handler][] = [
         .prepare("INSERT INTO sessions (token_hash, member_sub, display_name, rank_code, role, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(await sha256(token), m.sub, m.name, m.rankCode, m.role, iso(expires))
         .run();
-      const session = { sub: m.sub, name: m.name, rankCode: m.rankCode, role: m.role };
+      const session: Session = { kind: "demo", sub: m.sub, name: m.name, rankCode: m.rankCode, role: m.role };
       return { token, member: memberOf(session, await ranks(ctx.db)) };
     },
   ],
@@ -437,7 +496,12 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先領取這門課程");
-      if (lesson.media_type !== "demo") fail(501, "media_not_ready", "正式影片尚未接入");
+      if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref };
+      if (lesson.media_type === "mux" && lesson.media_ref) {
+        const url = await muxPlaybackUrl(ctx.env, lesson.media_ref);
+        if (!url) fail(503, "media_not_ready", "影片授權服務尚未設定，請稍後再試");
+        return { kind: "hls", url };
+      }
       return { kind: "demo", url: DEMO_VIDEO_PATH, label: "示範影片（非正式課程內容）" };
     },
   ],
@@ -514,6 +578,30 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   ["POST", /^\/admin\/orders\/([\w-]+)\/review$/, async (ctx, [id]) => reviewOrder(ctx, id, await readJson(ctx.req))],
+  [
+    "PATCH",
+    /^\/admin\/lessons\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ mediaType?: unknown; mediaRef?: unknown }>(ctx.req);
+      const type = body.mediaType;
+      const ref = typeof body.mediaRef === "string" ? body.mediaRef.trim() : "";
+      if (type !== "demo" && type !== "youtube" && type !== "mux") fail(400, "invalid_media", "影片來源不正確");
+      let mediaRef: string | null = null;
+      if (type === "youtube") {
+        mediaRef = youtubeId(ref) ?? fail(400, "invalid_youtube", "請貼上 YouTube 影片網址或 11 碼影片 ID");
+      } else if (type === "mux") {
+        if (!/^[A-Za-z0-9]{10,80}$/.test(ref)) fail(400, "invalid_mux", "請貼上 Mux Playback ID");
+        mediaRef = ref;
+      }
+      const [res] = await ctx.db.batch([
+        ctx.db.prepare("UPDATE lessons SET media_type = ?, media_ref = ? WHERE id = ?").bind(type, mediaRef, id),
+        audit(ctx.db, admin.sub, "lesson.media", "lesson", id, String(type)),
+      ]);
+      if (res.meta?.changes === 0) fail(404, "not_found", "找不到這個章節");
+      return { ok: true, mediaType: type, mediaRef };
+    },
+  ],
   ["GET", /^\/admin\/courses$/, async (ctx) => (requireAdmin(ctx), listCourses(ctx, true))],
   [
     "PATCH",
@@ -583,5 +671,5 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
 }
 
 async function context(req: Request, env: Env, url: URL): Promise<Ctx> {
-  return { env, db: env.DB, req, url, platform: platformOf(req), session: await loadSession(env.DB, req) };
+  return { env, db: env.DB, req, url, platform: platformOf(req), session: await loadSession(env, req) };
 }

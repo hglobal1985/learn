@@ -3,45 +3,51 @@
     "name": "寰宇行動大學",
     "slug": "learn",
     "scheme": "learn",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "plugins": [
       "expo-router",
       "expo-document-picker",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-video",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "backgroundColor": "#F6F5F0",
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#121515"
+          }
+        }
+      ]
     ],
     "web": {
       "bundler": "metro",
       "output": "single",
-      "name": "寰宇行動大學"
+      "name": "寰宇行動大學",
+      "favicon": "./assets/favicon.png",
+      "lang": "zh-Hant"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hglobal1985.learn",
-      "associatedDomains": [
-        "applinks:learn.hglobal1985.com"
-      ]
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.hglobal1985.learn",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "learn.hglobal1985.com"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
-      ]
-    }
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2F5D3A"
+      }
+    },
+    "icon": "./assets/icon.png"
   }
 }

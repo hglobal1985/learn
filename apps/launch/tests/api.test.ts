@@ -6,7 +6,7 @@ import type { Env } from "../src/d1.ts";
 import { createTestDb } from "./sqlite-d1.ts";
 
 function setup() {
-  const env: Env = { DB: createTestDb() };
+  const env: Env = { DB: createTestDb(), DEMO_LOGIN: "on" };
   const call = async <T = unknown,>(method: string, path: string, opts: { token?: string; body?: unknown; platform?: string } = {}) => {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (opts.token) headers.authorization = `Bearer ${opts.token}`;
@@ -133,7 +133,7 @@ test("未知路徑 404、錯誤方法 405、壞 JSON 400", async () => {
   const { call } = setup();
   assert.equal((await call("GET", "/nope")).status, 404);
   assert.equal((await call("PUT", "/courses")).status, 405);
-  const env: Env = { DB: createTestDb() };
+  const env: Env = { DB: createTestDb(), DEMO_LOGIN: "on" };
   const res = await handleApi(new Request("https://x/api/v2/auth/demo", { method: "POST", body: "{" }), env);
   assert.equal(res.status, 400);
 });

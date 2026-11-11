@@ -32,7 +32,7 @@
 2. ✅ 畫面：課程列表／詳情、領課／結帳、訂單、通知、學習播放（先用示範播放器）、我的學習、管理員訂單審核與課程獎銜設定、模擬登入。
 3. ✅ 付費流程以平台判斷：Web 顯示，iOS/Android 隱藏。
 4. ✅ 後端：重新設計資料表，新增課程、章節、獎銜、訂單、通知 API。
-5. 下一步：中央會員、Mux 簽名播放、YouTube、帳號刪除入口、上架資料。
+5. ✅（程式完成，待實機與金鑰）中央會員、Mux 簽名播放、YouTube、帳號刪除入口、上架資料。
 6. 部署驗證：實際用瀏覽器與裝置測試後，才宣稱完成。
 
 ## 注意
@@ -58,5 +58,17 @@
 - 測試：`npm test -w @learn/launch`（11 項，node:sqlite 模擬 D1）；Playwright 在本機 `wrangler dev` 走完整流程（免費領取→播放→完成章節→加入購物車結帳→管理員審核→學員收到通知→調整獎銜→獎銜不足被拒→刪除資料）全部通過、無主控台錯誤。
 - 部署指令：`npm run deploy -w @learn/launch`（輸出 Web → `scripts/embed-static.mjs` 把 `apps/mobile/dist` 打包進 Worker → 套 migration → `wrangler deploy`）。雲端 session 的 Cloudflare 權限由環境的 network secret 注入，執行時設 `CLOUDFLARE_API_TOKEN=proxy-injected`、`CLOUDFLARE_ACCOUNT_ID=650a3b03d439a5f517b4f8a28244f9fe`。
 - 為何不用 Workers Static Assets：靜態資源上傳 API 需要另一把一次性 JWT 放在 Authorization，雲端 proxy 會覆蓋成 API Token 導致 401。所以改為把網頁檔（約 1.7MB，gzip 後整個 Worker 約 830KB）打包進 Worker，由 `src/site.ts` 提供（含 SPA 回退、快取標頭、Range）。若之後改在本機部署，可以改回 assets。
-- 2026-11-11 已部署：Worker `learn` 版本 `b88f97e5-d773-409c-a565-c2775f044684`，`learn.hglobal1985.com`（custom domain）；`/privacy` 仍由 `learn-legal` 提供（已確認）。已用 Playwright（iPhone 13 尺寸）對正式站跑完整流程全部通過、示範影片可載入、Range 回 206。
+- 2026-11-11 已部署：Worker `learn` 版本 `3b435814-bfaf-4218-b879-6333dcb090b7`，`learn.hglobal1985.com`（custom domain）；`/privacy` 仍由 `learn-legal` 提供（已確認）。已用 Playwright（iPhone 13 尺寸）對正式站跑完整流程全部通過、示範影片可載入、Range 回 206。
 - 尚未驗證：iOS/Android 實機或模擬器（此環境沒有）。
+
+## 第 5 步完成紀錄（2026-11-11）
+- **中央會員登入**：`apps/mobile/src/api/central.ts`（依會員中心串接說明：nonce→登入中繼→`/v1/auth/google`；換發加鎖；App 用 SecureStore、Web refresh 用 sessionStorage）。Web 回傳頁 `/auth/done`、App 深層連結 `learn://auth/google`，兩者已確認會員中心接受（會導到 Google 登入頁）。實際用 Google 帳號完成登入**尚未驗證**（需要真人帳號）。
+- **後端驗證**：`apps/launch/src/central.ts` 驗 RS256／typ／iss／aud／app_id=learn／exp，只用 `sub`。顯示名稱取自 `/v1/me/profile`；管理員＝中央職務 `super_admin`／`secretary`／`course`（`/v1/admin/me`）；獎銜資格用 `/v1/eligibility/check-batch`，失敗一律不符合，只做 10 分鐘記憶體快取，**不存資料庫、不寫日誌**。中央會員的 `Member.rank` 一律為 null。
+- **獎銜代碼**：migration `0003_central_rank_ladder.sql` 改成中央的 33 階代碼（none 顯示為「不限獎銜」）。中央若新增獎銜，要再加 migration。
+- **模擬登入開關**：`wrangler.jsonc` `vars.DEMO_LOGIN`（目前 "on"）。改 "off" 後模擬帳號 API 回 404，舊模擬 token 失效。上架前必須關閉。
+- **影片**：管理員在「我的→課程設定→各堂影片」設定每堂 `demo`／`youtube`（貼網址或 ID）／`mux`（Playback ID）。學員端：YouTube 用 youtube-nocookie 內嵌（App 用 WebView）；Mux 由後端簽 6 小時 JWT 回傳 HLS 網址（expo-video 播放）。**Mux 需要業主在 Cloudflare 設定 Secrets `MUX_SIGNING_KEY_ID`、`MUX_SIGNING_PRIVATE_KEY`**，未設定時回 503 且不洩漏 Playback ID。Chrome 桌機對 HLS 的支援要實測。
+- **App 狀態**：`src/features/app-gate.tsx` 啟動與回前景查 `/v1/apps/learn/config`（paused 維護中、killed 停止、min_version 要求更新）。
+- **刪除帳號**：「我的→會員中心」開 `https://id.hglobal1985.com/my/edit`（官方刪除流程）；「我的→刪除學習資料」刪本 App 資料並登出。隱私權政策與新的客服頁 `/support`（含 `#delete`）已更新部署（Worker `learn-legal`，設定檔 `apps/legal/wrangler.jsonc`）。
+- **上架準備**：`apps/mobile/app.json`（版本 0.2.0、圖示、啟動畫面、加密聲明）、`apps/mobile/eas.json`（preview＝APK、production＝自動遞增）、原創圖示 `apps/mobile/assets/`。`expo prebuild` 已驗證可產生 iOS/Android 原生專案。商店文字、隱私問卷、送審備註、Google Play 12 人 14 天封閉測試步驟見 `docs/store-listing.md`。
+- **待業主決定**：會員中心規範禁止畫面出現「寰宇」等字樣，與 App 名稱「寰宇行動大學」衝突（詳見 store-listing.md）。
+- **共用登入（SSO，串接說明 3.5）**：尚未實作（選做）。

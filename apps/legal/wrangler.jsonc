@@ -1,0 +1,13 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // 公開法律與客服頁（/privacy、/support），獨立於主網站的 Worker。
+  "name": "learn-legal",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "rules": [{ "type": "Text", "globs": ["**/*.html"], "fallthrough": false }],
+  "routes": [
+    { "pattern": "learn.hglobal1985.com/privacy*", "zone_name": "hglobal1985.com" },
+    { "pattern": "learn.hglobal1985.com/support*", "zone_name": "hglobal1985.com" }
+  ]
+}

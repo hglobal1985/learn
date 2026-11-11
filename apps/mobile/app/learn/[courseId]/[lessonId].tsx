@@ -1,27 +1,29 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { api, resolveUrl, type CourseDetail, type Playback } from "@/api/client";
-import { DemoPlayer } from "@/features/player/demo-player";
+import { api, type CourseDetail, type Playback } from "@/api/client";
+import { LessonPlayer } from "@/features/player/lesson-player";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
-import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Screen, Section } from "@/ui";
 
 export default function LessonScreen() {
   const { courseId, lessonId } = useLocalSearchParams<{ courseId: string; lessonId: string }>();
-  const { invalidate } = useSession();
+  const { invalidate, ready, member } = useSession();
   const course = useApi<CourseDetail>(`/courses/${courseId}`);
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playError, setPlayError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 等登入狀態載入完成再要播放授權（直接開啟連結或重新整理時）。
   useEffect(() => {
+    if (!ready) return;
     setPlayback(null);
     setPlayError(null);
     api<Playback>("GET", `/courses/${courseId}/lessons/${lessonId}/playback`)
       .then(setPlayback)
       .catch((e: Error) => setPlayError(e.message));
-  }, [courseId, lessonId]);
+  }, [courseId, lessonId, ready, member?.sub]);
 
   const c = course.data;
   if (!c) return <Screen header={false}>{course.loading ? <LoadingView /> : <ErrorView message={course.error ?? "找不到課程"} onRetry={course.reload} />}</Screen>;
@@ -46,8 +48,7 @@ export default function LessonScreen() {
   return (
     <Screen header={false}>
       <Stack.Screen options={{ title: c.title }} />
-      {playback ? <DemoPlayer key={playback.url} url={resolveUrl(playback.url)} /> : playError ? <NoticeBox tone="danger" text={playError} /> : <LoadingView />}
-      {playback ? <Pill label={playback.label} tone="warning" /> : null}
+      {playback ? <LessonPlayer playback={playback} /> : playError ? <NoticeBox tone="danger" text={playError} /> : <LoadingView />}
       <View style={{ gap: space.xs }}>
         <AppText variant="caption" tone="muted">
           第 {lesson.position} 堂 · {lesson.minutes} 分鐘
