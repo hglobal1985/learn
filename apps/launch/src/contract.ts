@@ -14,6 +14,12 @@ export type Member = {
   rank: Rank | null;
   role: Role;
   demo: boolean;
+  /** 職務名稱（中央職務＋本 App 的窗口身分），顯示用。 */
+  titles: string[];
+  /** 是否有任何報名審核權限。 */
+  reviewer: boolean;
+  /** 已核准的中心名稱（沒有則 null）。 */
+  center: string | null;
 };
 
 export type EnrollmentState = "opened" | "pending" | null;
@@ -33,6 +39,15 @@ export type CourseSummary = {
   lessonCount: number;
   totalMinutes: number;
   eligible: boolean;
+  /** 指導單位、主辦單位（空字串表示未設定）。 */
+  guidanceUnit: string;
+  hostUnit: string;
+  /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
+  freeNow: boolean;
+  originalPriceTwd: number | null;
+  freeUntil: string | null;
+  /** 有場次的系列課程：需選場次報名。 */
+  hasRuns: boolean;
   enrollment: EnrollmentState;
   completedLessons: number;
 };
@@ -48,21 +63,89 @@ export type Lesson = {
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */
   start: number | null;
   end: number | null;
+  /** 屬於某一場次（null＝整個系列共用）；locked＝尚未報名該場。 */
+  runId: string | null;
+  locked: boolean;
   /** 只有管理員會拿到（編輯影片來源用）。 */
   media?: { type: MediaType; ref: string | null };
 };
-export type CourseDetail = CourseSummary & { description: string; lessons: Lesson[] };
+export type CourseRun = {
+  id: string;
+  title: string;
+  startsAt: string | null;
+  location: string;
+  registerUntil: string | null;
+  capacity: number | null;
+  remaining: number | null;
+  priceTwd: number | null;
+  free: boolean;
+  status: "open" | "closed";
+  open: boolean;
+  enrollment: EnrollmentState;
+};
+export type CourseDetail = CourseSummary & {
+  description: string;
+  lessons: Lesson[];
+  runs: CourseRun[];
+  /** 只有管理員會拿到。 */
+  admin?: { hostCenterKey: string | null; freeFrom: string | null; reviewGroupId: string | null; basePriceTwd: number };
+};
 
 export type OrderStatus = "pending" | "opened" | "rejected";
+export type ReviewAction = "paid" | "vip" | "reject" | "defer" | "revoke";
+export const REVIEW_REASONS = {
+  unpaid: "款項未入帳",
+  wrong_amount: "款項金額不正確",
+  rank: "獎銜不符合",
+  unknown_member: "查無此人，請到會員中心補填個人資料",
+  other: "其他原因",
+} as const;
+export type ReviewReason = keyof typeof REVIEW_REASONS;
+export type OrderEvent = {
+  id: string;
+  action: "submit" | ReviewAction | "message" | "note";
+  actorName: string;
+  actorTitle: string;
+  mine: boolean;
+  reason: string | null;
+  message: string;
+  /** 私人備註：只有審核人員會拿到。 */
+  note?: string;
+  createdAt: string;
+};
 export type Order = {
   id: string;
   status: OrderStatus;
+  deferred: boolean;
+  revoked: boolean;
   totalTwd: number;
+  paidTwd: number | null;
+  payMethod: "cash" | "transfer" | "vip" | "online" | "free" | null;
   rejectReason: string | null;
   createdAt: string;
   reviewedAt: string | null;
   memberName: string;
-  items: { courseId: string; title: string; priceTwd: number }[];
+  centerLabel: string;
+  hglobal: boolean;
+  items: { courseId: string; runId: string | null; title: string; priceTwd: number }[];
+  /** 以下只在單筆明細提供。 */
+  events?: OrderEvent[];
+  /** 這位學員所屬中心的收費窗口姓名。 */
+  collectors?: string[];
+  canReview?: boolean;
+  canRevoke?: boolean;
+};
+
+export type Duty = "register" | "collect" | "review";
+export const DUTY_LABELS: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
+export type ReviewGroup = {
+  id: string;
+  name: string;
+  /** null＝總部群組（只有秘書與超級管理員可管理）。 */
+  ownerCenter: string | null;
+  courses: { id: string; title: string }[];
+  members: { centerKey: string; centerLabel: string; memberSub: string; memberName: string; duty: Duty }[];
+  canManage: boolean;
 };
 
 export type Notice = { id: string; title: string; body: string; link: string; read: boolean; createdAt: string };
@@ -87,8 +170,13 @@ export type MuxAssetPage = { assets: MuxAsset[]; nextCursor: string | null };
 
 export type ApiError = { error: { code: string; message: string } };
 
-export const DEMO_MEMBERS: { sub: string; name: string; rankCode: string; role: Role }[] = [
-  { sub: "demo-student", name: "測試學員", rankCode: "platinum", role: "student" },
-  { sub: "demo-silver", name: "測試學員（銀章）", rankCode: "silver", role: "student" },
-  { sub: "demo-admin", name: "測試管理員", rankCode: "diamond", role: "admin" },
+export const HQ_UNIT = "寰宇總部";
+
+export const DEMO_MEMBERS: { sub: string; name: string; rankCode: string; role: Role; roles?: string[]; hglobal?: boolean; center?: string }[] = [
+  { sub: "demo-student", name: "測試學員", rankCode: "platinum", role: "student", hglobal: true, center: "台北中心" },
+  { sub: "demo-silver", name: "測試學員（銀章）", rankCode: "silver", role: "student", hglobal: true, center: "台中中心" },
+  { sub: "demo-outsider", name: "測試學員（非寰宇）", rankCode: "none", role: "student" },
+  { sub: "demo-desk", name: "測試窗口", rankCode: "gold", role: "student", hglobal: true, center: "台北中心" },
+  { sub: "demo-president", name: "測試會長", rankCode: "emerald", role: "student", roles: ["president"], hglobal: true, center: "台北中心" },
+  { sub: "demo-admin", name: "測試管理員", rankCode: "diamond", role: "admin", roles: ["super_admin"], hglobal: true },
 ];

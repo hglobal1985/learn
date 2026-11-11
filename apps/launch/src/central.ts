@@ -157,3 +157,35 @@ export async function rankEligibility(sub: string, token: string, minRanks: stri
   });
   return out;
 }
+
+export type MemberContext = { roles: string[]; hglobal: boolean; center: { key: string; label: string } | null };
+const NO_CONTEXT: MemberContext = { roles: [], hglobal: false, center: null };
+
+/** 與會員中心相同的中心比對鍵（normTerm）。 */
+export const centerKey = (label: string) => label.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
+
+/** 登入者自己的職務、是否為已驗證的寰宇、已核准的中心（GET /v1/eligibility/context）。查不到一律視為沒有。 */
+export async function memberContext(sub: string, token: string): Promise<MemberContext> {
+  return cached(`ctx:${sub}`, 60_000, async () => {
+    const res = await callCentral(token, "/v1/eligibility/context");
+    if (!res?.ok) return NO_CONTEXT;
+    const b = (await res.json().catch(() => null)) as { member_id?: string; roles?: { role?: string }[]; hglobal_verified?: boolean; center?: { key?: string; label?: string } | null } | null;
+    if (!b || b.member_id !== sub) return NO_CONTEXT;
+    const label = typeof b.center?.label === "string" ? b.center.label.trim().slice(0, 100) : "";
+    return {
+      roles: (b.roles ?? []).map((r) => String(r.role ?? "")).filter(Boolean),
+      hglobal: b.hglobal_verified === true,
+      center: label ? { key: typeof b.center?.key === "string" && b.center.key ? b.center.key : centerKey(label), label } : null,
+    };
+  });
+}
+
+/** 中心清單（會員中心的地區教育中心詞庫），供主辦單位與審核群組的下拉選單。 */
+export async function centerList(token: string): Promise<string[]> {
+  return cached("centers", 300_000, async () => {
+    const res = await callCentral(token, "/v1/vocab/suggestions?pool=education_center&q=");
+    if (!res?.ok) return [];
+    const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;
+    return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, 300);
+  });
+}

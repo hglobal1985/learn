@@ -43,37 +43,44 @@ test("免費課程立即開通，重複領取被拒絕，並通知學員", async
   assert.equal(notices.data[0].title, "課程已開通");
 });
 
-test("混合購物車：免費先開通、付費待審並通知管理員；審核通過後開通並通知學員", async () => {
+test("一次報名多門：免費立即開通、付費待審；沒有窗口時通知總部；審核通過後開通並通知學員", async () => {
   const { call, login } = setup();
   const student = await login("demo-student");
   const admin = await login("demo-admin");
   const r = await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["start", "lead"] } });
   assert.equal(r.status, 200);
+  assert.equal(r.data.length, 2, "每門課各一筆報名");
   const paid = r.data.find((o) => o.status === "pending")!;
   assert.equal(paid.totalTwd, 1280);
+  assert.equal(paid.centerLabel, "台北中心");
   assert.equal(r.data.find((o) => o.status === "opened")!.items[0].courseId, "start");
-  assert.equal((await call("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).status, 409, "待審訂單不可重複送出");
+  assert.equal((await call("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).status, 409, "待審報名不可重複送出");
   const adminNotices = await call<Notice[]>("GET", "/notifications", { token: admin });
-  assert.equal(adminNotices.data.filter((n) => n.title === "有新的報名待審核").length, 1);
-  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: student, body: { approve: true } })).status, 403);
-  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true }, platform: "android" })).status, 403);
-  const ok = await call<Order>("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true } });
+  assert.equal(adminNotices.data.filter((n) => n.title.startsWith("有新的報名待審核")).length, 1);
+  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: student, body: { action: "paid" } })).status, 404, "學員看不到審核功能");
+  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { action: "paid" }, platform: "android" })).status, 403);
+  const ok = await call<Order>("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { action: "paid", payMethod: "transfer" } });
   assert.equal(ok.data.status, "opened");
-  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { approve: true } })).status, 409);
+  assert.equal(ok.data.paidTwd, 1280);
+  assert.equal(ok.data.payMethod, "transfer");
+  assert.equal((await call("POST", `/admin/orders/${paid.id}/review`, { token: admin, body: { action: "paid" } })).status, 409);
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: student })).data.enrollment, "opened");
   const notes = await call<Notice[]>("GET", "/notifications", { token: student });
   assert.equal(notes.data[0].title, "繳費確認完成，課程已開通");
 });
 
-test("拒絕需填原因且不開通", async () => {
+test("退回需選原因且不開通；退回後可以重新報名", async () => {
   const { call, login } = setup();
   const student = await login("demo-student");
   const admin = await login("demo-admin");
   const [order] = (await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["share"] } })).data;
-  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: admin, body: { approve: false } })).status, 400);
-  const r = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: admin, body: { approve: false, reason: "尚未查到款項" } });
+  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: admin, body: { action: "reject" } })).status, 400);
+  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: admin, body: { action: "reject", reasonCode: "other" } })).status, 400, "其他原因需填寫");
+  const r = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: admin, body: { action: "reject", reasonCode: "unpaid" } });
   assert.equal(r.data.status, "rejected");
+  assert.equal(r.data.rejectReason, "款項未入帳");
   assert.equal((await call<CourseDetail>("GET", "/courses/share", { token: student })).data.enrollment, null);
+  assert.equal((await call("POST", "/orders", { token: student, body: { courseIds: ["share"] } })).status, 200);
 });
 
 test("獎銜不足、下架課程不能領；管理員可調整獎銜限制", async () => {
@@ -87,6 +94,7 @@ test("獎銜不足、下架課程不能領；管理員可調整獎銜限制", as
   await call("PATCH", "/admin/courses/talk", { token: admin, body: { status: "draft" } });
   assert.equal((await call("POST", "/orders", { token: silver, body: { courseIds: ["talk"] } })).status, 409);
   assert.equal((await call("GET", "/courses/talk", { token: silver })).status, 404);
+  assert.equal((await call("GET", "/courses/start")).status, 401, "未登入不能看課程介紹");
   assert.equal((await call("PATCH", "/admin/courses/talk", { token: silver, body: { status: "published" } })).status, 403);
   assert.equal((await call("PATCH", "/admin/courses/talk", { token: admin, body: { minRankCode: "nope" } })).status, 400);
 });

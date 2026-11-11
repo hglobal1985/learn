@@ -1,5 +1,12 @@
 import {
   DEMO_MEMBERS,
+  HQ_UNIT,
+  REVIEW_REASONS,
+  type Duty,
+  type OrderEvent,
+  type ReviewAction,
+  type ReviewGroup,
+  type ReviewReason,
   type ClientPlatform,
   type CourseDetail,
   type CourseSummary,
@@ -8,7 +15,7 @@ import {
   type Order,
   type Rank,
 } from "./contract.ts";
-import { displayName, isAdmin, looksLikeJwt, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, displayName, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { audioUrl, verifyAudioUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
@@ -37,9 +44,8 @@ const fail = (status: number, code: string, message: string): never => {
 };
 
 /** demo：模擬會員（rankCode 為示範獎銜）；central：中央會員（不持有獎銜，資格每次向中央查詢）。 */
-type Session =
-  | { kind: "demo"; sub: string; name: string; rankCode: string; role: "student" | "admin" }
-  | { kind: "central"; sub: string; name: string; role: "student" | "admin"; token: string };
+type SessionBase = { sub: string; name: string; role: "student" | "admin"; roles: string[]; hglobal: boolean; center: { key: string; label: string } | null };
+type Session = SessionBase & ({ kind: "demo"; rankCode: string } | { kind: "central"; token: string });
 type Ctx = { env: Env; db: D1Database; req: Request; url: URL; platform: ClientPlatform; session: Session | null };
 
 // ---------- helpers ----------
@@ -92,8 +98,10 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [name, admin] = await Promise.all([displayName(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS)]);
-    return { kind: "central", sub, name, role: admin ? "admin" : "student", token: jwt };
+    const [name, superAdmin, mc] = await Promise.all([displayName(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
+    // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
+    const admin = superAdmin || mc.roles.includes("super_admin") || mc.roles.includes("secretary");
+    return { kind: "central", sub, name, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
   }
   if (!demoEnabled(env)) return null;
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(auth);
@@ -102,7 +110,18 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
     .prepare("SELECT member_sub, display_name, rank_code, role FROM sessions WHERE token_hash = ? AND expires_at > ?")
     .bind(await sha256(m[1]), iso())
     .first<{ member_sub: string; display_name: string; rank_code: string; role: "student" | "admin" }>();
-  return row ? { kind: "demo", sub: row.member_sub, name: row.display_name, rankCode: row.rank_code, role: row.role } : null;
+  if (!row) return null;
+  const d = DEMO_MEMBERS.find((x) => x.sub === row.member_sub);
+  return {
+    kind: "demo",
+    sub: row.member_sub,
+    name: row.display_name,
+    rankCode: row.rank_code,
+    role: row.role,
+    roles: d?.roles ?? [],
+    hglobal: d?.hglobal ?? false,
+    center: d?.center ? { key: centerKey(d.center), label: d.center } : null,
+  };
 }
 
 async function ranks(db: D1Database): Promise<Map<string, Rank>> {
@@ -114,10 +133,13 @@ async function ranks(db: D1Database): Promise<Map<string, Rank>> {
   return new Map(results.map((r) => [r.code, { code: r.code, name: r.name, order: r.sort_order }]));
 }
 
-function memberOf(s: Session, rankMap: Map<string, Rank>): Member {
+const ROLE_TITLES: Record<string, string> = { super_admin: "超級管理員", secretary: "總部秘書", president: "會長", sound: "音控", course: "課務", reviewer: "審核員" };
+function memberOf(s: Session, rankMap: Map<string, Rank>, extra: { duties?: string[] } = {}): Member {
+  const titles = [...s.roles.map((r) => ROLE_TITLES[r]).filter(Boolean), ...(extra.duties ?? [])];
+  const base = { sub: s.sub, name: s.name, role: s.role, titles: [...new Set(titles)], reviewer: s.role === "admin" || s.roles.includes("president") || !!extra.duties?.length, center: s.center?.label ?? null };
   // 中央會員的獎銜屬 Amway 資料，App 不取得也不顯示；只有模擬會員帶示範獎銜。
-  if (s.kind === "central") return { sub: s.sub, name: s.name, role: s.role, rank: null, demo: false };
-  return { sub: s.sub, name: s.name, role: s.role, rank: rankMap.get(s.rankCode) ?? null, demo: true };
+  if (s.kind === "central") return { ...base, rank: null, demo: false };
+  return { ...base, rank: rankMap.get(s.rankCode) ?? null, demo: true };
 }
 
 /** 各最低獎銜是否符合：模擬會員比對示範獎銜；中央會員向中央查詢（fail closed）。 */
@@ -136,10 +158,10 @@ function audit(db: D1Database, actor: string, action: string, type: string, id: 
     .bind(crypto.randomUUID(), actor, action, type, id, detail);
 }
 
-function notify(db: D1Database, to: { sub: string } | { role: "admin" }, title: string, body: string, link: string): D1PreparedStatement {
+function notify(db: D1Database, to: { sub: string } | { role: "admin" } | { role: "president"; centerKey: string }, title: string, body: string, link: string): D1PreparedStatement {
   return db
-    .prepare("INSERT INTO notifications (id, recipient_sub, recipient_role, title, body, link) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(crypto.randomUUID(), "sub" in to ? to.sub : null, "role" in to ? to.role : null, title, body, link);
+    .prepare("INSERT INTO notifications (id, recipient_sub, recipient_role, recipient_center_key, title, body, link) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), "sub" in to ? to.sub : null, "role" in to ? to.role : null, "centerKey" in to ? to.centerKey : null, title, body, link);
 }
 
 // ---------- courses ----------
@@ -155,52 +177,74 @@ type CourseRow = {
   theme: string;
   status: "draft" | "published" | "archived";
   description?: string;
+  guidance_unit: string;
+  host_unit: string;
+  host_center_key: string | null;
+  free_from: string | null;
+  free_until: string | null;
+  review_group_id: string | null;
+  run_count: number;
   lesson_count: number;
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id,
+  (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
 
+type RunRow = {
+  id: string;
+  course_id: string;
+  title: string;
+  starts_at: string | null;
+  location: string;
+  register_until: string | null;
+  capacity: number | null;
+  price_twd: number | null;
+  status: "open" | "closed";
+};
+
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  if (!sub) return { enrolled: new Set<string>(), pending: new Set<string>(), done: new Map<string, number>() };
+  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), done: new Map<string, number>() };
+  if (!sub) return empty;
   const [e, p, d] = await db.batch([
-    db.prepare("SELECT course_id FROM enrollments WHERE member_sub = ?").bind(sub),
-    db
-      .prepare(
-        "SELECT DISTINCT i.course_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending'",
-      )
-      .bind(sub),
+    db.prepare("SELECT course_id, run_id FROM enrollments WHERE member_sub = ?").bind(sub),
+    db.prepare("SELECT DISTINCT i.course_id, i.run_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending'").bind(sub),
     db.prepare("SELECT course_id, COUNT(*) AS n FROM lesson_progress WHERE member_sub = ? GROUP BY course_id").bind(sub),
   ]);
-  return {
-    enrolled: new Set((e.results as { course_id: string }[]).map((r) => r.course_id)),
-    pending: new Set((p.results as { course_id: string }[]).map((r) => r.course_id)),
-    done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])),
-  };
+  // 鍵值：課程 ID（任何一場）與「課程 ID|場次 ID」。
+  const keys = (rows: unknown[]) => new Set((rows as { course_id: string; run_id: string }[]).flatMap((r) => [r.course_id, `${r.course_id}|${r.run_id}`]));
+  return { enrolled: keys(e.results), pending: keys(p.results), done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])) };
 }
+type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
-function summarize(
-  row: CourseRow,
-  ctx: Ctx,
-  rankMap: Map<string, Rank>,
-  state: Awaited<ReturnType<typeof memberCourseState>>,
-  eligibility: Map<string, boolean>,
-): CourseSummary {
+const inFreeWindow = (row: { free_from: string | null; free_until: string | null }, now = iso()) =>
+  !!(row.free_from || row.free_until) && (!row.free_from || row.free_from <= now) && (!row.free_until || now < row.free_until);
+
+function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: MemberState, eligibility: Map<string, boolean>): CourseSummary {
   const minRank = rankMap.get(row.min_rank_code) ?? { code: row.min_rank_code, name: row.min_rank_code, order: 9999 };
+  const freeNow = row.price_twd > 0 && inFreeWindow(row);
+  const price = freeNow ? 0 : row.price_twd;
+  const web = ctx.platform === "web";
   return {
     id: row.id,
     title: row.title,
     subtitle: row.subtitle,
     teacher: row.teacher,
     category: row.category,
-    priceTwd: ctx.platform === "web" ? row.price_twd : null,
-    free: row.price_twd === 0,
+    priceTwd: web ? price : null,
+    originalPriceTwd: web ? row.price_twd : null,
+    free: price === 0,
+    freeNow,
+    freeUntil: freeNow ? row.free_until : null,
     minRank,
     theme: row.theme,
     status: row.status,
+    guidanceUnit: row.guidance_unit,
+    hostUnit: row.host_unit,
+    hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
     eligible: eligibility.get(row.min_rank_code) === true,
@@ -220,24 +264,62 @@ async function listCourses(ctx: Ctx, all: boolean): Promise<CourseSummary[]> {
   return results.map((r) => summarize(r, ctx, rankMap, state, eligibility));
 }
 
+async function runUsage(db: D1Database, courseId: string): Promise<Map<string, number>> {
+  const { results } = await db
+    .prepare(
+      "SELECT i.run_id, COUNT(*) AS n FROM order_items i JOIN orders o ON o.id = i.order_id WHERE i.course_id = ? AND i.run_id <> '' AND o.status IN ('pending', 'opened') GROUP BY i.run_id",
+    )
+    .bind(courseId)
+    .all<{ run_id: string; n: number }>();
+  return new Map(results.map((r) => [r.run_id, r.n]));
+}
+
+function runOpen(r: RunRow, used: number, now = iso()): boolean {
+  return r.status === "open" && (!r.register_until || now < r.register_until) && (r.capacity == null || used < r.capacity);
+}
+
+/** 課程介紹頁：需登入（未登入只能看課程清單）。 */
 async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
+  const s = requireMember(ctx);
   const row = await ctx.db.prepare(`${COURSE_SELECT} WHERE c.id = ?`).bind(id).first<CourseRow>();
-  if (!row || (row.status !== "published" && ctx.session?.role !== "admin")) fail(404, "not_found", "找不到這門課程");
-  const [rankMap, state, lessons, done] = await Promise.all([
+  if (!row || (row.status !== "published" && s.role !== "admin")) return fail(404, "not_found", "找不到這門課程");
+  const [rankMap, state, lessons, done, runs, usage] = await Promise.all([
     ranks(ctx.db),
-    memberCourseState(ctx.db, ctx.session?.sub),
+    memberCourseState(ctx.db, s.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, run_id FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>(),
-    ctx.session
-      ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(ctx.session.sub, id).all<{ lesson_id: string }>()
-      : Promise.resolve({ results: [] as { lesson_id: string }[] }),
+      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; run_id: string | null }>(),
+    ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>(),
+    ctx.db.prepare("SELECT * FROM course_runs WHERE course_id = ? ORDER BY COALESCE(starts_at, created_at) DESC").bind(id).all<RunRow>(),
+    runUsage(ctx.db, id),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
+  const freeNow = row.price_twd > 0 && inFreeWindow(row);
+  const web = ctx.platform === "web";
+  const admin = s.role === "admin";
   return {
-    ...summarize(row!, ctx, rankMap, state, await eligibilityFor(ctx.session, rankMap, [row!.min_rank_code])),
-    description: row!.description ?? "",
+    ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code])),
+    description: row.description ?? "",
+    runs: runs.results.map((r) => {
+      const price = freeNow ? 0 : (r.price_twd ?? row.price_twd);
+      const used = usage.get(r.id) ?? 0;
+      const key = `${id}|${r.id}`;
+      return {
+        id: r.id,
+        title: r.title,
+        startsAt: r.starts_at,
+        location: r.location,
+        registerUntil: r.register_until,
+        capacity: r.capacity,
+        remaining: r.capacity == null ? null : Math.max(0, r.capacity - used),
+        priceTwd: web ? price : null,
+        free: price === 0,
+        status: r.status,
+        open: runOpen(r, used),
+        enrollment: state.enrolled.has(key) ? "opened" : state.pending.has(key) ? "pending" : null,
+      };
+    }),
     lessons: lessons.results.map((l) => ({
       id: l.id,
       position: l.position,
@@ -247,158 +329,401 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       kind: l.media_type === "audio" ? ("audio" as const) : ("video" as const),
       start: l.start_seconds,
       end: l.end_seconds,
+      runId: l.run_id,
+      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id)),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
-      ...(ctx.session?.role === "admin" ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
+      ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
+    ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
   };
 }
 
-async function canWatch(ctx: Ctx, courseId: string): Promise<boolean> {
+/** 能否觀看：管理員可預覽；章節屬於某場次時需報名該場，否則報名該課程任一場即可。 */
+async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promise<boolean> {
   const s = requireMember(ctx);
   if (s.role === "admin") return true;
-  const row = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).first();
+  const row = runId
+    ? await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? AND run_id = ?").bind(s.sub, courseId, runId).first()
+    : await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
   return !!row;
 }
 
 async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
   const lesson = await ctx.db
-    .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
+    .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds, l.run_id FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
     .bind(lessonId, courseId)
-    .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
+    .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; run_id: string | null }>();
   return lesson ?? fail(404, "not_found", "找不到這個章節");
 }
 
-// ---------- orders ----------
+// ---------- 報名與審核 ----------
 
 type OrderRow = {
   id: string;
+  member_sub: string;
   status: Order["status"];
   total_twd: number;
   reject_reason: string | null;
   created_at: string;
   reviewed_at: string | null;
   member_name_snapshot: string;
+  center_key: string | null;
+  center_label: string;
+  hglobal: number;
+  deferred: number;
+  paid_twd: number | null;
+  pay_method: Order["payMethod"];
+  revoked_at: string | null;
 };
+const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject_reason, o.created_at, o.reviewed_at, o.member_name_snapshot, o.center_key, o.center_label, o.hglobal, o.deferred, o.paid_twd, o.pay_method, o.revoked_at FROM orders o";
 
 async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]> {
   if (!rows.length) return [];
-  const marks = rows.map(() => "?").join(",");
   const { results } = await db
-    .prepare(`SELECT order_id, course_id, title_snapshot, price_twd FROM order_items WHERE order_id IN (${marks})`)
+    .prepare(`SELECT order_id, course_id, run_id, title_snapshot, price_twd FROM order_items WHERE order_id IN (${rows.map(() => "?").join(",")})`)
     .bind(...rows.map((r) => r.id))
-    .all<{ order_id: string; course_id: string; title_snapshot: string; price_twd: number }>();
+    .all<{ order_id: string; course_id: string; run_id: string; title_snapshot: string; price_twd: number }>();
   return rows.map((r) => ({
     id: r.id,
     status: r.status,
+    deferred: r.status === "pending" && r.deferred === 1,
+    revoked: !!r.revoked_at,
     totalTwd: r.total_twd,
+    paidTwd: r.paid_twd,
+    payMethod: r.pay_method,
     rejectReason: r.reject_reason,
     createdAt: r.created_at,
     reviewedAt: r.reviewed_at,
     memberName: r.member_name_snapshot,
-    items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, title: i.title_snapshot, priceTwd: i.price_twd })),
+    centerLabel: r.center_label,
+    hglobal: r.hglobal === 1,
+    items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, runId: i.run_id || null, title: i.title_snapshot, priceTwd: i.price_twd })),
   }));
 }
 
-const ORDER_SELECT = "SELECT id, status, total_twd, reject_reason, created_at, reviewed_at, member_name_snapshot FROM orders";
+/** 這位登入者的審核範圍：all＝全站（超級管理員、秘書）；center＝會長的中心；groups＝所屬審核群組與負責的中心（''＝全部中心）。 */
+type ReviewScope = { all: boolean; center: string | null; groups: { groupId: string; centerKey: string }[] };
+async function reviewScope(ctx: Ctx, s: Session): Promise<ReviewScope> {
+  if (s.role === "admin") return { all: true, center: null, groups: [] };
+  const { results } = await ctx.db.prepare("SELECT DISTINCT group_id, center_key FROM review_group_members WHERE member_sub = ?").bind(s.sub).all<{ group_id: string; center_key: string }>();
+  return { all: false, center: s.roles.includes("president") ? (s.center?.key ?? null) : null, groups: results.map((r) => ({ groupId: r.group_id, centerKey: r.center_key })) };
+}
+const hasScope = (sc: ReviewScope) => sc.all || !!sc.center || sc.groups.length > 0;
 
-async function createOrders(ctx: Ctx, body: { courseIds?: unknown }): Promise<Order[]> {
+/** 審核範圍的 SQL 條件（套用在 orders o）。 */
+function scopeSql(sc: ReviewScope): { sql: string; args: unknown[] } {
+  if (sc.all) return { sql: "1 = 1", args: [] };
+  const parts: string[] = [];
+  const args: unknown[] = [];
+  if (sc.center) {
+    parts.push("o.center_key = ?");
+    args.push(sc.center);
+  }
+  for (const g of sc.groups) {
+    parts.push(
+      `EXISTS (SELECT 1 FROM order_items i JOIN courses c ON c.id = i.course_id WHERE i.order_id = o.id AND c.review_group_id = ?)${g.centerKey ? " AND o.center_key = ?" : ""}`,
+    );
+    args.push(g.groupId, ...(g.centerKey ? [g.centerKey] : []));
+  }
+  return { sql: parts.length ? `(${parts.map((p) => `(${p})`).join(" OR ")})` : "1 = 0", args };
+}
+
+async function canReviewOrder(ctx: Ctx, s: Session, orderId: string): Promise<boolean> {
+  const sc = await reviewScope(ctx, s);
+  if (!hasScope(sc)) return false;
+  const w = scopeSql(sc);
+  return !!(await ctx.db.prepare(`SELECT 1 AS ok FROM orders o WHERE o.id = ? AND ${w.sql}`).bind(orderId, ...w.args).first());
+}
+
+function titleOf(s: Session, duty?: string): string {
+  const labels: Record<string, string> = { super_admin: "超級管理員", secretary: "總部秘書", president: "會長", register: "報名窗口", collect: "收費窗口", review: "審核員" };
+  const role = ["super_admin", "secretary", "president"].find((r) => s.roles.includes(r));
+  return labels[role ?? duty ?? ""] ?? (s.role === "admin" ? "管理員" : "");
+}
+
+function event(db: D1Database, orderId: string, actor: { sub: string; name: string; title: string }, action: string, x: { reason?: string | null; message?: string; note?: string } = {}): D1PreparedStatement {
+  return db
+    .prepare("INSERT INTO order_events (id, order_id, actor_sub, actor_name, actor_title, action, reason_code, message, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(crypto.randomUUID(), orderId, actor.sub, actor.name, actor.title, action, x.reason ?? null, x.message ?? "", x.note ?? "", iso());
+}
+
+/** 付費報名要通知誰：同中心的群組成員＋該中心會長；非寰宇、沒有中心或該中心沒有窗口時改通知總部（秘書、超級管理員）。 */
+async function reviewerNotices(ctx: Ctx, o: { id: string; centerKey: string | null; hglobal: boolean; groupId: string | null }, title: string, body: string): Promise<D1PreparedStatement[]> {
+  const link = `/admin/orders/${o.id}`;
+  const out: D1PreparedStatement[] = [];
+  let desk: string[] = [];
+  if (o.groupId) {
+    const { results } = await ctx.db
+      .prepare("SELECT DISTINCT member_sub FROM review_group_members WHERE group_id = ? AND (center_key = '' OR center_key = ?)")
+      .bind(o.groupId, o.centerKey ?? "\u0000")
+      .all<{ member_sub: string }>();
+    desk = results.map((r) => r.member_sub);
+  }
+  for (const sub of desk) out.push(notify(ctx.db, { sub }, title, body, link));
+  if (o.hglobal && o.centerKey) out.push(notify(ctx.db, { role: "president", centerKey: o.centerKey }, title, body, link));
+  if (!o.hglobal || !o.centerKey || !desk.length) out.push(notify(ctx.db, { role: "admin" }, o.hglobal ? `${title}（該中心尚未設定窗口）` : `${title}（非寰宇系統學員）`, body, link));
+  return out;
+}
+
+type RegItem = { courseId: string; runId: string };
+async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unknown }): Promise<Order[]> {
   const s = requireMember(ctx);
-  const ids = Array.isArray(body.courseIds) ? [...new Set(body.courseIds.filter((x): x is string => typeof x === "string"))] : [];
-  if (!ids.length || ids.length > 20) fail(400, "invalid_courses", "請選擇要報名的課程");
+  const raw: RegItem[] = [
+    ...(Array.isArray(body.courseIds) ? body.courseIds.filter((x): x is string => typeof x === "string").map((courseId) => ({ courseId, runId: "" })) : []),
+    ...(Array.isArray(body.items) ? (body.items as { courseId?: unknown; runId?: unknown }[]).filter((x) => typeof x?.courseId === "string").map((x) => ({ courseId: x.courseId as string, runId: typeof x.runId === "string" ? x.runId : "" })) : []),
+  ];
+  const items = [...new Map(raw.map((i) => [`${i.courseId}|${i.runId}`, i])).values()];
+  if (!items.length || items.length > 20) fail(400, "invalid_courses", "請選擇要報名的課程");
+  const ids = [...new Set(items.map((i) => i.courseId))];
   const marks = ids.map(() => "?").join(",");
-  const [{ results: courses }, rankMap, state] = await Promise.all([
-    ctx.db.prepare(`SELECT id, title, price_twd, min_rank_code FROM courses WHERE status = 'published' AND id IN (${marks})`).bind(...ids).all<{
-      id: string;
-      title: string;
-      price_twd: number;
-      min_rank_code: string;
-    }>(),
+  const [{ results: courses }, { results: runs }, rankMap, state] = await Promise.all([
+    ctx.db
+      .prepare(`SELECT id, title, price_twd, min_rank_code, free_from, free_until, review_group_id FROM courses WHERE status = 'published' AND id IN (${marks})`)
+      .bind(...ids)
+      .all<{ id: string; title: string; price_twd: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null }>(),
+    ctx.db.prepare(`SELECT * FROM course_runs WHERE course_id IN (${marks})`).bind(...ids).all<RunRow>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
   ]);
   if (courses.length !== ids.length) fail(409, "unavailable", "課程已下架或不存在，請重新確認");
   const eligibility = await eligibilityFor(s, rankMap, courses.map((c) => c.min_rank_code));
   if (courses.some((c) => eligibility.get(c.min_rank_code) !== true)) fail(403, "rank_required", "此課程需要符合資格才能報名");
-  if (courses.some((c) => state.enrolled.has(c.id) || state.pending.has(c.id))) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
-  const free = courses.filter((c) => c.price_twd === 0);
-  const paid = courses.filter((c) => c.price_twd > 0);
-  if (paid.length && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
 
   const now = new Date();
   const statements: D1PreparedStatement[] = [];
   const created: string[] = [];
-  for (const group of [free, paid]) {
-    if (!group.length) continue;
+  const actor = { sub: s.sub, name: s.name, title: "學員" };
+  for (const item of items) {
+    const c = courses.find((x) => x.id === item.courseId)!;
+    const courseRuns = runs.filter((r) => r.course_id === c.id);
+    let run: RunRow | undefined;
+    if (courseRuns.length) {
+      run = courseRuns.find((r) => r.id === item.runId) ?? fail(400, "run_required", "請選擇要報名的場次");
+      const used = (await runUsage(ctx.db, c.id)).get(run.id) ?? 0;
+      if (!runOpen(run, used)) fail(409, "run_closed", "這個場次已截止或額滿");
+    } else if (item.runId) fail(400, "invalid_run", "場次不存在");
+    const key = `${c.id}|${run?.id ?? ""}`;
+    if (state.enrolled.has(key) || state.pending.has(key)) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
+    const price = inFreeWindow(c, iso(now)) ? 0 : (run?.price_twd ?? c.price_twd);
+    const isFree = price === 0;
+    if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
     const id = orderId(now);
-    const isFree = group === free;
-    const total = group.reduce((sum, c) => sum + c.price_twd, 0);
-    const titles = group.map((c) => c.title).join("、");
+    const title = run ? `${c.title}｜${run.title}` : c.title;
     created.push(id);
     statements.push(
       ctx.db
-        .prepare("INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", total, iso(now)),
+        .prepare(
+          "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null),
+      ctx.db.prepare("INSERT INTO order_items (order_id, course_id, run_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?, ?)").bind(id, c.id, run?.id ?? "", title, price),
+      event(ctx.db, id, actor, "submit"),
+      audit(ctx.db, s.sub, isFree ? "order.register_free" : "order.register", "order", id, title),
     );
-    for (const c of group) {
+    if (isFree) {
+      // 免費課程立即開通；PRIMARY KEY 保證同一會員同一場只會開通一次（重複請求整批失敗）。
       statements.push(
-        ctx.db.prepare("INSERT INTO order_items (order_id, course_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?)").bind(id, c.id, c.title, c.price_twd),
+        ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, run_id, source_order_id) VALUES (?, ?, ?, ?)").bind(s.sub, c.id, run?.id ?? "", id),
+        notify(ctx.db, { sub: s.sub }, "課程已開通", title, "/learning"),
       );
-      // 免費課程立即開通；PRIMARY KEY 保證同一會員同一課程只會開通一次（重複請求整批失敗）。
-      if (isFree)
-        statements.push(ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, source_order_id) VALUES (?, ?, ?)").bind(s.sub, c.id, id));
+    } else {
+      statements.push(
+        notify(ctx.db, { sub: s.sub }, "報名已送出，等待審核", title, `/orders/${id}`),
+        ...(await reviewerNotices(ctx, { id, centerKey: s.center?.key ?? null, hglobal: s.hglobal, groupId: c.review_group_id }, "有新的報名待審核", `${s.name}｜${title}｜NT$${price.toLocaleString("en-US")}`)),
+      );
     }
-    statements.push(
-      notify(ctx.db, { sub: s.sub }, isFree ? "課程已開通" : "報名已送出，等待審核", titles, isFree ? "/learning" : `/orders/${id}`),
-      audit(ctx.db, s.sub, isFree ? "order.claim_free" : "order.submit", "order", id, titles),
-    );
-    if (!isFree) statements.push(notify(ctx.db, { role: "admin" }, "有新的報名待審核", `${s.name} · NT$${total.toLocaleString("en-US")}`, `/admin/orders/${id}`));
   }
   try {
     await ctx.db.batch(statements);
   } catch {
     fail(409, "duplicate", "這門課程已經報名過了");
   }
-  const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE id IN (${created.map(() => "?").join(",")})`).bind(...created).all<OrderRow>();
+  const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE o.id IN (${created.map(() => "?").join(",")})`).bind(...created).all<OrderRow>();
   return hydrateOrders(ctx.db, results);
 }
 
-async function reviewOrder(ctx: Ctx, id: string, body: { approve?: unknown; reason?: unknown }): Promise<Order> {
-  const admin = requireAdmin(ctx);
-  if (ctx.platform !== "web") fail(403, "web_only", "報名審核請至網頁版辦理");
-  const approve = body.approve === true;
-  const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 300) : "";
-  if (!approve && !reason) fail(400, "reason_required", "請填寫未通過原因");
-  const order = await ctx.db.prepare("SELECT id, member_sub, status FROM orders WHERE id = ?").bind(id).first<{ id: string; member_sub: string; status: string }>();
-  if (!order) return fail(404, "not_found", "找不到這筆報名");
-  if (order.status !== "pending") fail(409, "already_reviewed", "這筆報名已審核過");
-  const now = iso();
-  const statements = [
+/** 單筆報名明細：本人或有審核權限者可看；含操作紀錄（私人備註只給審核人員）與該中心的收費窗口。 */
+async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
+  const s = requireMember(ctx);
+  const row = await ctx.db.prepare(`${ORDER_SELECT} WHERE o.id = ?`).bind(id).first<OrderRow>();
+  if (!row) return fail(404, "not_found", "找不到這筆報名");
+  const reviewer = await canReviewOrder(ctx, s, id);
+  if (row.member_sub !== s.sub && !reviewer) fail(404, "not_found", "找不到這筆報名");
+  const [order] = await hydrateOrders(ctx.db, [row]);
+  const [events, collectors] = await Promise.all([
+    ctx.db.prepare("SELECT id, actor_sub, actor_name, actor_title, action, reason_code, message, note, created_at FROM order_events WHERE order_id = ? ORDER BY created_at, rowid").bind(id).all<{
+      id: string;
+      actor_sub: string;
+      actor_name: string;
+      actor_title: string;
+      action: OrderEvent["action"];
+      reason_code: string | null;
+      message: string;
+      note: string;
+      created_at: string;
+    }>(),
     ctx.db
-      .prepare("UPDATE orders SET status = ?, reject_reason = ?, reviewed_by_sub = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
-      .bind(approve ? "opened" : "rejected", approve ? null : reason, admin.sub, now, id),
-  ];
-  if (approve)
+      .prepare(
+        "SELECT DISTINCT m.member_name FROM review_group_members m JOIN courses c ON c.review_group_id = m.group_id JOIN order_items i ON i.course_id = c.id WHERE i.order_id = ? AND m.duty = 'collect' AND m.member_name <> '' AND (m.center_key = ? OR (m.center_key = '' AND NOT EXISTS (SELECT 1 FROM review_group_members x WHERE x.group_id = m.group_id AND x.duty = 'collect' AND x.center_key = ?)))",
+      )
+      .bind(id, row.center_key ?? "\u0000", row.center_key ?? "\u0000")
+      .all<{ member_name: string }>(),
+  ]);
+  return {
+    ...order,
+    events: events.results
+      .filter((e) => reviewer || e.action !== "note")
+      .map((e) => ({
+        id: e.id,
+        action: e.action,
+        actorName: e.actor_name,
+        actorTitle: e.actor_title,
+        mine: e.actor_sub === s.sub,
+        reason: e.reason_code ? (REVIEW_REASONS[e.reason_code as ReviewReason] ?? e.reason_code) : null,
+        message: e.message,
+        ...(reviewer ? { note: e.note } : {}),
+        createdAt: e.created_at,
+      })),
+    collectors: collectors.results.map((c) => c.member_name),
+    canReview: reviewer && row.member_sub !== s.sub,
+    canRevoke: s.role === "admin" && row.status === "opened" && row.total_twd > 0,
+  };
+}
+
+async function dutyOf(ctx: Ctx, s: Session): Promise<string | undefined> {
+  const r = await ctx.db.prepare("SELECT duty FROM review_group_members WHERE member_sub = ? LIMIT 1").bind(s.sub).first<{ duty: string }>();
+  return r?.duty;
+}
+
+/** 審核：已繳費／VIP 免繳費／退回／延後再審／撤銷開通（撤銷限秘書與超級管理員）。 */
+async function reviewOrder(ctx: Ctx, id: string, body: Record<string, unknown>): Promise<Order> {
+  const s = requireMember(ctx);
+  if (ctx.platform !== "web") fail(403, "web_only", "報名審核請至網頁版辦理");
+  const action = body.action as ReviewAction;
+  if (!["paid", "vip", "reject", "defer", "revoke"].includes(action)) fail(400, "invalid_action", "審核動作不正確");
+  const order = await ctx.db.prepare("SELECT id, member_sub, status, total_twd FROM orders WHERE id = ?").bind(id).first<{ id: string; member_sub: string; status: string; total_twd: number }>();
+  if (!order || !(await canReviewOrder(ctx, s, id))) return fail(404, "not_found", "找不到這筆報名");
+  if (order.member_sub === s.sub) fail(403, "self_review", "不能審核自己的報名");
+  if (action === "revoke") {
+    if (s.role !== "admin") fail(403, "forbidden", "只有總部秘書與超級管理員可以撤銷開通");
+    if (order.status !== "opened") fail(409, "not_opened", "這筆報名尚未開通");
+  } else if (order.status !== "pending") fail(409, "already_reviewed", "這筆報名已審核過");
+
+  const message = text(body.message, 500) ?? "";
+  const note = text(body.note, 500) ?? "";
+  const needsReason = action === "reject" || action === "defer" || action === "revoke";
+  const code = typeof body.reasonCode === "string" && body.reasonCode in REVIEW_REASONS ? (body.reasonCode as ReviewReason) : null;
+  if (needsReason && !code) fail(400, "reason_required", "請選擇原因");
+  if (needsReason && code === "other" && !message) fail(400, "reason_required", "請填寫原因");
+  const reasonText = code ? (code === "other" ? message : REVIEW_REASONS[code]) : null;
+  const now = iso();
+  const actor = { sub: s.sub, name: s.name, title: titleOf(s, await dutyOf(ctx, s)) };
+  const by = `${actor.title ? `${actor.title} ` : ""}${actor.name}`;
+  const statements: D1PreparedStatement[] = [];
+  const guard = action === "revoke" ? "status = 'opened'" : "status = 'pending'";
+  if (action === "paid" || action === "vip") {
+    const method = action === "vip" ? "vip" : body.payMethod === "transfer" ? "transfer" : "cash";
+    const paid = action === "vip" ? 0 : body.paidTwd === undefined ? order.total_twd : Number(body.paidTwd);
+    if (!Number.isInteger(paid) || paid < 0 || paid > 10_000_000) fail(400, "invalid_amount", "實收金額不正確");
     statements.push(
       ctx.db
-        .prepare(
-          "INSERT OR IGNORE INTO enrollments (member_sub, course_id, source_order_id) SELECT o.member_sub, i.course_id, o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.id = ? AND o.status = 'opened'",
-        )
+        .prepare(`UPDATE orders SET status = 'opened', deferred = 0, reject_reason = NULL, reviewed_by_sub = ?, reviewed_at = ?, paid_twd = ?, pay_method = ?, paid_at = ? WHERE id = ? AND ${guard}`)
+        .bind(s.sub, now, paid, method, now, id),
+      ctx.db
+        .prepare("INSERT OR IGNORE INTO enrollments (member_sub, course_id, run_id, source_order_id) SELECT o.member_sub, i.course_id, i.run_id, o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.id = ? AND o.status = 'opened'")
         .bind(id),
+      notify(ctx.db, { sub: order.member_sub }, action === "vip" ? "報名審核通過（VIP 免繳費），課程已開通" : "繳費確認完成，課程已開通", `審核人員：${by}${message ? `\n留言：${message}` : ""}`, `/orders/${id}`),
     );
-  statements.push(
-    notify(
-      ctx.db,
-      { sub: order.member_sub },
-      approve ? "繳費確認完成，課程已開通" : "報名審核未通過",
-      approve ? "前往我的課程開始學習。" : reason,
-      approve ? "/learning" : `/orders/${id}`,
-    ),
-    audit(ctx.db, admin.sub, approve ? "order.approve" : "order.reject", "order", id, reason),
-  );
+  } else if (action === "reject" || action === "revoke") {
+    statements.push(
+      ctx.db
+        .prepare(`UPDATE orders SET status = 'rejected', deferred = 0, reject_reason = ?, reviewed_by_sub = ?, reviewed_at = ?${action === "revoke" ? ", revoked_at = ?" : ""} WHERE id = ? AND ${guard}`)
+        .bind(reasonText, s.sub, now, ...(action === "revoke" ? [now] : []), id),
+      ...(action === "revoke" ? [ctx.db.prepare("DELETE FROM enrollments WHERE source_order_id = ?").bind(id)] : []),
+      notify(ctx.db, { sub: order.member_sub }, action === "revoke" ? "課程開通已撤銷" : "報名已退回", `原因：${reasonText}\n審核人員：${by}`, `/orders/${id}`),
+    );
+  } else {
+    statements.push(
+      ctx.db.prepare(`UPDATE orders SET deferred = 1, reject_reason = ?, reviewed_by_sub = ?, reviewed_at = ? WHERE id = ? AND ${guard}`).bind(reasonText, s.sub, now, id),
+      notify(ctx.db, { sub: order.member_sub }, "報名延後審核", `原因：${reasonText}\n審核人員：${by}`, `/orders/${id}`),
+    );
+  }
+  statements.push(event(ctx.db, id, actor, action, { reason: code, message, note }), audit(ctx.db, s.sub, `order.${action}`, "order", id, code ?? ""));
   const [update] = await ctx.db.batch(statements);
-  if (update.meta?.changes === 0) fail(409, "already_reviewed", "這筆報名已審核過");
-  const row = await ctx.db.prepare(`${ORDER_SELECT} WHERE id = ?`).bind(id).first<OrderRow>();
-  return (await hydrateOrders(ctx.db, [row!]))[0];
+  if (update.meta?.changes === 0) fail(409, "already_reviewed", "這筆報名已由其他人處理");
+  return orderDetail(ctx, id);
+}
+
+/** 留言（雙方可見，通知對方）或私人備註（只有審核人員可見）。 */
+async function addOrderEvent(ctx: Ctx, id: string, body: Record<string, unknown>): Promise<Order> {
+  const s = requireMember(ctx);
+  const order = await ctx.db.prepare("SELECT member_sub FROM orders WHERE id = ?").bind(id).first<{ member_sub: string }>();
+  const reviewer = !!order && order.member_sub !== s.sub && (await canReviewOrder(ctx, s, id));
+  if (!order || (order.member_sub !== s.sub && !reviewer)) return fail(404, "not_found", "找不到這筆報名");
+  const message = text(body.message, 500) ?? "";
+  const note = reviewer ? (text(body.note, 500) ?? "") : "";
+  if (!message && !note) fail(400, "empty", "請輸入內容");
+  const actor = { sub: s.sub, name: s.name, title: reviewer ? titleOf(s, await dutyOf(ctx, s)) : "學員" };
+  const statements = [event(ctx.db, id, actor, message ? "message" : "note", { message, note })];
+  if (message && reviewer) statements.push(notify(ctx.db, { sub: order.member_sub }, "報名有新留言", `${actor.title} ${actor.name}：${message}`, `/orders/${id}`));
+  if (message && !reviewer) {
+    // 學員留言：通知處理過這筆報名的審核人員；還沒有人處理時，審核人員會在審核清單看到。
+    const { results } = await ctx.db.prepare("SELECT DISTINCT actor_sub FROM order_events WHERE order_id = ? AND actor_sub <> ? AND action <> 'submit'").bind(id, s.sub).all<{ actor_sub: string }>();
+    for (const r of results) statements.push(notify(ctx.db, { sub: r.actor_sub }, "學員在報名紀錄留言", `${s.name}：${message}`, `/admin/orders/${id}`));
+  }
+  await ctx.db.batch(statements);
+  return orderDetail(ctx, id);
+}
+
+async function reviewList(ctx: Ctx): Promise<{ rows: OrderRow[]; scope: ReviewScope }> {
+  const s = requireMember(ctx);
+  const scope = await reviewScope(ctx, s);
+  if (!hasScope(scope)) fail(403, "forbidden", "需要審核權限");
+  const w = scopeSql(scope);
+  const q = ctx.url.searchParams;
+  const conds = [w.sql, "o.total_twd > 0"];
+  const args = [...w.args];
+  const status = q.get("status");
+  if (status === "pending") conds.push("o.status = 'pending' AND o.deferred = 0");
+  else if (status === "deferred") conds.push("o.status = 'pending' AND o.deferred = 1");
+  else if (status === "opened" || status === "rejected") (conds.push("o.status = ?"), args.push(status));
+  if (q.get("courseId")) (conds.push("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.course_id = ?)"), args.push(q.get("courseId")));
+  if (q.get("runId")) (conds.push("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.run_id = ?)"), args.push(q.get("runId")));
+  if (q.get("center")) (conds.push("o.center_key = ?"), args.push(centerKey(q.get("center")!)));
+  if (q.get("hglobal") === "0") conds.push("o.hglobal = 0");
+  const term = (q.get("q") ?? "").trim().slice(0, 50);
+  if (term) (conds.push("(o.member_name_snapshot LIKE ? OR o.id LIKE ?)"), args.push(`%${term}%`, `%${term}%`));
+  const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE ${conds.join(" AND ")} ORDER BY o.created_at DESC LIMIT 2000`).bind(...args).all<OrderRow>();
+  return { rows: results, scope };
+}
+
+const csvCell = (v: unknown) => {
+  let t = v == null ? "" : String(v);
+  if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`; // 避免試算表把內容當成公式
+  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+
+/** 對帳報表（CSV，Excel 可直接開啟）：範圍與審核清單相同。 */
+async function reviewCsv(ctx: Ctx): Promise<Response> {
+  const { rows } = await reviewList(ctx);
+  const orders = await hydrateOrders(ctx.db, rows);
+  const reviewers = new Map<string, string>();
+  if (rows.length) {
+    const { results } = await ctx.db
+      .prepare("SELECT order_id, actor_title, actor_name FROM order_events WHERE action IN ('paid', 'vip', 'reject', 'defer', 'revoke') ORDER BY created_at")
+      .all<{ order_id: string; actor_title: string; actor_name: string }>();
+    for (const r of results) reviewers.set(r.order_id, `${r.actor_title} ${r.actor_name}`.trim());
+  }
+  const statusLabel = (o: Order) => (o.revoked ? "已撤銷" : o.status === "opened" ? "已開通" : o.status === "rejected" ? "已退回" : o.deferred ? "延後再審" : "待審核");
+  const method: Record<string, string> = { cash: "現金", transfer: "轉帳", vip: "VIP 免繳費", online: "線上", free: "免費" };
+  const lines = [
+    ["報名編號", "報名時間", "課程／場次", "姓名", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
+    ...orders.map((o) => [o.id, o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
+  ];
+  await audit(ctx.db, ctx.session!.sub, "order.export", "report", "csv", String(orders.length)).run();
+  return new Response("﻿" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n"), {
+    headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="registrations-${iso().slice(0, 10)}.csv"`, "cache-control": "no-store" },
+  });
 }
 
 type MediaType = "demo" | "youtube" | "mux" | "audio";
@@ -457,12 +782,36 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     if (body.status !== "draft" && body.status !== "published" && body.status !== "archived") fail(400, "invalid_status", "狀態不正確");
     sets.push(["status", body.status]);
   }
+  const guidance = text(body.guidanceUnit, 60);
+  if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
+  const host = text(body.hostUnit, 100);
+  if (host !== undefined) sets.push(["host_unit", host], ["host_center_key", host && host !== HQ_UNIT ? centerKey(host) : null]);
+  for (const [k, col] of [["freeFrom", "free_from"], ["freeUntil", "free_until"]] as const) {
+    const v = isoOrNull(body[k]);
+    if (v !== undefined) sets.push([col, v]);
+  }
+  if (body.reviewGroupId !== undefined) {
+    if (body.reviewGroupId === null || body.reviewGroupId === "") sets.push(["review_group_id", null]);
+    else {
+      const g = await ctx.db.prepare("SELECT owner_center_key FROM review_groups WHERE id = ?").bind(String(body.reviewGroupId)).first<{ owner_center_key: string | null }>();
+      if (!g) fail(400, "invalid_group", "審核群組不存在");
+      sets.push(["review_group_id", body.reviewGroupId]);
+    }
+  }
   return sets;
+}
+
+/** 指導單位為寰宇總部的課程，只能套用總部群組（由秘書、超級管理員指派審核人員）。 */
+async function checkGuidanceGroup(ctx: Ctx, guidance: unknown, groupId: unknown) {
+  if (guidance !== HQ_UNIT || !groupId) return;
+  const g = await ctx.db.prepare("SELECT owner_center_key FROM review_groups WHERE id = ?").bind(String(groupId)).first<{ owner_center_key: string | null }>();
+  if (g?.owner_center_key) fail(400, "hq_group_required", `指導單位為「${HQ_UNIT}」的課程只能使用總部的審核群組`);
 }
 
 async function createCourse(ctx: Ctx, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
   const sets = await courseFields(ctx, body, true);
+  await checkGuidanceGroup(ctx, body.guidanceUnit, body.reviewGroupId);
   const id = `c${randomId(7)}`;
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
   const cols = ["id", "sort_order", "status", ...sets.map(([c]) => c).filter((c) => c !== "status")];
@@ -479,6 +828,9 @@ async function updateCourse(ctx: Ctx, id: string, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
   const sets = await courseFields(ctx, body, false);
   if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
+  const cur = await ctx.db.prepare("SELECT guidance_unit, review_group_id FROM courses WHERE id = ?").bind(id).first<{ guidance_unit: string; review_group_id: string | null }>();
+  const pick = (col: string, old: unknown) => (sets.find(([c]) => c === col) ?? [col, old])[1];
+  await checkGuidanceGroup(ctx, pick("guidance_unit", cur?.guidance_unit), pick("review_group_id", cur?.review_group_id));
   const [res] = await ctx.db.batch([
     ctx.db.prepare(`UPDATE courses SET ${sets.map(([c]) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...sets.map(([, v]) => v), iso(), id),
     audit(ctx.db, admin.sub, "course.update", "course", id, sets.map(([c]) => c).join(",")),
@@ -538,6 +890,15 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   if (finalStart != null && finalEnd != null && finalEnd <= finalStart) fail(400, "invalid_range", "結束時間必須晚於開始時間");
   if (start !== undefined) sets.push(["start_seconds", start]);
   if (end !== undefined) sets.push(["end_seconds", end]);
+  if ((body as { runId?: unknown }).runId !== undefined) {
+    const runId = (body as { runId?: unknown }).runId;
+    if (runId === null || runId === "") sets.push(["run_id", null]);
+    else {
+      const ok = await ctx.db.prepare("SELECT 1 AS ok FROM course_runs r JOIN lessons l ON l.course_id = r.course_id WHERE r.id = ? AND l.id = ?").bind(String(runId), id).first();
+      if (!ok) fail(400, "invalid_run", "場次不存在");
+      sets.push(["run_id", runId]);
+    }
+  }
   const minutes = body.minutes === undefined ? undefined : Number(body.minutes);
   if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1000)) fail(400, "invalid_minutes", "影片長度不正確");
   // 有設定區間時，章節長度＝區間長度（分鐘，無條件進位）。
@@ -551,6 +912,86 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   if (cur.media_type === "audio" && type !== "audio" && cur.media_ref) await ctx.env.MEDIA?.delete(cur.media_ref).catch(() => undefined);
   const row = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
   return { ok: true, mediaType: row?.media_type, mediaRef: row?.media_ref };
+}
+
+// ---------- 審核群組、場次、通知範圍 ----------
+
+/** 這位登入者看得到的通知：自己的、（管理員）寄給總部的、（會長）寄給自己中心會長的。 */
+function noticeScope(s: Session): { sql: string; args: unknown[] } {
+  const parts = ["recipient_sub = ?"];
+  const args: unknown[] = [s.sub];
+  if (s.role === "admin") parts.push("recipient_role = 'admin'");
+  if (s.roles.includes("president") && s.center) {
+    parts.push("(recipient_role = 'president' AND recipient_center_key = ?)");
+    args.push(s.center.key);
+  }
+  return { sql: `(${parts.join(" OR ")})`, args };
+}
+
+/** 中心自辦群組：該中心的會長、音控可管理。 */
+const canManageCenter = (s: Session, key: string) => !!s.center && s.center.key === key && (s.roles.includes("president") || s.roles.includes("sound"));
+
+async function requireGroupManager(ctx: Ctx, groupId: string): Promise<Session> {
+  const s = requireMember(ctx);
+  const g = await ctx.db.prepare("SELECT owner_center_key FROM review_groups WHERE id = ?").bind(groupId).first<{ owner_center_key: string | null }>();
+  if (!g) return fail(404, "not_found", "找不到這個審核群組");
+  // 總部群組（owner_center_key 為 NULL）只有秘書與超級管理員可以指派。
+  if (s.role !== "admin" && !(g.owner_center_key && canManageCenter(s, g.owner_center_key))) fail(403, "forbidden", "沒有管理這個群組的權限");
+  return s;
+}
+
+async function listGroups(ctx: Ctx): Promise<ReviewGroup[]> {
+  const s = requireMember(ctx);
+  const manager = s.role === "admin" || s.roles.includes("president") || s.roles.includes("sound");
+  if (!manager) fail(403, "forbidden", "沒有管理審核群組的權限");
+  const [g, m, c] = await ctx.db.batch([
+    ctx.db.prepare("SELECT id, name, owner_center_key, owner_center_label FROM review_groups ORDER BY created_at"),
+    ctx.db.prepare("SELECT group_id, center_key, center_label, member_sub, member_name, duty FROM review_group_members ORDER BY center_label, created_at"),
+    ctx.db.prepare("SELECT id, title, review_group_id FROM courses WHERE review_group_id IS NOT NULL"),
+  ]);
+  type G = { id: string; name: string; owner_center_key: string | null; owner_center_label: string };
+  type M = { group_id: string; center_key: string; center_label: string; member_sub: string; member_name: string; duty: Duty };
+  return (g.results as G[])
+    .filter((x) => s.role === "admin" || (x.owner_center_key && canManageCenter(s, x.owner_center_key)))
+    .map((x) => ({
+      id: x.id,
+      name: x.name,
+      ownerCenter: x.owner_center_key ? x.owner_center_label : null,
+      courses: (c.results as { id: string; title: string; review_group_id: string }[]).filter((k) => k.review_group_id === x.id).map((k) => ({ id: k.id, title: k.title })),
+      members: (m.results as M[]).filter((k) => k.group_id === x.id).map((k) => ({ centerKey: k.center_key, centerLabel: k.center_label, memberSub: k.member_sub, memberName: k.member_name, duty: k.duty })),
+      canManage: true,
+    }));
+}
+
+const isoOrNull = (v: unknown): string | null | undefined => {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null;
+  const d = new Date(String(v));
+  if (Number.isNaN(d.getTime())) fail(400, "invalid_date", "日期格式不正確");
+  return d.toISOString();
+};
+
+function runFields(body: Record<string, unknown>, creating: boolean): [string, unknown][] {
+  const sets: [string, unknown][] = [];
+  const title = text(body.title, 80);
+  if (title !== undefined || creating) sets.push(["title", title || fail(400, "title_required", "請輸入場次名稱")]);
+  const loc = text(body.location, 120);
+  if (loc !== undefined) sets.push(["location", loc]);
+  for (const [k, col] of [["startsAt", "starts_at"], ["registerUntil", "register_until"]] as const) {
+    const v = isoOrNull(body[k]);
+    if (v !== undefined) sets.push([col, v]);
+  }
+  for (const [k, col, max] of [["capacity", "capacity", 100000], ["priceTwd", "price_twd", 10_000_000]] as const) {
+    if (body[k] === undefined) continue;
+    if (body[k] === null || body[k] === "") sets.push([col, null]);
+    else {
+      const n = Number(body[k]);
+      if (!Number.isInteger(n) || n < (col === "capacity" ? 1 : 0) || n > max) fail(400, "invalid_number", col === "capacity" ? "名額請輸入正整數" : "費用請輸入 0 以上的整數");
+      sets.push([col, n]);
+    }
+  }
+  if (body.status !== undefined) sets.push(["status", body.status === "closed" ? "closed" : "open"]);
+  return sets;
 }
 
 // ---------- router ----------
@@ -582,7 +1023,7 @@ const routes: [string, RegExp, Handler][] = [
         .prepare("INSERT INTO sessions (token_hash, member_sub, display_name, rank_code, role, expires_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(await sha256(token), m.sub, m.name, m.rankCode, m.role, iso(expires))
         .run();
-      const session: Session = { kind: "demo", sub: m.sub, name: m.name, rankCode: m.rankCode, role: m.role };
+      const session: Session = { kind: "demo", sub: m.sub, name: m.name, rankCode: m.rankCode, role: m.role, roles: m.roles ?? [], hglobal: m.hglobal ?? false, center: m.center ? { key: centerKey(m.center), label: m.center } : null };
       return { token, member: memberOf(session, await ranks(ctx.db)) };
     },
   ],
@@ -595,7 +1036,19 @@ const routes: [string, RegExp, Handler][] = [
       return { ok: true };
     },
   ],
-  ["GET", /^\/me$/, async (ctx) => ({ member: ctx.session ? memberOf(ctx.session, await ranks(ctx.db)) : null })],
+  [
+    "GET",
+    /^\/me$/,
+    async (ctx) => {
+      const s = ctx.session;
+      if (!s) return { member: null };
+      const { results } = await ctx.db.prepare("SELECT DISTINCT duty FROM review_group_members WHERE member_sub = ?").bind(s.sub).all<{ duty: Duty }>();
+      // 被指派為窗口的人登入時，補上／更新名單上的姓名。
+      if (results.length) await ctx.db.prepare("UPDATE review_group_members SET member_name = ? WHERE member_sub = ? AND member_name <> ?").bind(s.name, s.sub, s.name).run();
+      const labels: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
+      return { member: memberOf(s, await ranks(ctx.db), { duties: results.map((r) => labels[r.duty]) }) };
+    },
+  ],
   [
     "DELETE",
     /^\/me$/,
@@ -620,8 +1073,8 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/complete$/,
     async (ctx, [courseId, lessonId]) => {
       const s = requireMember(ctx);
-      await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      const target = await lessonOf(ctx, courseId, lessonId);
+      if (!(await canWatch(ctx, courseId, target.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
       await ctx.db
         .prepare("INSERT OR IGNORE INTO lesson_progress (member_sub, lesson_id, course_id) VALUES (?, ?, ?)")
         .bind(s.sub, lessonId, courseId)
@@ -634,7 +1087,7 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/playback$/,
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
       const seg = { start: lesson.start_seconds, end: lesson.end_seconds };
       if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref, ...seg };
       if (lesson.media_type === "mux" && lesson.media_ref) {
@@ -656,43 +1109,31 @@ const routes: [string, RegExp, Handler][] = [
     /^\/orders$/,
     async (ctx) => {
       const s = requireMember(ctx);
-      const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE member_sub = ? ORDER BY created_at DESC LIMIT 100`).bind(s.sub).all<OrderRow>();
+      const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE o.member_sub = ? ORDER BY o.created_at DESC LIMIT 200`).bind(s.sub).all<OrderRow>();
       return hydrateOrders(ctx.db, results);
     },
   ],
-  [
-    "GET",
-    /^\/orders\/([\w-]+)$/,
-    async (ctx, [id]) => {
-      const s = requireMember(ctx);
-      const row = await ctx.db.prepare(`${ORDER_SELECT} WHERE id = ? AND (member_sub = ? OR ? = 'admin')`).bind(id, s.sub, s.role).first<OrderRow>();
-      if (!row) fail(404, "not_found", "找不到這筆報名");
-      return (await hydrateOrders(ctx.db, [row!]))[0];
-    },
-  ],
+  ["GET", /^\/orders\/([\w-]+)$/, async (ctx, [id]) => orderDetail(ctx, id)],
+  ["POST", /^\/orders\/([\w-]+)\/events$/, async (ctx, [id]) => addOrderEvent(ctx, id, await readJson(ctx.req))],
   [
     "GET",
     /^\/notifications$/,
     async (ctx) => {
       const s = requireMember(ctx);
+      const n = noticeScope(s);
       const { results } = await ctx.db
-        .prepare(
-          "SELECT id, title, body, link, read_at, created_at FROM notifications WHERE recipient_sub = ? OR (recipient_role = 'admin' AND ? = 'admin') ORDER BY created_at DESC LIMIT 100",
-        )
-        .bind(s.sub, s.role)
+        .prepare(`SELECT id, title, body, link, read_at, created_at FROM notifications WHERE ${n.sql} ORDER BY created_at DESC LIMIT 100`)
+        .bind(...n.args)
         .all<{ id: string; title: string; body: string; link: string; read_at: string | null; created_at: string }>();
-      return results.map((n): Notice => ({ id: n.id, title: n.title, body: n.body, link: n.link, read: !!n.read_at, createdAt: n.created_at }));
+      return results.map((x): Notice => ({ id: x.id, title: x.title, body: x.body, link: x.link, read: !!x.read_at, createdAt: x.created_at }));
     },
   ],
   [
     "POST",
     /^\/notifications\/read-all$/,
     async (ctx) => {
-      const s = requireMember(ctx);
-      await ctx.db
-        .prepare("UPDATE notifications SET read_at = ? WHERE read_at IS NULL AND (recipient_sub = ? OR (recipient_role = 'admin' AND ? = 'admin'))")
-        .bind(iso(), s.sub, s.role)
-        .run();
+      const n = noticeScope(requireMember(ctx));
+      await ctx.db.prepare(`UPDATE notifications SET read_at = ? WHERE read_at IS NULL AND ${n.sql}`).bind(iso(), ...n.args).run();
       return { ok: true };
     },
   ],
@@ -700,29 +1141,141 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/notifications\/([\w-]+)\/read$/,
     async (ctx, [id]) => {
-      const s = requireMember(ctx);
-      await ctx.db
-        .prepare("UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND (recipient_sub = ? OR (recipient_role = 'admin' AND ? = 'admin'))")
-        .bind(iso(), id, s.sub, s.role)
-        .run();
+      const n = noticeScope(requireMember(ctx));
+      await ctx.db.prepare(`UPDATE notifications SET read_at = COALESCE(read_at, ?) WHERE id = ? AND ${n.sql}`).bind(iso(), id, ...n.args).run();
       return { ok: true };
     },
   ],
+  ["GET", /^\/admin\/orders$/, async (ctx) => hydrateOrders(ctx.db, (await reviewList(ctx)).rows.slice(0, 300))],
+  ["GET", /^\/admin\/orders\.csv$/, async (ctx) => reviewCsv(ctx)],
+  ["POST", /^\/admin\/orders\/([\w-]+)\/review$/, async (ctx, [id]) => reviewOrder(ctx, id, await readJson(ctx.req))],
   [
     "GET",
-    /^\/admin\/orders$/,
+    /^\/centers$/,
     async (ctx) => {
-      requireAdmin(ctx);
-      const status = ctx.url.searchParams.get("status");
-      const filter = status === "pending" || status === "opened" || status === "rejected" ? status : null;
-      const { results } = await ctx.db
-        .prepare(`${ORDER_SELECT} WHERE total_twd > 0 AND (? IS NULL OR status = ?) ORDER BY created_at DESC LIMIT 200`)
-        .bind(filter, filter)
-        .all<OrderRow>();
-      return hydrateOrders(ctx.db, results);
+      const s = requireMember(ctx);
+      const fromCentral = s.kind === "central" ? await centerList(s.token) : ["台北中心", "台中中心", "高雄中心"];
+      const { results } = await ctx.db.prepare("SELECT DISTINCT center_label AS l FROM orders WHERE center_label <> '' UNION SELECT DISTINCT center_label FROM review_group_members WHERE center_label <> ''").all<{ l: string }>();
+      const seen = new Map<string, string>();
+      for (const l of [...fromCentral, ...results.map((r) => r.l)]) if (!seen.has(centerKey(l))) seen.set(centerKey(l), l);
+      return [...seen.values()];
     },
   ],
-  ["POST", /^\/admin\/orders\/([\w-]+)\/review$/, async (ctx, [id]) => reviewOrder(ctx, id, await readJson(ctx.req))],
+  ["GET", /^\/admin\/review-groups$/, async (ctx) => listGroups(ctx)],
+  [
+    "POST",
+    /^\/admin\/review-groups$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      const body = await readJson<{ name?: unknown; ownerCenter?: unknown }>(ctx.req);
+      const name = text(body.name, 60) || fail(400, "name_required", "請輸入群組名稱");
+      // 總部群組只有秘書與超級管理員可建立；會長、音控只能建立自己中心的群組。
+      const own = text(body.ownerCenter, 100) || null;
+      if (s.role !== "admin" && !(own && canManageCenter(s, centerKey(own)))) fail(403, "forbidden", "沒有建立這個群組的權限");
+      const id = `g${randomId(8)}`;
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO review_groups (id, name, owner_center_key, owner_center_label, created_by_sub) VALUES (?, ?, ?, ?, ?)").bind(id, name, own ? centerKey(own) : null, own ?? "", s.sub),
+        audit(ctx.db, s.sub, "group.create", "review_group", id, name),
+      ]);
+      return listGroups(ctx);
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/review-groups\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const s = await requireGroupManager(ctx, id);
+      const name = text((await readJson<{ name?: unknown }>(ctx.req)).name, 60) || fail(400, "name_required", "請輸入群組名稱");
+      await ctx.db.batch([ctx.db.prepare("UPDATE review_groups SET name = ? WHERE id = ?").bind(name, id), audit(ctx.db, s.sub, "group.rename", "review_group", id, name)]);
+      return listGroups(ctx);
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/review-groups\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const s = await requireGroupManager(ctx, id);
+      await ctx.db.batch([
+        ctx.db.prepare("UPDATE courses SET review_group_id = NULL WHERE review_group_id = ?").bind(id),
+        ctx.db.prepare("DELETE FROM review_groups WHERE id = ?").bind(id),
+        audit(ctx.db, s.sub, "group.delete", "review_group", id),
+      ]);
+      return listGroups(ctx);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/review-groups\/([\w-]+)\/members$/,
+    async (ctx, [id]) => {
+      const s = await requireGroupManager(ctx, id);
+      const body = await readJson<{ memberSub?: unknown; duty?: unknown; center?: unknown; remove?: unknown }>(ctx.req);
+      const sub = typeof body.memberSub === "string" ? body.memberSub.trim() : "";
+      if (!/^[\w-]{3,128}$/.test(sub)) fail(400, "invalid_member", "請貼上正確的會員 ID（對方在「我的」頁可以看到）");
+      if (body.duty !== "register" && body.duty !== "collect" && body.duty !== "review") fail(400, "invalid_duty", "請選擇職責");
+      const label = text(body.center, 100) ?? "";
+      const key = label ? centerKey(label) : "";
+      if (body.remove === true) {
+        await ctx.db.batch([
+          ctx.db.prepare("DELETE FROM review_group_members WHERE group_id = ? AND center_key = ? AND member_sub = ? AND duty = ?").bind(id, key, sub, body.duty),
+          audit(ctx.db, s.sub, "group.member_remove", "review_group", id, `${sub}:${body.duty}`),
+        ]);
+        return listGroups(ctx);
+      }
+      // 姓名：先用對方曾留下的報名姓名；對方下次登入時會自動更新。
+      const known = await ctx.db
+        .prepare("SELECT member_name AS n FROM review_group_members WHERE member_sub = ? AND member_name <> '' UNION SELECT member_name_snapshot FROM orders WHERE member_sub = ? LIMIT 1")
+        .bind(sub, sub)
+        .first<{ n: string }>();
+      await ctx.db.batch([
+        ctx.db
+          .prepare("INSERT OR IGNORE INTO review_group_members (group_id, center_key, center_label, member_sub, member_name, duty, added_by_sub) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(id, key, label, sub, sub === s.sub ? s.name : (known?.n ?? ""), body.duty, s.sub),
+        audit(ctx.db, s.sub, "group.member_add", "review_group", id, `${sub}:${body.duty}`),
+        notify(ctx.db, { sub }, "你已被指派為課程報名審核人員", `群組：${(await ctx.db.prepare("SELECT name FROM review_groups WHERE id = ?").bind(id).first<{ name: string }>())?.name ?? ""}${label ? `｜${label}` : "｜全部中心"}`, "/admin/orders"),
+      ]);
+      return listGroups(ctx);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/courses\/([\w-]+)\/runs$/,
+    async (ctx, [courseId]) => {
+      const admin = requireAdmin(ctx);
+      if (!(await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ?").bind(courseId).first())) fail(404, "not_found", "找不到這門課程");
+      const f = runFields(await readJson(ctx.req), true);
+      const id = `r${randomId(8)}`;
+      await ctx.db.batch([
+        ctx.db.prepare(`INSERT INTO course_runs (id, course_id, ${f.map(([c]) => c).join(", ")}) VALUES (?, ?, ${f.map(() => "?").join(", ")})`).bind(id, courseId, ...f.map(([, v]) => v)),
+        audit(ctx.db, admin.sub, "run.create", "course_run", id),
+      ]);
+      return courseDetail(ctx, courseId);
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/runs\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
+      if (!run) return fail(404, "not_found", "找不到這個場次");
+      const f = runFields(await readJson(ctx.req), false);
+      if (!f.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
+      await ctx.db.batch([ctx.db.prepare(`UPDATE course_runs SET ${f.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...f.map(([, v]) => v), id), audit(ctx.db, admin.sub, "run.update", "course_run", id)]);
+      return courseDetail(ctx, run.course_id);
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/runs\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
+      if (!run) return fail(404, "not_found", "找不到這個場次");
+      if (await ctx.db.prepare("SELECT 1 AS ok FROM order_items WHERE run_id = ? LIMIT 1").bind(id).first()) fail(409, "in_use", "這個場次已有學員報名，不能刪除；請改為「關閉報名」");
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM course_runs WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "run.delete", "course_run", id)]);
+      return courseDetail(ctx, run.course_id);
+    },
+  ],
   [
     "PATCH",
     /^\/admin\/lessons\/([\w-]+)$/,

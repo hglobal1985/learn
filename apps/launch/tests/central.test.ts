@@ -33,6 +33,12 @@ function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
   if (url.endsWith("/v1/admin/me")) return Promise.resolve(new Response("{}", { status: 401 })); // 中央只接受網站本身的登入
   if (url.endsWith("/v1/apps/learn/handoff"))
     return sub === "m_bob" ? ok({ app_id: "learn", version: "x", text: "…" }) : Promise.resolve(new Response("{}", { status: 403 }));
+  if (url.endsWith("/v1/eligibility/context")) {
+    if (sub === "m_pres") return ok({ member_id: sub, roles: [{ role: "president" }], hglobal_verified: true, center: { key: "台北中心", label: "台北中心" } });
+    if (sub === "m_sec") return ok({ member_id: sub, roles: [{ role: "secretary" }], hglobal_verified: true, center: null });
+    if (sub === "m_alice") return ok({ member_id: sub, roles: [], hglobal_verified: true, center: { key: "台北中心", label: "台北中心" } });
+    return ok({ member_id: sub, roles: [], hglobal_verified: false, center: null });
+  }
   if (url.endsWith("/v1/eligibility/check-batch")) {
     central.eligibilityCalls++;
     const { rules } = JSON.parse(String(init?.body)) as { rules: { min_rank: string }[] };
@@ -102,8 +108,8 @@ test("中央會員領課、資料只以 sub 關聯；超級管理員可審核", 
   const bob = token({ sub: "m_bob" });
   const [order] = (await call<Order[]>("POST", "/orders", { token: alice, body: { courseIds: ["share"] } })).data;
   assert.equal(order.memberName, "愛麗絲");
-  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: alice, body: { approve: true } })).status, 403);
-  const approved = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: bob, body: { approve: true } });
+  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: alice, body: { action: "paid" } })).status, 404);
+  const approved = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: bob, body: { action: "paid" } });
   assert.equal(approved.data.status, "opened");
   assert.equal((await call<CourseDetail>("GET", "/courses/share", { token: alice })).data.enrollment, "opened");
 });
@@ -162,4 +168,31 @@ test("LEARN_ADMIN_SUBS 指定的會員也是管理員；其他人不是", async 
   assert.equal(carol.data.member.role, "admin");
   const erin = await call<{ member: Member }>("GET", "/me", { token: token({ sub: "m_erin" }) });
   assert.equal(erin.data.member.role, "student");
+});
+
+test("中央職務與中心：秘書是管理員；會長只看得到自己中心的報名並收到通知", async () => {
+  const call = setup();
+  const alice = token();
+  const pres = token({ sub: "m_pres" });
+  const sec = token({ sub: "m_sec" });
+  const me = await call<{ member: Member }>("GET", "/me", { token: sec });
+  assert.equal(me.data.member.role, "admin");
+  assert.deepEqual(me.data.member.titles, ["總部秘書"]);
+  const p = await call<{ member: Member }>("GET", "/me", { token: pres });
+  assert.equal(p.data.member.role, "student");
+  assert.equal(p.data.member.reviewer, true);
+  assert.equal(p.data.member.center, "台北中心");
+  const [order] = (await call<Order[]>("POST", "/orders", { token: alice, body: { courseIds: ["share"] } })).data;
+  assert.equal(order.centerLabel, "台北中心");
+  const notes = await call<{ title: string }[]>("GET", "/notifications", { token: pres });
+  assert.equal(notes.data.filter((n) => n.title.startsWith("有新的報名待審核")).length, 1, "寄給該中心會長");
+  const list = await call<Order[]>("GET", "/admin/orders", { token: pres });
+  assert.deepEqual(list.data.map((o) => o.id), [order.id]);
+  const done = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: pres, body: { action: "vip" } });
+  assert.equal(done.data.status, "opened");
+  assert.equal(done.data.payMethod, "vip");
+  assert.equal(done.data.events!.at(-1)!.actorTitle, "會長");
+  assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: pres, body: { action: "revoke", reasonCode: "unpaid" } })).status, 403, "撤銷限秘書與超級管理員");
+  assert.equal((await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: sec, body: { action: "revoke", reasonCode: "unpaid" } })).data.revoked, true);
+  assert.equal((await call<CourseDetail>("GET", "/courses/share", { token: alice })).data.enrollment, null);
 });
