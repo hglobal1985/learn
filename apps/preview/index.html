@@ -29,7 +29,7 @@ function home(){const list=videos.filter(v=>can(v)&&(!search||(v.title+v.descrip
  $('#view').innerHTML=`<section class="hero"><h1>持續學習，開啟更多可能</h1></section>
  <div class="section-head"><div><h2>探索精選課程</h2></div><input class="search" id="search" placeholder="搜尋影片名稱或介紹" value="${esc(search)}" aria-label="搜尋"/></div>
  <div class="chips">${['全部','營養健康','個人成長','事業培訓'].map(c=>`<button class="chip ${category===c?'active':''}" data-filter="${c}">${c}</button>`).join('')}</div>
- <div class="courses">${list.map(v=>`<button class="course" data-open="${esc(v.id)}"><div class="cover c${v.color}"><span class="playicon">▶</span></div><div class="coursebody"><h3>${esc(v.title)}</h3><div class="pills"><span class="pill">${accessName(v.access)}</span></div></div></button>`).join('')}</div>${list.length?'':'<div class="empty">目前沒有符合條件的課程</div>'}`;
+ <div class="courses">${list.map(v=>`<button class="course" data-open="${esc(v.id)}"><div class="cover c${v.color}"><span class="sourcepill">${v.source}</span><span class="playicon">▶</span><span class="coverlabel">${esc(v.category)}</span></div><div class="coursebody"><h3>${esc(v.title)}</h3><p>${esc(v.description)}</p><div class="pills"><span class="pill">${accessName(v.access)}</span><span class="pill">${v.source}</span></div></div></button>`).join('')}</div>${list.length?'':'<div class="empty">目前沒有符合條件的課程。請切換身份或更換分類。</div>'}`;
  $('#search').addEventListener('input',e=>{search=e.target.value;let pos=e.target.selectionStart;home();$('#search').focus();$('#search').setSelectionRange(pos,pos)});
  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{category=b.dataset.filter;home()});document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>go('/'+b.dataset.open));
 }
