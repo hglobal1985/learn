@@ -12,7 +12,7 @@
     "run_worker_first": true
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "learn-v2", "database_id": "TO_BE_CREATED", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "learn-v2", "database_id": "f1283fdd-94f1-4a43-97b4-3072d1876ced", "migrations_dir": "migrations" }
   ],
   "observability": { "enabled": true }
 }
