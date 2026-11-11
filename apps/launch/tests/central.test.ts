@@ -20,7 +20,7 @@ function token(claims: Record<string, unknown> = {}, header: Record<string, unkn
   return `${h}.${p}.${sig}`;
 }
 
-/** 模擬中央：alice 是白金（符合 ≤ platinum），bob 有「課務」職務。 */
+/** 模擬中央：alice 是白金（符合 ≤ platinum），bob 是超級管理員。 */
 let central = { down: false, eligibilityCalls: 0 };
 const ladder = ["none", "silver", "gold", "platinum", "emerald", "diamond"];
 function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
@@ -30,8 +30,9 @@ function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
   if (url.endsWith("/oauth/jwks")) return ok({ keys: [jwk] });
   if (central.down) return Promise.reject(new Error("offline"));
   if (url.endsWith("/v1/me/profile")) return ok({ fields: { display_name: { value: sub === "m_bob" ? "課務小明" : "愛麗絲" } } });
-  if (url.endsWith("/v1/admin/me"))
-    return sub === "m_bob" ? ok({ member_id: "m_bob", roles: [{ role: "course" }] }) : Promise.resolve(new Response("{}", { status: 403 }));
+  if (url.endsWith("/v1/admin/me")) return Promise.resolve(new Response("{}", { status: 401 })); // 中央只接受網站本身的登入
+  if (url.endsWith("/v1/apps/learn/handoff"))
+    return sub === "m_bob" ? ok({ app_id: "learn", version: "x", text: "…" }) : Promise.resolve(new Response("{}", { status: 403 }));
   if (url.endsWith("/v1/eligibility/check-batch")) {
     central.eligibilityCalls++;
     const { rules } = JSON.parse(String(init?.body)) as { rules: { min_rank: string }[] };
@@ -95,7 +96,7 @@ test("獎銜資格向中央查詢；中央連不上時一律不符合（fail clo
   assert.equal(offline.data.find((c) => c.id === "start")!.eligible, true, "不限獎銜只需登入");
 });
 
-test("中央會員領課、資料只以 sub 關聯；課務職務可審核", async () => {
+test("中央會員領課、資料只以 sub 關聯；超級管理員可審核", async () => {
   const call = setup();
   const alice = token();
   const bob = token({ sub: "m_bob" });
@@ -153,4 +154,12 @@ test("管理員設定章節影片：YouTube 直接播放；Mux 未設金鑰回 5
       assert.ok(createVerify("RSA-SHA256").update(`${h}.${p}`).verify(mp, Buffer.from(s, "base64url")));
     }
   }
+});
+
+test("LEARN_ADMIN_SUBS 指定的會員也是管理員；其他人不是", async () => {
+  const call = setup({ LEARN_ADMIN_SUBS: " m_carol , m_dave" });
+  const carol = await call<{ member: Member }>("GET", "/me", { token: token({ sub: "m_carol" }) });
+  assert.equal(carol.data.member.role, "admin");
+  const erin = await call<{ member: Member }>("GET", "/me", { token: token({ sub: "m_erin" }) });
+  assert.equal(erin.data.member.role, "student");
 });

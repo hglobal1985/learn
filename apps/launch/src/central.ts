@@ -2,12 +2,12 @@
  * 中央會員串接（https://id.hglobal1985.com）：
  * - 驗證 Access Token（RS256、typ=at+jwt、iss/aud、app_id=learn、exp），會員主鍵只用 sub。
  * - 獎銜資格一律即時向中央查詢（fail closed），結果只放記憶體快取，不寫入資料庫或日誌。
- * - 管理員 = 中央職務 super_admin / secretary / course（課務）。
+ * - 管理員 = 中央「超級管理員」（以 /v1/apps/learn/handoff 確認，這是中央唯一接受 App 登入的職務查詢），
+ *   或列在 LEARN_ADMIN_SUBS 的會員 ID。
  * 日誌不得出現 Token、信箱、姓名。
  */
 export const CENTRAL = "https://id.hglobal1985.com";
 export const APP_ID = "learn";
-const ADMIN_ROLES = new Set(["super_admin", "secretary", "course"]);
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 let centralFetch: Fetch = (input, init) => fetch(input, init);
@@ -112,13 +112,16 @@ export async function displayName(sub: string, token: string): Promise<string> {
   });
 }
 
-/** 是否為本 App 管理員：中央職務 super_admin / secretary / course。查不到一律否。 */
-export async function isAdmin(sub: string, token: string): Promise<boolean> {
+/**
+ * 是否為本 App 管理員。中央的 /v1/admin/* 只接受會員中心網站本身的登入，App 的 token 一律被拒；
+ * 中央提供給 App 的方式是 GET /v1/apps/learn/handoff：只有超級管理員會得到 200（不帶 integrated 參數時不寫入任何紀錄）。
+ * 另可在 Worker 變數 LEARN_ADMIN_SUBS（逗號分隔的會員 ID）指定其他管理員。查不到一律否。
+ */
+export async function isAdmin(sub: string, token: string, extraAdmins = ""): Promise<boolean> {
+  if (extraAdmins.split(",").map((x) => x.trim()).filter(Boolean).includes(sub)) return true;
   return cached(`admin:${sub}`, 60_000, async () => {
-    const res = await callCentral(token, "/v1/admin/me");
-    if (!res?.ok) return false;
-    const body = (await res.json().catch(() => null)) as { member_id?: string; roles?: { role?: string }[] } | null;
-    return body?.member_id === sub && !!body.roles?.some((r) => ADMIN_ROLES.has(r.role ?? ""));
+    const res = await callCentral(token, `/v1/apps/${APP_ID}/handoff`);
+    return res?.status === 200;
   });
 }
 

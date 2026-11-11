@@ -59,6 +59,11 @@ export default function MeScreen() {
       {member ? (
         <Card>
           <AppText variant="title">{member.name}</AppText>
+          {!member.demo ? (
+            <AppText variant="caption" tone="muted" selectable>
+              會員 ID：{member.sub}
+            </AppText>
+          ) : null}
           <View style={styles.row}>
             {member.rank ? <Pill label={member.rank.name} tone="accent" /> : null}
             <Pill label={member.role === "admin" ? "管理員" : "學員"} />

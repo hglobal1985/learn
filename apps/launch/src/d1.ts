@@ -22,4 +22,6 @@ export interface Env {
   /** Mux API 存取權杖（讀取影片清單用）：ID 可為一般變數，SECRET 必須是 Secret。 */
   MUX_TOKEN_ID?: string;
   MUX_TOKEN_SECRET?: string;
+  /** 額外的 App 管理員（逗號分隔的中央會員 ID）；中央超級管理員不必列。 */
+  LEARN_ADMIN_SUBS?: string;
 }

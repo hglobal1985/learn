@@ -91,7 +91,7 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [name, admin] = await Promise.all([displayName(sub, jwt), isAdmin(sub, jwt)]);
+    const [name, admin] = await Promise.all([displayName(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS)]);
     return { kind: "central", sub, name, role: admin ? "admin" : "student", token: jwt };
   }
   if (!demoEnabled(env)) return null;
