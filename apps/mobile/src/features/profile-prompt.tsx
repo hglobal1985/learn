@@ -23,20 +23,18 @@ type Key = "legal_name" | "display_name" | "contact_email" | "education_system" 
 const FIELD_H = 44;
 const OTHER = "__other";
 const NONE_TERM = "無";
-const PENDING_TEXT = "（等待中心管理員審核）";
 /** 欄位要顯示的內容：有等待審核的新值就顯示新值（使用者剛填的），沒有才顯示目前生效的值。 */
 const shown = (f: { value: string; pending: string | null }) => f.pending ?? f.value;
 const formVals = (d: View_): Record<Key, string> => ({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: shown(d.fields.education_system), education_center: shown(d.fields.education_center), rank: shown(d.fields.rank) });
 const norm = (s: string) => s.trim().toLowerCase();
 
 /** 欄位標籤：必填欄位旁有橘色「必填」小標籤（中央視覺規範）；等待審核的欄位加上醒目的橘色說明。 */
-function Label({ text, pending, tag }: { text: string; pending?: boolean; tag?: string }) {
+function Label({ text, tag }: { text: string; tag?: string }) {
   const { c } = useTheme();
   return (
     <View style={styles.labelRow}>
       <AppText variant="caption" tone="muted" numberOfLines={1} style={{ flexShrink: 1 }}>
         {text}
-        {pending ? <Text style={{ color: c.warning, fontWeight: "800" }}>{PENDING_TEXT}</Text> : null}
       </AppText>
       {tag ? (
         <View style={[styles.req, { backgroundColor: c.warningSoft, borderColor: c.warning }]}>
@@ -193,13 +191,16 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const centerListed = systemHg && terms.education_center.length > 0 && vals.education_center !== undefined;
   const missing: Key[] = data ? ([!vals.display_name.trim() && "display_name", data.enabled && !vals.education_system.trim() && "education_system", data.enabled && !vals.education_center.trim() && "education_center", data.enabled && !vals.rank.trim() && "rank"].filter(Boolean) as Key[]) : [];
 
-  /** 標籤：沒填 → 「必填」；填了就隱藏；中心、獎銜已通過審核（且沒有被改動）→ 「審核通過」（外觀同必填）。 */
+  /** 標籤：沒填 → 「必填」；填了就隱藏；中心、獎銜（沒被改動時）等待審核 → 「審核中...」、已通過審核 → 「審核通過」（外觀都同必填）。 */
   const tagFor = (key: "education_system" | "education_center" | "rank" | "display_name", reviewed = false): string | undefined => {
     const v = vals[key];
     if (!v.trim()) return "必填";
     if (reviewed && data && key !== "display_name") {
       const f = data.fields[key];
-      if (f.status === "approved" && f.pending === null && initial && v === initial[key]) return "審核通過";
+      if (initial && v === initial[key]) {
+        if (f.pending !== null) return "審核中...";
+        if (f.status === "approved") return "審核通過";
+      }
     }
     return undefined;
   };
@@ -228,7 +229,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   };
 
   /** 系統／中心：清單選單＋「其他」自訂輸入＋右邊的「無」勾選框。 */
-  const listedRow = (key: "education_system" | "education_center", label: string, pendingNew: boolean) => {
+  const listedRow = (key: "education_system" | "education_center", label: string) => {
     const v = vals[key];
     const none = v.trim() === NONE_TERM;
     const list = terms[key];
@@ -237,7 +238,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
     const options = [{ value: "", label: "（未選擇）" }, ...list.map((t) => ({ value: t, label: t })), { value: OTHER, label: "其他" }];
     return (
       <Row z={openKey === key ? 100 : key === "education_system" ? 30 : 20} bad={showBad && missing.includes(key)}>
-        <Label text={label} pending={pendingNew} tag={tagFor(key, key === "education_center")} />
+        <Label text={label} tag={tagFor(key, key === "education_center")} />
         <View style={styles.line}>
           <Dropdown
             options={options}
@@ -312,12 +313,12 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
               </Row>
               {data.enabled ? (
                 <>
-                  {listedRow("education_system", "系統", data.fields.education_system.pending !== null)}
+                  {listedRow("education_system", "系統")}
                   {centerListed ? (
-                    listedRow("education_center", "中心", data.fields.education_center.pending !== null)
+                    listedRow("education_center", "中心")
                   ) : (
                     <Row z={20} bad={showBad && missing.includes("education_center")}>
-                      <Label text="中心" pending={data.fields.education_center.pending !== null} tag={tagFor("education_center", true)} />
+                      <Label text="中心" tag={tagFor("education_center", true)} />
                       <View style={styles.line}>
                         <View style={{ flex: 1 }}>
                           {vals.education_center.trim() === NONE_TERM ? (
@@ -333,7 +334,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                     </Row>
                   )}
                   <Row z={openKey === "rank" ? 100 : 10} bad={showBad && missing.includes("rank")}>
-                    <Label text="獎銜" pending={data.fields.rank.pending !== null} tag={tagFor("rank", true)} />
+                    <Label text="獎銜" tag={tagFor("rank", true)} />
                     <View style={styles.line}>
                       <Dropdown
                         options={data.rankOptions.filter((o) => o.value !== "none").map((o) => ({ value: o.value, label: o.label }))}
