@@ -49,7 +49,6 @@ export default function HomeScreen() {
     .filter((x) => x.enrollment === "opened")
     .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
   const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
-  const login = <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} />;
   return (
     <>
     {promptOpen && member?.profileMissing?.length ? <ProfilePrompt missing={member.profileMissing} onClose={() => setPromptOpen(false)} /> : null}
@@ -86,9 +85,9 @@ export default function HomeScreen() {
               ) : null}
             </Pressable>
           ) : (
-            <AppText variant="headline" tone="muted" style={{ textAlign: "center" }}>
-              隨時隨地，持續成長
-            </AppText>
+            <View style={styles.loginBtn}>
+              <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} fullWidth />
+            </View>
           )}
         </View>
         {noticeClosed ? null : <Ticker items={(notices.data ?? []).map((n) => n.text)} onClose={() => setNoticeClosed(true)} />}
@@ -114,7 +113,6 @@ export default function HomeScreen() {
                     <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
                       登入後顯示你已報名的課程。
                     </AppText>
-                    {login}
                   </>
                 )
               }
@@ -148,6 +146,7 @@ const styles = StyleSheet.create({
   brand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
   logo: { width: 44, height: 44 },
   rank: { borderWidth: 1, borderColor: "#e6c48c", backgroundColor: "#fdf0e3", borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 },
+  loginBtn: { width: "100%", maxWidth: 420, minHeight: 56, justifyContent: "center" },
   avatar: { width: 48, height: 48, borderRadius: 24 },
   rails: { flex: 1, flexDirection: "row", gap: space.md, alignItems: "stretch" },
   middle: { flex: 1, paddingBottom: space.sm },
