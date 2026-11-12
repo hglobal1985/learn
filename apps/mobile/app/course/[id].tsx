@@ -2,6 +2,7 @@ import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type CourseRun, type Order } from "@/api/client";
+import { CommentBoard } from "@/features/comments/comment-board";
 import { CoursePriceTag, UnitTags } from "@/features/courses/course-card";
 import { dateTime, ntd } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
@@ -47,7 +48,7 @@ export default function CourseDetailScreen() {
   };
 
   const registerButton = (free: boolean, key: string, run?: CourseRun) => {
-    if (!course.eligible) return <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜的會員報名。`} />;
+    if (!course.eligible) return <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜${course.allowPresident ? "或會長" : ""}報名。`} />;
     if (free) return <Button label="免費報名" icon="gift-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
     // iOS/Android：依商店規範不顯示付費報名方式，只說明尚未開通。
     if (!isWeb) return <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
@@ -70,7 +71,7 @@ export default function CourseDetailScreen() {
         <UnitTags course={course} />
         <View style={styles.row}>
           <CoursePriceTag course={course} />
-          {course.minRank.order > 10 ? <Pill label={`限 ${course.minRank.name} 以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
+          {course.minRank.order > 10 ? <Pill label={`限 ${course.minRank.name} 以上${course.allowPresident ? "或會長" : ""}`} tone={course.eligible ? "neutral" : "warning"} /> : null}
           {course.freeNow && course.freeUntil ? <Pill label={`限時免費至 ${dateTime(course.freeUntil)}`} tone="accent" /> : null}
         </View>
         <AppText variant="callout" tone="muted">
@@ -123,6 +124,7 @@ export default function CourseDetailScreen() {
           })}
         </Card>
       </Section>
+      <CommentBoard courseId={course.id} />
     </Screen>
   );
 }

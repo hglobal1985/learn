@@ -2,6 +2,7 @@ import {
   DEMO_MEMBERS,
   HQ_UNIT,
   REVIEW_REASONS,
+  type CourseComment,
   type Duty,
   type OrderEvent,
   type ReviewAction,
@@ -183,12 +184,13 @@ type CourseRow = {
   free_from: string | null;
   free_until: string | null;
   review_group_id: string | null;
+  allow_president: number;
   run_count: number;
   lesson_count: number;
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -220,6 +222,9 @@ async function memberCourseState(db: D1Database, sub: string | undefined) {
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
+/** 「會長也可報名」：課程開啟此條件時，會長不受獎銜限制。 */
+const byPresident = (s: Session | null, c: { allow_president: number }) => c.allow_president === 1 && !!s?.roles.includes("president");
+
 const inFreeWindow = (row: { free_from: string | null; free_until: string | null }, now = iso()) =>
   !!(row.free_from || row.free_until) && (!row.free_from || row.free_from <= now) && (!row.free_until || now < row.free_until);
 
@@ -247,7 +252,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
-    eligible: eligibility.get(row.min_rank_code) === true,
+    eligible: eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row),
+    allowPresident: row.allow_president === 1,
     enrollment: state.enrolled.has(row.id) ? "opened" : state.pending.has(row.id) ? "pending" : null,
     completedLessons: state.done.get(row.id) ?? 0,
   };
@@ -478,16 +484,16 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
   const marks = ids.map(() => "?").join(",");
   const [{ results: courses }, { results: runs }, rankMap, state] = await Promise.all([
     ctx.db
-      .prepare(`SELECT id, title, price_twd, min_rank_code, free_from, free_until, review_group_id FROM courses WHERE status = 'published' AND id IN (${marks})`)
+      .prepare(`SELECT id, title, price_twd, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
       .bind(...ids)
-      .all<{ id: string; title: string; price_twd: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null }>(),
+      .all<{ id: string; title: string; price_twd: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
     ctx.db.prepare(`SELECT * FROM course_runs WHERE course_id IN (${marks})`).bind(...ids).all<RunRow>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
   ]);
   if (courses.length !== ids.length) fail(409, "unavailable", "課程已下架或不存在，請重新確認");
   const eligibility = await eligibilityFor(s, rankMap, courses.map((c) => c.min_rank_code));
-  if (courses.some((c) => eligibility.get(c.min_rank_code) !== true)) fail(403, "rank_required", "此課程需要符合資格才能報名");
+  if (courses.some((c) => eligibility.get(c.min_rank_code) !== true && !byPresident(s, c))) fail(403, "rank_required", "此課程需要符合資格才能報名");
 
   const now = new Date();
   const statements: D1PreparedStatement[] = [];
@@ -786,6 +792,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     if (body.status !== "draft" && body.status !== "published" && body.status !== "archived") fail(400, "invalid_status", "狀態不正確");
     sets.push(["status", body.status]);
   }
+  if (body.allowPresident !== undefined) sets.push(["allow_president", body.allowPresident === true ? 1 : 0]);
   const guidance = text(body.guidanceUnit, 60);
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
   const host = text(body.hostUnit, 100);
@@ -998,6 +1005,41 @@ function runFields(body: Record<string, unknown>, creating: boolean): [string, u
   return sets;
 }
 
+// ---------- 課程留言板 ----------
+
+type CommentRow = { id: string; course_id: string; member_sub: string; member_name: string; body: string; status: "visible" | "hidden"; created_at: string; reports?: number; course_title?: string };
+const toComment = (r: CommentRow, s: Session): CourseComment => ({
+  id: r.id,
+  courseId: r.course_id,
+  authorName: r.member_name,
+  mine: r.member_sub === s.sub,
+  body: r.body,
+  hidden: r.status === "hidden",
+  createdAt: r.created_at,
+  ...(r.reports !== undefined ? { reports: r.reports, courseTitle: r.course_title } : {}),
+});
+
+async function requireCourseForComments(ctx: Ctx, courseId: string): Promise<Session> {
+  const s = requireMember(ctx);
+  const c = await ctx.db.prepare("SELECT status FROM courses WHERE id = ?").bind(courseId).first<{ status: string }>();
+  if (!c || (c.status !== "published" && s.role !== "admin")) fail(404, "not_found", "找不到這門課程");
+  return s;
+}
+
+async function listComments(ctx: Ctx, courseId: string): Promise<CourseComment[]> {
+  const s = await requireCourseForComments(ctx, courseId);
+  // 一般會員看不到被隱藏的留言與自己封鎖的人；管理員看得到全部。
+  const { results } = await ctx.db
+    .prepare(
+      `SELECT id, course_id, member_sub, member_name, body, status, created_at FROM course_comments c WHERE course_id = ?
+       AND (? = 'admin' OR (status = 'visible' AND NOT EXISTS (SELECT 1 FROM comment_blocks b WHERE b.member_sub = ? AND b.blocked_sub = c.member_sub)))
+       ORDER BY created_at DESC LIMIT 200`,
+    )
+    .bind(courseId, s.role, s.sub)
+    .all<CommentRow>();
+  return results.map((r) => toComment(r, s));
+}
+
 // ---------- router ----------
 
 type Handler = (ctx: Ctx, params: string[]) => Promise<unknown>;
@@ -1060,6 +1102,9 @@ const routes: [string, RegExp, Handler][] = [
       // 模擬會員：清除這位會員在本 App 的所有資料。串接中央會員後改為導向官方刪除流程。
       const s = requireMember(ctx);
       await ctx.db.batch([
+        ctx.db.prepare("DELETE FROM course_comments WHERE member_sub = ?").bind(s.sub),
+        ctx.db.prepare("DELETE FROM comment_blocks WHERE member_sub = ? OR blocked_sub = ?").bind(s.sub, s.sub),
+        ctx.db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM orders WHERE member_sub = ?").bind(s.sub),
@@ -1163,6 +1208,89 @@ const routes: [string, RegExp, Handler][] = [
       const seen = new Map<string, string>();
       for (const l of [...fromCentral, ...results.map((r) => r.l)]) if (!seen.has(centerKey(l))) seen.set(centerKey(l), l);
       return [...seen.values()];
+    },
+  ],
+  ["GET", /^\/courses\/([\w-]+)\/comments$/, async (ctx, [id]) => listComments(ctx, id)],
+  [
+    "POST",
+    /^\/courses\/([\w-]+)\/comments$/,
+    async (ctx, [courseId]) => {
+      const s = await requireCourseForComments(ctx, courseId);
+      const body = text((await readJson<{ body?: unknown }>(ctx.req)).body, 500) || fail(400, "empty", "請輸入留言內容");
+      const recent = await ctx.db.prepare("SELECT COUNT(*) AS n FROM course_comments WHERE member_sub = ? AND created_at > ?").bind(s.sub, iso(new Date(Date.now() - 600_000))).first<{ n: number }>();
+      if ((recent?.n ?? 0) >= 5) fail(429, "too_many", "留言太頻繁了，請稍後再試");
+      await ctx.db.prepare("INSERT INTO course_comments (id, course_id, member_sub, member_name, body, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(crypto.randomUUID(), courseId, s.sub, s.name, body, iso()).run();
+      return listComments(ctx, courseId);
+    },
+  ],
+  [
+    "DELETE",
+    /^\/comments\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const s = requireMember(ctx);
+      const res = await ctx.db.prepare("DELETE FROM course_comments WHERE id = ? AND member_sub = ?").bind(id, s.sub).run();
+      if (res.meta?.changes === 0) fail(404, "not_found", "找不到這則留言");
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/comments\/([\w-]+)\/report$/,
+    async (ctx, [id]) => {
+      const s = requireMember(ctx);
+      const c = await ctx.db.prepare("SELECT c.member_sub, c.body, k.title FROM course_comments c JOIN courses k ON k.id = c.course_id WHERE c.id = ? AND c.status = 'visible'").bind(id).first<{ member_sub: string; body: string; title: string }>();
+      if (!c) return fail(404, "not_found", "找不到這則留言");
+      if (c.member_sub === s.sub) fail(400, "own_comment", "不能檢舉自己的留言");
+      const reason = text((await readJson<{ reason?: unknown }>(ctx.req)).reason, 200) ?? "";
+      const first = !(await ctx.db.prepare("SELECT 1 AS ok FROM comment_reports WHERE comment_id = ? LIMIT 1").bind(id).first());
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT OR IGNORE INTO comment_reports (comment_id, reporter_sub, reason) VALUES (?, ?, ?)").bind(id, s.sub, reason),
+        // 同一則留言只在第一次被檢舉時通知總部，避免洗版。
+        ...(first ? [notify(ctx.db, { role: "admin" }, "有留言被檢舉", `${c.title}：${c.body.slice(0, 60)}`, "/admin/comments")] : []),
+      ]);
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/comments\/([\w-]+)\/block$/,
+    async (ctx, [id]) => {
+      const s = requireMember(ctx);
+      const c = await ctx.db.prepare("SELECT member_sub FROM course_comments WHERE id = ?").bind(id).first<{ member_sub: string }>();
+      if (!c) return fail(404, "not_found", "找不到這則留言");
+      if (c.member_sub === s.sub) fail(400, "own_comment", "不能封鎖自己");
+      await ctx.db.prepare("INSERT OR IGNORE INTO comment_blocks (member_sub, blocked_sub) VALUES (?, ?)").bind(s.sub, c.member_sub).run();
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/comments$/,
+    async (ctx) => {
+      const s = requireAdmin(ctx);
+      const { results } = await ctx.db
+        .prepare(
+          `SELECT c.id, c.course_id, c.member_sub, c.member_name, c.body, c.status, c.created_at, k.title AS course_title,
+           (SELECT COUNT(*) FROM comment_reports r WHERE r.comment_id = c.id) AS reports
+           FROM course_comments c JOIN courses k ON k.id = c.course_id
+           WHERE c.status = 'hidden' OR EXISTS (SELECT 1 FROM comment_reports r WHERE r.comment_id = c.id)
+           ORDER BY c.created_at DESC LIMIT 200`,
+        )
+        .all<CommentRow>();
+      return results.map((r) => toComment(r, s));
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/comments\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const s = requireAdmin(ctx);
+      const body = await readJson<{ hidden?: unknown; dismiss?: unknown }>(ctx.req);
+      const statements = [audit(ctx.db, s.sub, body.dismiss === true ? "comment.dismiss_reports" : body.hidden === true ? "comment.hide" : "comment.show", "comment", id)];
+      if (body.dismiss === true) statements.push(ctx.db.prepare("DELETE FROM comment_reports WHERE comment_id = ?").bind(id));
+      else statements.push(ctx.db.prepare("UPDATE course_comments SET status = ?, hidden_by_sub = ? WHERE id = ?").bind(body.hidden === true ? "hidden" : "visible", body.hidden === true ? s.sub : null, id));
+      await ctx.db.batch(statements);
+      return { ok: true };
     },
   ],
   ["GET", /^\/admin\/review-groups$/, async (ctx) => listGroups(ctx)],

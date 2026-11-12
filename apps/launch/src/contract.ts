@@ -39,6 +39,8 @@ export type CourseSummary = {
   lessonCount: number;
   totalMinutes: number;
   eligible: boolean;
+  /** 會長不受獎銜限制也可報名。 */
+  allowPresident: boolean;
   /** 指導單位、主辦單位（空字串表示未設定）。 */
   guidanceUnit: string;
   hostUnit: string;
@@ -180,3 +182,16 @@ export const DEMO_MEMBERS: { sub: string; name: string; rankCode: string; role: 
   { sub: "demo-president", name: "測試會長", rankCode: "emerald", role: "student", roles: ["president"], hglobal: true, center: "台北中心" },
   { sub: "demo-admin", name: "測試管理員", rankCode: "diamond", role: "admin", roles: ["super_admin"], hglobal: true },
 ];
+
+export type CourseComment = {
+  id: string;
+  courseId: string;
+  authorName: string;
+  mine: boolean;
+  body: string;
+  hidden: boolean;
+  createdAt: string;
+  /** 以下只在管理員的檢舉清單提供。 */
+  reports?: number;
+  courseTitle?: string;
+};

@@ -126,6 +126,7 @@ export default function MeScreen() {
             {isWeb && (member.role === "admin" || member.titles.includes("會長") || member.titles.includes("音控")) ? (
               <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />
             ) : null}
+            {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
             {member.role === "admin" ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
         </Section>

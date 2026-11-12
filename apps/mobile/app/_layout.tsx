@@ -31,6 +31,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin/course/[id]" options={{ title: "章節與影片" }} />
             <Stack.Screen name="admin/course-edit" options={{ title: "課程資料" }} />
             <Stack.Screen name="admin/review-groups" options={{ title: "審核群組" }} />
+            <Stack.Screen name="admin/comments" options={{ title: "留言檢舉" }} />
             <Stack.Screen name="admin/mux-picker" options={{ title: "從 Mux 選擇影片" }} />
             <Stack.Screen name="auth/done" options={{ headerShown: false }} />
             <Stack.Screen name="auth/google" options={{ headerShown: false }} />

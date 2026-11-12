@@ -7,6 +7,7 @@ import { centralToken, refresh as refreshCentral } from "./central";
 export type {
   AppConfig,
   ClientPlatform,
+  CourseComment,
   CourseDetail,
   CourseRun,
   Duty,

@@ -8,8 +8,8 @@ import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { AppText, Button, Card, Chips, CourseCover, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -35,6 +35,7 @@ export default function CourseEditScreen() {
     const d = course.data;
     if (d)
       setForm({
+        allowPresident: d.allowPresident,
         guidanceUnit: d.guidanceUnit,
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
@@ -54,7 +55,7 @@ export default function CourseEditScreen() {
   if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要管理員權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
-  const set = (k: keyof Form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof Form, "allowPresident">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   const save = async (status?: "draft" | "published") => {
     const freeFrom = parseLocal(form.freeFrom);
@@ -90,7 +91,7 @@ export default function CourseEditScreen() {
     }
   };
 
-  const field = (label: string, k: keyof Form, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
+  const field = (label: string, k: Exclude<keyof Form, "allowPresident">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
     <View style={{ gap: space.xs }}>
       <AppText variant="callout" tone="muted">
         {label}
@@ -187,6 +188,14 @@ export default function CourseEditScreen() {
                 );
               })}
             </View>
+          ) : null}
+          {form.minRankCode !== "none" ? (
+            <Chips
+              label="會長"
+              options={[{ key: "no", label: "只依獎銜" }, { key: "yes", label: "會長也可報名" }]}
+              value={form.allowPresident ? "yes" : "no"}
+              onChange={(v) => setForm((f) => ({ ...f, allowPresident: v === "yes" }))}
+            />
           ) : null}
         </Card>
       </Section>
