@@ -13,3 +13,4 @@ export { LoadingView, ErrorView } from "./state-views";
 export { NoticeBox } from "./notice-box";
 export { Chips } from "./chips";
 export { Field } from "./field";
+export { BottomBar } from "./bottom-bar";

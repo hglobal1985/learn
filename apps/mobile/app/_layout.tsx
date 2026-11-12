@@ -1,10 +1,12 @@
 import { Stack } from "expo-router/stack";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
+import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppGate } from "@/features/app-gate";
 import { SessionProvider } from "@/state/session";
 import { useTheme } from "@/theme/theme";
+import { BottomBar } from "@/ui";
 
 export default function RootLayout() {
   const { scheme, c } = useTheme();
@@ -19,6 +21,8 @@ export default function RootLayout() {
       <SessionProvider>
         <ThemeProvider value={navTheme}>
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+          <View style={{ flex: 1, backgroundColor: c.background }}>
+          <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerBackButtonDisplayMode: "minimal", contentStyle: { backgroundColor: c.background } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "寰宇行動大學" }} />
             <Stack.Screen name="course/[id]" options={{ title: "課程介紹" }} />
@@ -38,6 +42,9 @@ export default function RootLayout() {
             <Stack.Screen name="auth/google" options={{ headerShown: false }} />
             <Stack.Screen name="auth/sso" options={{ headerShown: false }} />
           </Stack>
+          </View>
+          <BottomBar />
+          </View>
         </ThemeProvider>
       </SessionProvider>
       </AppGate>
