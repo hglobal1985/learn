@@ -137,7 +137,7 @@ export async function profileSummary(sub: string, token: string): Promise<{ name
 }
 
 /** 會員在會員中心的獎銜（只放記憶體快取供首頁顯示，不寫入資料庫；業主 2026-11-12 授權讀取）。查不到回 undefined。 */
-type AmwayMe = { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> };
+type AmwayMe = { enabled?: boolean; hglobal_systems?: string[]; fields?: Record<string, { value?: unknown; pending_value?: unknown }> };
 /** GET /v1/me/amway 只打一次（獎銜顯示與資料補填提醒共用；放記憶體 2 分鐘）。 */
 export async function amwayMe(sub: string, token: string): Promise<AmwayMe | undefined> {
   return cached(`amway:${sub}`, 120_000, async () => {
@@ -324,18 +324,18 @@ export async function rankOptionList(token: string): Promise<RankOption[]> {
 }
 
 export type AmwayFieldView = { value: string; pending: string | null; status: string };
-export type CentralProfileView = { legalName: string; nickname: string; email: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
+export type CentralProfileView = { legalName: string; nickname: string; email: string; enabled: boolean; hglobal: boolean; hglobalSystems: string[]; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
 const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");
 
 /** 資料補填視窗要顯示的欄位（即時讀取、不快取、不保存）：真實姓名、培訓系統、地區教育中心、獎銜。 */
 export async function centralProfileView(sub: string, token: string): Promise<CentralProfileView | null> {
   const [p, a0, opts] = await Promise.all([profileDoc(sub, token), amwayMe(sub, token), rankOptionList(token)]);
-  const a = a0 as { enabled?: boolean; hglobal?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | undefined;
+  const a = a0 as { enabled?: boolean; hglobal?: boolean; hglobal_systems?: string[]; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | undefined;
   if (!p || !a) return null;
   const f = (k: string): AmwayFieldView => ({ value: textOf(a.fields?.[k]?.value), pending: a.fields?.[k]?.pending_value != null ? textOf(a.fields[k].pending_value) : null, status: a.fields?.[k]?.status ?? "not_required" });
   const em = p.fields?.contact_email?.value;
   const nn = p.fields?.display_name?.value;
-  return { legalName: typeof p.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", nickname: typeof nn === "string" ? nn : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
+  return { legalName: typeof p.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", nickname: typeof nn === "string" ? nn : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, hglobalSystems: Array.isArray(a.hglobal_systems) ? a.hglobal_systems.filter((x): x is string => typeof x === "string") : [], fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
 }
 
 /** 把一個欄位寫回會員中心（用會員本人的 token）。失敗時回中央的錯誤訊息。 */
@@ -353,5 +353,5 @@ export async function centralSuggest(token: string, pool: "education_system" | "
   const res = await callCentral(token, `/v1/vocab/suggestions?pool=${pool}&q=${encodeURIComponent(q.slice(0, 30))}`);
   if (!res?.ok) return [];
   const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;
-  return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string").slice(0, 12);
+  return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string").slice(0, q.trim() ? 12 : 100);
 }
