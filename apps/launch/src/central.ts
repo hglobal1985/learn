@@ -127,6 +127,23 @@ export async function rankValue(sub: string, token: string): Promise<string | nu
   });
 }
 
+/** 會員中心資料是否完整（只回「缺什麼」的名稱，不保存任何值）：聯絡信箱；勾選「我是 Amway 會員」時，Amway 欄位有沒有空白。 */
+export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[]> {
+  return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async () => {
+    const gaps: string[] = [];
+    if (email === null) gaps.push("Email");
+    const res = await callCentral(token, "/v1/me/amway");
+    if (res?.ok) {
+      const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> } | null;
+      if (b?.enabled) {
+        const empty = Object.values(b.fields ?? {}).some((f) => (f.value == null || f.value === "") && (f.pending_value == null || f.pending_value === ""));
+        if (empty) gaps.push("Amway 會員資料");
+      }
+    }
+    return gaps;
+  });
+}
+
 /** 顯示名稱（供訂單審核辨識）。 */
 export async function displayName(sub: string, token: string): Promise<string> {
   return (await profileSummary(sub, token)).name;

@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, contactEmail, profileSummary, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, contactEmail, profileGaps, profileSummary, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -1291,7 +1291,10 @@ const routes: [string, RegExp, Handler][] = [
       if (results.length) await ctx.db.prepare("UPDATE review_group_members SET member_name = ? WHERE member_sub = ? AND member_name <> ?").bind(s.name, s.sub, s.name).run();
       const labels: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
       await syncContact(ctx, s).catch(() => undefined);
-      return { member: memberOf(s, await ranks(ctx.db), { duties: results.map((r) => labels[r.duty]) }) };
+      const member = memberOf(s, await ranks(ctx.db), { duties: results.map((r) => labels[r.duty]) });
+      // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
+      if (s.kind === "central") member.profileMissing = await profileGaps(s.sub, s.token, await contactEmail(s.sub, s.token)).catch(() => []);
+      return { member };
     },
   ],
   [

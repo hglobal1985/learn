@@ -1,9 +1,10 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Announcement, type CourseSummary } from "@/api/client";
 import { openAccountCenter } from "@/features/account-link";
+import { ProfilePrompt } from "@/features/profile-prompt";
 import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -14,6 +15,9 @@ import { AppText, BrandTitle, Button, ErrorView, LoadingView, Ticker } from "@/u
  * 首頁：固定一頁、不上下捲動。上方置中顯示大標題與會員頭像＋姓名（點擊進入會員中心編輯基本資料）、跑馬燈公告，下方左右兩個直式區塊（繼續學習、推薦課程），
  * 各自可以原地左右滑動瀏覽課程海報（EDM 本身，沒有 EDM 就用課程名稱）。推薦課程只顯示符合會員獎銜、尚未報名的課程。
  */
+// 每次登入只彈一次（登出後再登入會再提示）。
+let promptedFor: string | null = null;
+
 export default function HomeScreen() {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
@@ -22,6 +26,14 @@ export default function HomeScreen() {
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
   const [quote, setQuote] = useState<string | null>(null);
   const [noticeClosed, setNoticeClosed] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  useEffect(() => {
+    if (!member) promptedFor = null;
+    else if (member.profileMissing?.length && promptedFor !== member.sub) {
+      promptedFor = member.sub;
+      setPromptOpen(true);
+    }
+  }, [member]);
   // 每次進入首頁換一則學習金句。
   useFocusEffect(
     useCallback(() => {
@@ -39,6 +51,8 @@ export default function HomeScreen() {
   const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
   const login = <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} />;
   return (
+    <>
+    {promptOpen && member?.profileMissing?.length ? <ProfilePrompt missing={member.profileMissing} onClose={() => setPromptOpen(false)} /> : null}
     <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
       <View style={styles.inner}>
         <View style={styles.head}>
@@ -122,6 +136,7 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </View>
+    </>
   );
 }
 

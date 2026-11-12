@@ -18,6 +18,8 @@ export type Member = {
   avatarUrl?: string | null;
   /** 對外獎銜（取自會員中心；獎銜為「無」顯示「安麗寶寶」）。只放記憶體，不存資料庫。 */
   rankLabel?: string | null;
+  /** 會員中心資料還有哪些空白（例如「Email」「Amway 會員資料」）；空陣列表示完整。 */
+  profileMissing?: string[];
   /** 職務名稱（中央職務＋本 App 的窗口身分），顯示用。 */
   titles: string[];
   /** 是否有任何報名審核權限。 */
