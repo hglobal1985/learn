@@ -107,7 +107,7 @@ function Btn({ label, icon, onPress, disabled }: { label: string; icon: IconName
  */
 export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void; initial?: View_ | null }) {
   const { c } = useTheme();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const { invalidate } = useSession();
   const [data, setData] = useState<View_ | null>(first ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -154,8 +154,9 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   };
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose} accessibilityViewIsModal>
-      <View style={styles.backdrop}>
-        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(260, width * 0.73), maxWidth: 442, maxHeight: height * 0.88 }]}>
+      {/* 鍵盤打開時畫面可視高度會變矮：視窗本身維持原本大小，不跟著縮短；放不下時整個視窗可以一起上下拉動。 */}
+      <ScrollView style={styles.backdrop} contentContainerStyle={styles.backdropInner} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(260, width * 0.73), maxWidth: 442 }]}>
           <AppText variant="title" numberOfLines={1} adjustsFontSizeToFit style={{ flexShrink: 0 }}>
             資料需完整 才可瀏覽課程
           </AppText>
@@ -247,13 +248,14 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
             </Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
+  backdropInner: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingVertical: 24 },
   box: { borderRadius: radius.md, borderWidth: 1, padding: space.md, gap: space.sm },
   actions: { flexDirection: "row", gap: space.sm, width: "100%" },
   btn: { minHeight: 44, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: space.sm },
