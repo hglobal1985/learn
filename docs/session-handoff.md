@@ -47,7 +47,7 @@ cd apps/launch && CLOUDFLARE_API_TOKEN=proxy-injected CLOUDFLARE_ACCOUNT_ID=650a
 
 ## 四、等業主處理
 1. **R2 已綁定，請設定 Secret `MEDIA_URL_SECRET`**（Worker `learn` → 設定 → 變數和機密）。原清單：**啟用 Cloudflare R2**（音檔、附件教材要用）。啟用後：建立 bucket `learn`、`wrangler.jsonc` 加 `r2_buckets: [{ "binding": "MEDIA", "bucket_name": "learn" }]`、設定 Secret `MEDIA_URL_SECRET`、重新部署。
-2. **Email 已選定 Cloudflare Email Service**（子網域 `mail.hglobal1985.com`）；待業主用真實帳號實測收信。
+2. **Email 已選定 Cloudflare Email Service**（子網域 `learn.hglobal1985.com`）；待業主用真實帳號實測收信。
 3. **在正式站實測**（測試登入已關，AI 無法代測）：審核群組→指派窗口→另一帳號報名付費課程→窗口審核；留言→檢舉→隱藏；Mux 影片播放。
 4. 上架：需要業主的 Expo 帳號打包；Google Play 需 12 位測試者連續 14 天。上架清單見 `docs/store-listing.md`。
 

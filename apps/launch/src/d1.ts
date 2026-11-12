@@ -48,6 +48,6 @@ export interface Env {
   MEDIA_URL_SECRET?: string;
   /** Cloudflare Email Service 的寄信綁定（send_email）。沒綁定就不寄 Email。 */
   EMAIL?: import("./email.ts").Mailer;
-  /** 寄件地址，例如 noreply@mail.hglobal1985.com。 */
+  /** 寄件地址，例如 noreply@learn.hglobal1985.com。 */
   EMAIL_FROM?: string;
 }
