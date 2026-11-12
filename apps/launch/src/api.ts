@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, contactEmail, profileGaps, profileSummary, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, contactEmail, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -55,7 +55,7 @@ const fail = (status: number, code: string, message: string): never => {
 
 /** demo：模擬會員（rankCode 為示範獎銜）；central：中央會員（不持有獎銜，資格每次向中央查詢）。 */
 type SessionBase = { sub: string; name: string; role: "student" | "admin"; roles: string[]; hglobal: boolean; center: { key: string; label: string } | null };
-type Session = SessionBase & ({ kind: "demo"; rankCode: string } | { kind: "central"; token: string; avatarUrl: string | null; rankValue?: string | null });
+type Session = SessionBase & ({ kind: "demo"; rankCode: string } | { kind: "central"; token: string; avatarUrl: string | null; rankValue?: string | null; rankLabel?: string });
 type Ctx = { env: Env; db: D1Database; req: Request; url: URL; platform: ClientPlatform; session: Session | null };
 
 // ---------- helpers ----------
@@ -114,10 +114,10 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [prof, rv, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), rankValue(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
+    const [prof, rv, opts, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), rankValue(sub, jwt), rankOptions(jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
     // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
     const admin = superAdmin || mc.roles.includes("super_admin") || mc.roles.includes("secretary");
-    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, rankValue: rv, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
+    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, rankValue: rv, rankLabel: rv === undefined ? undefined : rv && rv !== "none" && rv !== "無" ? (opts.get(rv) ?? undefined) : "安麗寶寶", role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
   }
   if (!demoEnabled(env)) return null;
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(auth);
@@ -159,7 +159,7 @@ function memberOf(s: Session, rankMap: Map<string, Rank>, extra: { duties?: stri
   const titles = [...s.roles.map((r) => ROLE_TITLES[r]).filter(Boolean), ...(extra.duties ?? [])];
   const base = { sub: s.sub, name: s.name, role: s.role, titles: [...new Set(titles)], reviewer: s.role === "admin" || s.roles.includes("president") || !!extra.duties?.length, center: s.center?.label ?? null };
   // 中央會員的獎銜屬 Amway 資料，App 不取得也不顯示；只有模擬會員帶示範獎銜。
-  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl, rankLabel: s.rankValue === undefined ? null : rankLabelOf(s.rankValue, rankMap) };
+  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl, rankLabel: s.rankLabel ?? (s.rankValue === undefined ? null : rankLabelOf(s.rankValue, rankMap)) };
   return { ...base, rank: rankMap.get(s.rankCode) ?? null, demo: true };
 }
 

@@ -181,3 +181,8 @@
 - **（十三）課程畫面與首頁**：課程新增「活動日期」（migration `0013`：`event_start`／`event_end`，最多連續 3 天；課程編輯頁「活動日期」欄位，格式 2026-12-01），顯示在課程介紹頁分鐘數旁與首頁課程資訊。移除課程介紹頁「課程海報（EDM）」區塊與小字備註，改為**點封面橫幅開啟 EDM 原圖**。首頁：大標題 `BrandTitle`（logo 色系逐字色彩流動＋彈跳動畫、logo 呼吸）；跑馬燈右上角大 X 可關閉，每次進入首頁會再顯示；左右兩欄標題置中、加色彩膠囊與圖示，備註置中；EDM 填滿框、靠上對齊（只裁下方與左右，不裁上方）。
 - **未做、待討論**：（1）會員資料補填彈窗（真實姓名、Email、Amway 完整欄位）；（2）中央會員網站跟隨系統深色模式（要改 `hglobal1985/id`，需轉給中央會員 AI）。
 - **（十四）會員資料補填彈窗**：登入後，若會員中心資料有空白（聯絡信箱；勾選「我是 Amway 會員」時 Amway 欄位有空白），首頁彈出視窗（`features/profile-prompt.tsx`，約 70%×70%、可捲動、右上大 X），一律引導到中央會員編輯頁填寫，**不在行動大學收集任何資料**（業主決定）。每次登入彈一次；`GET /me` 回傳 `member.profileMissing`（只有「缺什麼」，不保存內容）。**真實姓名**：業主決定要恢復（付費課程對帳金流用途），需中央會員先恢復欄位後，才能把「真實姓名」加入缺漏檢查與對帳；Amway 欄位判斷是「任一欄位值與待審值皆空白」，實際必填規則待與中央對照。
+
+## 2026-11-13：串接指令 2026-11-12.8 差異（中央會員回覆）
+- **中央 staging**：`https://hglobal-id-staging.hglobal1985-static.workers.dev`（JWKS `/oauth/jwks`）；`app_id=learn` 已登記，web_origins `https://learn.hglobal1985.com`、return_urls `learn://auth/google`，**不含 localhost**（網頁測試要提供 https 預覽網址由中央補登記；手機測試用 `learn://`）。staging 沒有會員，需業主先登入一次並由中央加超級管理員，才能測 `handoff?integrated=`。**在中央 production 部署前，行動大學只能用 staging 測試版本回報。**
+- **已做（本日）**：（B）獎銜名稱改向中央 `GET /v1/amway/field-definitions`（key=rank 的 options）讀取，快取 1 天、只放記憶體；讀不到時退回本地階梯名稱；值為 `null` 或 `"none"` 一律顯示「安麗寶寶」。（C）隱私權政策更正：登入時讀取本人獎銜只暫存記憶體供首頁顯示，不保存、不顯示給其他會員（中央確認不需新增同意文字）。
+- **未做、等業主決定**：（A）版本回報 `handoff?integrated=2026-11-12.8`（需 staging 測試帳號與可設定的中央網址環境變數）；`legal_name`（真實姓名，`GET /v1/me/profile` 的 `fields.legal_name.value`）要用於付費課程對帳——中央規定「不存進 App 資料庫」，但審核人員無法用自己的 token 讀別人的姓名，**對帳要不要在報名紀錄保存姓名快照需業主明確核准**；共用 Keychain（需同一 Apple 開發者帳號；群組 `$(AppIdentifierPrefix)com.hglobal1985.shared`、鍵名 `hglobal.sso`，測試版建議 `hglobal.sso.staging`）。

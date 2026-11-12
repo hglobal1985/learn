@@ -144,6 +144,20 @@ export async function profileGaps(sub: string, token: string, email: string | nu
   });
 }
 
+/** 獎銜選項（代碼→名稱）：向中央 GET /v1/amway/field-definitions 讀取 key=rank 的 options，不寫死；快取 1 天、只放記憶體。讀不到回空 Map。 */
+export async function rankOptions(token: string): Promise<Map<string, string>> {
+  return cached("rank-options", 86_400_000, async () => {
+    const out = new Map<string, string>();
+    const res = await callCentral(token, "/v1/amway/field-definitions");
+    if (!res?.ok) return out;
+    const b = (await res.json().catch(() => null)) as unknown;
+    const list: unknown[] = Array.isArray(b) ? b : b && typeof b === "object" ? Object.values((b as { fields?: unknown }).fields ?? b) : [];
+    const rank = list.find((f) => f && typeof f === "object" && (f as { key?: unknown }).key === "rank") as { options?: { value?: unknown; label?: unknown }[] } | undefined;
+    for (const o of rank?.options ?? []) if (typeof o.value === "string" && typeof o.label === "string") out.set(o.value, o.label);
+    return out;
+  });
+}
+
 /** 顯示名稱（供訂單審核辨識）。 */
 export async function displayName(sub: string, token: string): Promise<string> {
   return (await profileSummary(sub, token)).name;
