@@ -114,3 +114,15 @@
 - **課程留言板**（migration `0006`）：登入會員可在課程介紹頁留言（10 分鐘內最多 5 則）、刪除自己的留言、檢舉、封鎖對方；被檢舉時通知總部一次；管理員在「我的→留言檢舉」隱藏留言或清除檢舉。刪除學習資料時一併刪除留言。
 - 後端測試 37 項；本機瀏覽器測過留言→檢舉→隱藏。
 - **等業主**：啟用 R2（音檔、附件教材）；選定寄信服務（Email 通知）。
+
+## 2026-11-12（四）：R2、自己審核、Email 通知
+- **R2 已綁定**：bucket `learn`、綁定 `MEDIA`（已部署）。**仍待業主設定 Secret `MEDIA_URL_SECRET`**，音檔才能上傳／播放。
+- **管理員（超級管理員、總部秘書）可審核自己的報名**；會長、窗口、審核員仍不行（`reviewOrder`、`canReview`）。
+- **寄信網域**：Cloudflare Email Service 子網域 `mail.hglobal1985.com` 已開通（SPF／DKIM／DMARC／退信 MX 都在 `mail.` 底下，不動主網域的 service@ 轉寄與 Gmail 寄信，因為主網域會被加上 `p=reject`）。寄件人 `noreply@mail.hglobal1985.com`，Worker 綁定 `EMAIL`、變數 `EMAIL_FROM`，不需任何金鑰。**尚未實際寄過一封測試信。**
+- **Email 通知設計**：
+  - 收件信箱＝會員中心個人資料「聯絡信箱」`contact_email`（正本在中央；行動大學已有權限，**未修改會員中心**）。
+  - 登入時（`GET /me`、通知設定頁）把它同步成副本，存在 D1 `member_contacts`（migration `0007`），因為通知常寄給不在線上的人。學員在「我的 → 通知設定」改信箱時，先 `PUT /v1/me/profile/fields/contact_email` 寫回中央，成功才更新副本。刪除學習資料時整列刪除。信箱不寫稽核紀錄與日誌。
+  - 寄信方式：每個寫入類 API 成功後，`flushEmails`（`src/email.ts`）把最近 30 分鐘內 `notifications.emailed_at` 為空的站內通知寄出；先標記再寄，寧可漏寄不重複寄。角色型通知（總部、某中心會長）依 `member_contacts.is_admin／president_center_key` 找收件人，這兩欄在登入時更新。站內通知永遠保留；學員可關閉 Email。
+  - API：`GET／PUT /api/v2/me/notification-settings`；畫面 `app/settings/notifications.tsx`。手機推播尚未做（畫面顯示「即將推出」）。
+- 後端測試 41 項（新增 `tests/email.test.ts`）。
+- **還沒驗證**：用真實帳號在正式站填信箱、確認會員中心的聯絡信箱有同步改、實際收到信（含是否進垃圾匣）；沒登入過新版的人還沒有信箱副本。

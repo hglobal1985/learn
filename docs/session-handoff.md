@@ -46,13 +46,13 @@ cd apps/launch && CLOUDFLARE_API_TOKEN=proxy-injected CLOUDFLARE_ACCOUNT_ID=650a
 - 沒有開 PR 的流程：直接推到開發分支，再快轉 `main`（業主已同意）。
 
 ## 四、等業主處理
-1. **啟用 Cloudflare R2**（音檔、附件教材要用）。啟用後：建立 bucket `learn`、`wrangler.jsonc` 加 `r2_buckets: [{ "binding": "MEDIA", "bucket_name": "learn" }]`、設定 Secret `MEDIA_URL_SECRET`、重新部署。
-2. **選定寄信服務**（建議 Resend，寄件網域 hglobal1985.com），Email 通知才能做。
+1. **R2 已綁定，請設定 Secret `MEDIA_URL_SECRET`**（Worker `learn` → 設定 → 變數和機密）。原清單：**啟用 Cloudflare R2**（音檔、附件教材要用）。啟用後：建立 bucket `learn`、`wrangler.jsonc` 加 `r2_buckets: [{ "binding": "MEDIA", "bucket_name": "learn" }]`、設定 Secret `MEDIA_URL_SECRET`、重新部署。
+2. **Email 已選定 Cloudflare Email Service**（子網域 `mail.hglobal1985.com`）；待業主用真實帳號實測收信。
 3. **在正式站實測**（測試登入已關，AI 無法代測）：審核群組→指派窗口→另一帳號報名付費課程→窗口審核；留言→檢舉→隱藏；Mux 影片播放。
 4. 上架：需要業主的 Expo 帳號打包；Google Play 需 12 位測試者連續 14 天。上架清單見 `docs/store-listing.md`。
 
 ## 五、還沒做（依建議順序）
-1. 通知方式勾選（站內／Email／手機）＋ Email 通知（Email 查會員中心，查不到可在原頁填寫並寫回會員中心）。
+1. （已完成程式，待業主實測）Email 通知：見 `docs/v2-handoff.md` 2026-11-12（四）。手機推播尚未做。
 2. 附件教材下載（R2，短效簽名網址，只給已開通學員）。
 3. 各中心自行上架課程（會長、音控可建立課程並指派審核人員）。
 4. 手機推播、金流（資料欄位已預留：`orders.pay_method` 含 `online`）。

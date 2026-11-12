@@ -8,9 +8,9 @@ import { serveStatic, type StaticFiles } from "./site.ts";
  */
 export function createWorker(staticFiles: StaticFiles) {
   return {
-    async fetch(req: Request, env: Env): Promise<Response> {
+    async fetch(req: Request, env: Env, exec?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
       const url = new URL(req.url);
-      if (url.pathname === "/api/v2" || url.pathname.startsWith("/api/v2/")) return handleApi(req, env);
+      if (url.pathname === "/api/v2" || url.pathname.startsWith("/api/v2/")) return handleApi(req, env, exec);
       if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
       const res = serveStatic(req, staticFiles);
       res.headers.set("x-content-type-options", "nosniff");

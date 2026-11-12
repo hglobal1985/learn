@@ -22,6 +22,7 @@ export type {
   MuxAsset,
   MuxAssetPage,
   Notice,
+  NotificationSettings,
   Order,
   OrderStatus,
   Playback,

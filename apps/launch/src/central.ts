@@ -189,3 +189,31 @@ export async function centerList(token: string): Promise<string[]> {
     return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, 300);
   });
 }
+
+const EMAIL_RE = /^[^\s@<>"',;]{1,64}@[^\s@<>"',;]{1,255}\.[^\s@<>"',;]{2,63}$/;
+export const validEmail = (s: string) => s.length <= 254 && EMAIL_RE.test(s);
+
+/**
+ * 登入者在會員中心的「聯絡信箱」（個人資料欄位 contact_email，正本在中央）。
+ * 回傳 undefined＝查不到（中央無回應等），呼叫端不可因此清除已存的副本。
+ */
+export async function contactEmail(sub: string, token: string): Promise<string | null | undefined> {
+  const hit = memo.get(`mail:${sub}`);
+  if (hit && hit.until > Date.now()) return hit.value as string | null;
+  const res = await callCentral(token, "/v1/me/profile");
+  if (!res?.ok) return undefined;
+  const body = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
+  if (!body?.fields) return undefined;
+  const v = body.fields.contact_email?.value;
+  const email = typeof v === "string" && validEmail(v.trim()) ? v.trim().toLowerCase() : null;
+  memo.set(`mail:${sub}`, { value: email, until: Date.now() + 60_000 });
+  return email;
+}
+
+/** 把聯絡信箱寫回會員中心（null＝清除）。成功才回 true。 */
+export async function saveContactEmail(sub: string, token: string, email: string | null): Promise<boolean> {
+  const res = await callCentral(token, "/v1/me/profile/fields/contact_email", { method: "PUT", body: JSON.stringify({ value: email }) });
+  if (!res?.ok) return false;
+  memo.set(`mail:${sub}`, { value: email, until: Date.now() + 60_000 });
+  return true;
+}

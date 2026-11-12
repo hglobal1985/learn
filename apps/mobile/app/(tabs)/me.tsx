@@ -146,6 +146,7 @@ export default function MeScreen() {
             {!member.demo ? (
               <ListRow icon="person-circle-outline" title="會員中心" subtitle="修改基本資料、刪除會員帳號" onPress={openAccountCenter} />
             ) : null}
+            <ListRow icon="notifications-outline" title="通知設定" subtitle="Email 信箱與通知方式" onPress={() => router.push("/settings/notifications")} />
             <ListRow icon="trash-outline" title="刪除學習資料" subtitle="刪除本 App 的學習紀錄、報名紀錄與通知" onPress={removeData} />
           </Card>
         </Section>

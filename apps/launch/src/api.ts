@@ -13,10 +13,12 @@ import {
   type CourseSummary,
   type Member,
   type Notice,
+  type NotificationSettings,
   type Order,
   type Rank,
 } from "./contract.ts";
-import { centerKey, centerList, displayName, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { flushEmails } from "./email.ts";
+import { centerKey, centerList, contactEmail, displayName, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { audioUrl, verifyAudioUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
@@ -596,6 +598,32 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
   };
 }
 
+/** 登入時把會員中心的聯絡信箱同步成副本，並記下是否為管理員／哪個中心的會長（寄給角色型通知用）。 */
+async function syncContact(ctx: Ctx, s: Session): Promise<void> {
+  const president = s.roles.includes("president") && s.center ? s.center.key : null;
+  let email: string | null | undefined;
+  if (s.kind === "central") email = await contactEmail(s.sub, s.token);
+  if (email === undefined) {
+    // 查不到（或模擬會員）：不動信箱，只更新身分欄位。
+    await ctx.db
+      .prepare("INSERT INTO member_contacts (member_sub, is_admin, president_center_key) VALUES (?, ?, ?) ON CONFLICT(member_sub) DO UPDATE SET is_admin = excluded.is_admin, president_center_key = excluded.president_center_key")
+      .bind(s.sub, s.role === "admin" ? 1 : 0, president)
+      .run();
+    return;
+  }
+  await ctx.db
+    .prepare(
+      "INSERT INTO member_contacts (member_sub, email, is_admin, president_center_key) VALUES (?, ?, ?, ?) ON CONFLICT(member_sub) DO UPDATE SET email = excluded.email, is_admin = excluded.is_admin, president_center_key = excluded.president_center_key, synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+    )
+    .bind(s.sub, email, s.role === "admin" ? 1 : 0, president)
+    .run();
+}
+
+async function contactSettings(ctx: Ctx, s: Session): Promise<NotificationSettings> {
+  const row = await ctx.db.prepare("SELECT email, notify_email FROM member_contacts WHERE member_sub = ?").bind(s.sub).first<{ email: string | null; notify_email: number }>();
+  return { email: row?.email ?? null, notifyEmail: (row?.notify_email ?? 1) === 1, emailReady: !!ctx.env.EMAIL && !!ctx.env.EMAIL_FROM, source: s.kind === "central" ? "central" : "local" };
+}
+
 async function dutyOf(ctx: Ctx, s: Session): Promise<string | undefined> {
   const r = await ctx.db.prepare("SELECT duty FROM review_group_members WHERE member_sub = ? LIMIT 1").bind(s.sub).first<{ duty: string }>();
   return r?.duty;
@@ -1084,6 +1112,46 @@ const routes: [string, RegExp, Handler][] = [
   ],
   [
     "GET",
+    /^\/me\/notification-settings$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      await syncContact(ctx, s).catch(() => undefined);
+      return contactSettings(ctx, s);
+    },
+  ],
+  [
+    "PUT",
+    /^\/me\/notification-settings$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      const body = await readJson<{ email?: unknown; notifyEmail?: unknown }>(ctx.req);
+      let email: string | null | undefined;
+      if (body.email !== undefined) {
+        if (body.email === null || body.email === "") email = null;
+        else if (typeof body.email === "string" && validEmail(body.email.trim())) email = body.email.trim().toLowerCase();
+        else return fail(400, "invalid_email", "Email 格式不正確");
+      }
+      if (body.notifyEmail !== undefined && typeof body.notifyEmail !== "boolean") return fail(400, "invalid_request", "通知方式格式不正確");
+      await syncContact(ctx, s).catch(() => undefined);
+      if (email !== undefined) {
+        // 正本在會員中心：先寫回中央，成功才更新這裡的副本。
+        if (s.kind === "central" && !(await saveContactEmail(s.sub, s.token, email))) return fail(502, "central_unavailable", "會員中心暫時無法儲存，請稍後再試");
+        await ctx.db
+          .prepare("INSERT INTO member_contacts (member_sub, email) VALUES (?, ?) ON CONFLICT(member_sub) DO UPDATE SET email = excluded.email, synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+          .bind(s.sub, email)
+          .run();
+      }
+      if (typeof body.notifyEmail === "boolean") {
+        await ctx.db
+          .prepare("INSERT INTO member_contacts (member_sub, notify_email) VALUES (?, ?) ON CONFLICT(member_sub) DO UPDATE SET notify_email = excluded.notify_email")
+          .bind(s.sub, body.notifyEmail ? 1 : 0)
+          .run();
+      }
+      return contactSettings(ctx, s);
+    },
+  ],
+  [
+    "GET",
     /^\/me$/,
     async (ctx) => {
       const s = ctx.session;
@@ -1092,6 +1160,7 @@ const routes: [string, RegExp, Handler][] = [
       // 被指派為窗口的人登入時，補上／更新名單上的姓名。
       if (results.length) await ctx.db.prepare("UPDATE review_group_members SET member_name = ? WHERE member_sub = ? AND member_name <> ?").bind(s.name, s.sub, s.name).run();
       const labels: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
+      await syncContact(ctx, s).catch(() => undefined);
       return { member: memberOf(s, await ranks(ctx.db), { duties: results.map((r) => labels[r.duty]) }) };
     },
   ],
@@ -1109,6 +1178,7 @@ const routes: [string, RegExp, Handler][] = [
         ctx.db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM orders WHERE member_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM notifications WHERE recipient_sub = ?").bind(s.sub),
+        ctx.db.prepare("DELETE FROM member_contacts WHERE member_sub = ?").bind(s.sub),
         ctx.db.prepare("DELETE FROM sessions WHERE member_sub = ?").bind(s.sub),
         audit(ctx.db, s.sub, "member.delete_app_data", "member", s.sub),
       ]);
@@ -1606,7 +1676,7 @@ const routes: [string, RegExp, Handler][] = [
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 /** 處理 /api/v2/*；其他路徑交給靜態網站。 */
-export async function handleApi(req: Request, env: Env): Promise<Response> {
+export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Promise<unknown>): void }): Promise<Response> {
   const url = new URL(req.url);
   const origin = req.headers.get("origin");
   const cors: Record<string, string> =
@@ -1638,6 +1708,12 @@ export async function handleApi(req: Request, env: Env): Promise<Response> {
     }
   }
   for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  // 有寫入動作時，把新產生的站內通知也寄成 Email（背景處理，失敗不影響回應）。
+  if (req.method !== "GET" && res.status < 400 && env.EMAIL) {
+    const job = flushEmails(env).catch((e) => console.error("flush emails", e instanceof Error ? e.message : "error"));
+    if (exec) exec.waitUntil(job);
+    else await job;
+  }
   return res;
 }
 

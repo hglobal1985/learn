@@ -195,3 +195,12 @@ export type CourseComment = {
   reports?: number;
   courseTitle?: string;
 };
+
+/** 通知設定：Email 的正本在會員中心「聯絡信箱」，這裡只是同一個欄位的入口。 */
+export type NotificationSettings = {
+  email: string | null;
+  notifyEmail: boolean;
+  /** 伺服器是否已啟用寄信（未啟用時畫面提示「Email 通知尚未開放」）。 */
+  emailReady: boolean;
+  source: "central" | "local";
+};
