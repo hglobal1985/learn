@@ -10,6 +10,7 @@ import { AppText, Icon, type IconName } from "@/ui";
 type FieldView = { value: string; pending: string | null; status: string };
 type View_ = {
   legalName: string;
+  email: string;
   enabled: boolean;
   hglobal: boolean;
   fields: Record<"education_system" | "education_center" | "rank", FieldView>;
@@ -109,7 +110,7 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
   const { invalidate } = useSession();
   const [data, setData] = useState<View_ | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [vals, setVals] = useState({ legal_name: "", education_system: "", education_center: "", rank: "" });
+  const [vals, setVals] = useState({ legal_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -117,7 +118,7 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
     api<View_>("GET", "/me/central-profile")
       .then((d) => {
         setData(d);
-        setVals({ legal_name: d.legalName, education_system: d.fields.education_system.value, education_center: d.fields.education_center.value, rank: d.fields.rank.value });
+        setVals({ legal_name: d.legalName, contact_email: d.email, education_system: d.fields.education_system.value, education_center: d.fields.education_center.value, rank: d.fields.rank.value });
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
@@ -126,8 +127,8 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
   const canRank = !!vals.education_system.trim() && !!vals.education_center.trim();
   const rankNone = vals.rank === "none";
   const rankLabel = (v: string) => data?.rankOptions.find((o) => o.value === v)?.label ?? v;
-  const initial = data ? { legal_name: data.legalName, education_system: data.fields.education_system.value, education_center: data.fields.education_center.value, rank: data.fields.rank.value } : null;
-  const changed = initial ? (Object.keys(vals) as (keyof typeof vals)[]).filter((k) => (data!.enabled || k === "legal_name") && vals[k].trim() !== initial[k].trim()) : [];
+  const initial = data ? { legal_name: data.legalName, contact_email: data.email, education_system: data.fields.education_system.value, education_center: data.fields.education_center.value, rank: data.fields.rank.value } : null;
+  const changed = initial ? (Object.keys(vals) as (keyof typeof vals)[]).filter((k) => (data!.enabled || k === "legal_name" || k === "contact_email") && !(k === "contact_email" && initial.contact_email) && vals[k].trim() !== initial[k].trim()) : [];
   const save = async () => {
     setBusy(true);
     setMsg(null);
@@ -175,6 +176,20 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
           {data ? (
             <>
               <TextRow label="真實姓名（報名課程對帳用）" value={vals.legal_name} onChange={(v) => setVals((s) => ({ ...s, legal_name: v }))} />
+              <View style={{ gap: 4 }}>
+                <AppText variant="callout" tone="muted" numberOfLines={1}>
+                  Email{data.email ? "" : "（尚未填寫）"}
+                </AppText>
+                {data.email ? (
+                  <View style={[styles.input, { borderColor: c.border, backgroundColor: c.surfaceMuted, justifyContent: "center" }]}>
+                    <AppText tone="muted" numberOfLines={1}>
+                      {data.email}
+                    </AppText>
+                  </View>
+                ) : (
+                  <Input value={vals.contact_email} onChange={(v) => setVals((s) => ({ ...s, contact_email: v }))} />
+                )}
+              </View>
               {data.enabled ? (
                 <>
                   <TextRow label="系統" allowNone value={vals.education_system} onChange={(v) => setVals((s) => ({ ...s, education_system: v }))} pool="education_system" pending={data.fields.education_system.pending} />

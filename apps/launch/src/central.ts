@@ -310,7 +310,7 @@ export async function rankOptionList(token: string): Promise<RankOption[]> {
 }
 
 export type AmwayFieldView = { value: string; pending: string | null; status: string };
-export type CentralProfileView = { legalName: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
+export type CentralProfileView = { legalName: string; email: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
 const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");
 
 /** 資料補填視窗要顯示的欄位（即時讀取、不快取、不保存）：真實姓名、培訓系統、地區教育中心、獎銜。 */
@@ -321,7 +321,8 @@ export async function centralProfileView(token: string): Promise<CentralProfileV
   const a = (await am.json().catch(() => null)) as { enabled?: boolean; hglobal?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | null;
   if (!a) return null;
   const f = (k: string): AmwayFieldView => ({ value: textOf(a.fields?.[k]?.value), pending: a.fields?.[k]?.pending_value != null ? textOf(a.fields[k].pending_value) : null, status: a.fields?.[k]?.status ?? "not_required" });
-  return { legalName: typeof p?.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
+  const em = p?.fields?.contact_email?.value;
+  return { legalName: typeof p?.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
 }
 
 /** 把一個欄位寫回會員中心（用會員本人的 token）。失敗時回中央的錯誤訊息。 */

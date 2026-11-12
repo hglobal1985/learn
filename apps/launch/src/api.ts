@@ -1883,6 +1883,16 @@ const routes: [string, RegExp, Handler][] = [
       const s = requireMember(ctx);
       if (s.kind !== "central") return fail(400, "central_only", "只有中央會員可以使用");
       const body = await readJson<{ key?: unknown; value?: unknown }>(ctx.req);
+      if (body.key === "contact_email") {
+        // Email 只有「原本沒有」時才讓會員填；已經有的要改，請到會員中心（避免被亂改通知信箱）。
+        const cur = await contactEmail(s.sub, s.token);
+        if (cur) return fail(409, "email_exists", "已經有 Email，請到會員中心修改");
+        const em = typeof body.value === "string" ? body.value.trim().toLowerCase() : "";
+        if (!validEmail(em)) return fail(400, "invalid_email", "Email 格式不正確");
+        if (!(await saveContactEmail(s.sub, s.token, em))) return fail(502, "central_unavailable", "會員中心暫時無法儲存，請稍後再試");
+        forgetMember(s.sub);
+        return { ok: true, status: null };
+      }
       const keys = ["legal_name", "education_system", "education_center", "rank"] as const;
       const key = keys.find((k) => k === body.key);
       if (!key) return fail(400, "invalid_field", "不能修改這個欄位");

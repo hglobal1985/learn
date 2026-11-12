@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Announcement, type CourseSummary } from "@/api/client";
-import { openAccountCenter } from "@/features/account-link";
 import { ProfilePrompt } from "@/features/profile-prompt";
 import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
@@ -51,17 +50,17 @@ export default function HomeScreen() {
   const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
   return (
     <>
-    {promptOpen && member?.profileMissing?.length ? <ProfilePrompt onClose={() => setPromptOpen(false)} /> : null}
+    {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} /> : null}
     <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
       <View style={styles.inner}>
         <View style={styles.head}>
           <BrandTitle />
           {member ? (
             <Pressable
-              onPress={member.demo ? undefined : openAccountCenter}
+              onPress={member.demo ? undefined : () => setPromptOpen(true)}
               disabled={member.demo}
               accessibilityRole="button"
-              accessibilityLabel={`${member.name}，前往會員中心編輯基本資料`}
+              accessibilityLabel={`${member.name}，完善與編輯會員基本資料`}
               style={styles.who}
             >
               {member.avatarUrl && !avatarFailed ? (
