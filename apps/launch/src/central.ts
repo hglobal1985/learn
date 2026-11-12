@@ -127,10 +127,20 @@ export async function rankValue(sub: string, token: string): Promise<string | nu
   });
 }
 
+/** 會員本人在會員中心的「真實姓名」（legal_name）。每次即時讀取、不快取；查不到或空白回 ""。 */
+export async function legalNameOf(token: string): Promise<string> {
+  const res = await callCentral(token, "/v1/me/profile");
+  if (!res?.ok) return "";
+  const b = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
+  const v = b?.fields?.legal_name?.value;
+  return typeof v === "string" ? v.trim().slice(0, 50) : "";
+}
+
 /** 會員中心資料是否完整（只回「缺什麼」的名稱，不保存任何值）：聯絡信箱；勾選「我是 Amway 會員」時，Amway 欄位有沒有空白。 */
 export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[]> {
   return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async () => {
     const gaps: string[] = [];
+    if (!(await legalNameOf(token))) gaps.push("真實姓名");
     if (email === null) gaps.push("Email");
     const res = await callCentral(token, "/v1/me/amway");
     if (res?.ok) {

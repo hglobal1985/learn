@@ -17,6 +17,7 @@ export function OrderCard({ order, onPress, showMember }: { order: Order; onPres
       {showMember ? (
         <View style={styles.head}>
           <AppText variant="headline">{order.memberName}</AppText>
+          {order.legalName ? <AppText variant="callout" tone="muted">真實姓名：{order.legalName}</AppText> : null}
           {order.centerLabel ? <Pill label={order.centerLabel} tone="accent" /> : null}
           {!order.hglobal ? <Pill label="非寰宇系統" tone="warning" /> : null}
         </View>

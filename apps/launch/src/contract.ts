@@ -141,6 +141,8 @@ export type Order = {
   createdAt: string;
   reviewedAt: string | null;
   memberName: string;
+  /** 付費報名當下的真實姓名快照（對帳用；只有本人與審核人員／管理員看得到）。 */
+  legalName?: string | null;
   centerLabel: string;
   hglobal: boolean;
   items: { courseId: string; runId: string | null; title: string; priceTwd: number }[];

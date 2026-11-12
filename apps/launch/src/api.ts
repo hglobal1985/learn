@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, contactEmail, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, contactEmail, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -497,6 +497,7 @@ type OrderRow = {
   created_at: string;
   reviewed_at: string | null;
   member_name_snapshot: string;
+  legal_name: string;
   center_key: string | null;
   center_label: string;
   hglobal: number;
@@ -505,7 +506,7 @@ type OrderRow = {
   pay_method: Order["payMethod"];
   revoked_at: string | null;
 };
-const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject_reason, o.created_at, o.reviewed_at, o.member_name_snapshot, o.center_key, o.center_label, o.hglobal, o.deferred, o.paid_twd, o.pay_method, o.revoked_at FROM orders o";
+const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject_reason, o.created_at, o.reviewed_at, o.member_name_snapshot, o.legal_name, o.center_key, o.center_label, o.hglobal, o.deferred, o.paid_twd, o.pay_method, o.revoked_at FROM orders o";
 
 async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]> {
   if (!rows.length) return [];
@@ -525,6 +526,7 @@ async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]>
     createdAt: r.created_at,
     reviewedAt: r.reviewed_at,
     memberName: r.member_name_snapshot,
+    legalName: r.legal_name || null,
     centerLabel: r.center_label,
     hglobal: r.hglobal === 1,
     items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, runId: i.run_id || null, title: i.title_snapshot, priceTwd: i.price_twd })),
@@ -603,6 +605,7 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     ...(Array.isArray(body.items) ? (body.items as { courseId?: unknown; runId?: unknown }[]).filter((x) => typeof x?.courseId === "string").map((x) => ({ courseId: x.courseId as string, runId: typeof x.runId === "string" ? x.runId : "" })) : []),
   ];
   const items = [...new Map(raw.map((i) => [`${i.courseId}|${i.runId}`, i])).values()];
+  let legal: string | null = null;
   if (!items.length || items.length > 20) fail(400, "invalid_courses", "請選擇要報名的課程");
   const ids = [...new Set(items.map((i) => i.courseId))];
   const marks = ids.map(() => "?").join(",");
@@ -637,15 +640,18 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     const price = inFreeWindow(c, iso(now)) ? 0 : (run?.price_twd ?? c.price_twd);
     const isFree = price === 0;
     if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
+    // 付費課程：對帳需要真實姓名，報名當下讀取會員中心的 legal_name 存成快照（免費課程不存）。
+    if (!isFree && legal === null) legal = s.kind === "central" ? await legalNameOf(s.token) : s.name;
+    if (!isFree && !legal) fail(409, "legal_name_required", "付費課程需要真實姓名（對帳用）。請點首頁的姓名進入會員中心，填寫「真實姓名」後再報名。");
     const id = orderId(now);
     const title = run ? `${c.title}｜${run.title}` : c.title;
     created.push(id);
     statements.push(
       ctx.db
         .prepare(
-          "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at, legal_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null),
+        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null, isFree ? "" : (legal ?? "")),
       ctx.db.prepare("INSERT INTO order_items (order_id, course_id, run_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?, ?)").bind(id, c.id, run?.id ?? "", title, price),
       event(ctx.db, id, actor, "submit"),
       audit(ctx.db, s.sub, isFree ? "order.register_free" : "order.register", "order", id, title),
@@ -877,8 +883,8 @@ async function reviewCsv(ctx: Ctx): Promise<Response> {
   const statusLabel = (o: Order) => (o.revoked ? "已撤銷" : o.status === "opened" ? "已開通" : o.status === "rejected" ? "已退回" : o.deferred ? "延後再審" : "待審核");
   const method: Record<string, string> = { cash: "現金", transfer: "轉帳", vip: "VIP 免繳費", online: "線上", free: "免費" };
   const lines = [
-    ["報名編號", "報名時間", "課程／場次", "姓名", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
-    ...orders.map((o) => [o.id, o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
+    ["報名編號", "報名時間", "課程／場次", "姓名", "真實姓名（對帳）", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
+    ...orders.map((o) => [o.id, o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.legalName ?? "", o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
   ];
   await audit(ctx.db, ctx.session!.sub, "order.export", "report", "csv", String(orders.length)).run();
   return new Response("﻿" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n"), {

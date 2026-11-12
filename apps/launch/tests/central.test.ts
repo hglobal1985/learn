@@ -29,7 +29,7 @@ function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
   const ok = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   if (url.endsWith("/oauth/jwks")) return ok({ keys: [jwk] });
   if (central.down) return Promise.reject(new Error("offline"));
-  if (url.endsWith("/v1/me/profile")) return ok({ fields: { display_name: { value: sub === "m_bob" ? "課務小明" : "愛麗絲" } } });
+  if (url.endsWith("/v1/me/profile")) return ok({ fields: { display_name: { value: sub === "m_bob" ? "課務小明" : "愛麗絲" }, ...(sub === "m_nolegal" ? {} : { legal_name: { value: "王小明（本名）" } }) } });
   if (url.endsWith("/v1/admin/me")) return Promise.resolve(new Response("{}", { status: 401 })); // 中央只接受網站本身的登入
   if (url.endsWith("/v1/apps/learn/handoff"))
     return sub === "m_bob" ? ok({ app_id: "learn", version: "x", text: "…" }) : Promise.resolve(new Response("{}", { status: 403 }));
@@ -107,6 +107,7 @@ test("中央會員領課、資料只以 sub 關聯；超級管理員可審核", 
   const alice = token();
   const bob = token({ sub: "m_bob" });
   const [order] = (await call<Order[]>("POST", "/orders", { token: alice, body: { courseIds: ["share"] } })).data;
+  assert.equal(order.legalName, "王小明（本名）", "付費報名存下真實姓名快照（對帳用）");
   assert.equal(order.memberName, "愛麗絲");
   assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: alice, body: { action: "paid" } })).status, 404);
   const approved = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: bob, body: { action: "paid" } });
@@ -196,3 +197,4 @@ test("中央職務與中心：秘書是管理員；會長只看得到自己中�
   assert.equal((await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: sec, body: { action: "revoke", reasonCode: "unpaid" } })).data.revoked, true);
   assert.equal((await call<CourseDetail>("GET", "/courses/share", { token: alice })).data.enrollment, null);
 });
+
