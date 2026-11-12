@@ -140,7 +140,8 @@ export async function legalNameOf(token: string): Promise<string> {
 export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[]> {
   return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async () => {
     const gaps: string[] = [];
-    if (email === null) gaps.push("Email");
+    // Email 不列入提醒：會員用 Google 登入，信箱由會員中心預設帶入 Google 信箱（見交接文件）。
+    void email;
     const res = await callCentral(token, "/v1/me/amway");
     if (res?.ok) {
       const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> } | null;
