@@ -143,6 +143,10 @@ export type Order = {
   memberName: string;
   /** 付費報名當下的真實姓名快照（對帳用；只有本人與審核人員／管理員看得到）。 */
   legalName?: string | null;
+  /** 付款代碼（付費報名才有）：匯款備註填寫，對帳以代碼為準。 */
+  payRef?: string | null;
+  /** 會員 ID（對方改名後仍可用它認出同一個人）。 */
+  memberSub?: string;
   centerLabel: string;
   hglobal: boolean;
   items: { courseId: string; runId: string | null; title: string; priceTwd: number }[];

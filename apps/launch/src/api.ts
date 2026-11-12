@@ -75,6 +75,11 @@ function randomToken(bytes = 32): string {
   const a = crypto.getRandomValues(new Uint8Array(bytes));
   return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+/** 付款代碼：P＋8 碼（去掉易混淆字元），唯一；匯款備註填寫，對帳以代碼為準。 */
+function payRef(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return `P${[...crypto.getRandomValues(new Uint8Array(8))].map((b) => alphabet[b % alphabet.length]).join("")}`;
+}
 function orderId(now: Date): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const rand = [...crypto.getRandomValues(new Uint8Array(6))].map((b) => alphabet[b % alphabet.length]).join("");
@@ -498,6 +503,7 @@ type OrderRow = {
   reviewed_at: string | null;
   member_name_snapshot: string;
   legal_name: string;
+  pay_ref: string;
   center_key: string | null;
   center_label: string;
   hglobal: number;
@@ -506,7 +512,7 @@ type OrderRow = {
   pay_method: Order["payMethod"];
   revoked_at: string | null;
 };
-const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject_reason, o.created_at, o.reviewed_at, o.member_name_snapshot, o.legal_name, o.center_key, o.center_label, o.hglobal, o.deferred, o.paid_twd, o.pay_method, o.revoked_at FROM orders o";
+const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject_reason, o.created_at, o.reviewed_at, o.member_name_snapshot, o.legal_name, o.pay_ref, o.center_key, o.center_label, o.hglobal, o.deferred, o.paid_twd, o.pay_method, o.revoked_at FROM orders o";
 
 async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]> {
   if (!rows.length) return [];
@@ -527,6 +533,8 @@ async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]>
     reviewedAt: r.reviewed_at,
     memberName: r.member_name_snapshot,
     legalName: r.legal_name || null,
+    payRef: r.pay_ref || null,
+    memberSub: r.member_sub,
     centerLabel: r.center_label,
     hglobal: r.hglobal === 1,
     items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, runId: i.run_id || null, title: i.title_snapshot, priceTwd: i.price_twd })),
@@ -649,9 +657,9 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     statements.push(
       ctx.db
         .prepare(
-          "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at, legal_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at, legal_name, pay_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null, isFree ? "" : (legal ?? "")),
+        .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null, isFree ? "" : (legal ?? ""), isFree ? "" : payRef()),
       ctx.db.prepare("INSERT INTO order_items (order_id, course_id, run_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?, ?)").bind(id, c.id, run?.id ?? "", title, price),
       event(ctx.db, id, actor, "submit"),
       audit(ctx.db, s.sub, isFree ? "order.register_free" : "order.register", "order", id, title),
@@ -686,6 +694,8 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
   const reviewer = await canReviewOrder(ctx, s, id);
   if (row.member_sub !== s.sub && !reviewer) fail(404, "not_found", "找不到這筆報名");
   const [order] = await hydrateOrders(ctx.db, [row]);
+  // 審核人員（不是本人）開啟明細會看到真實姓名：留下查看紀錄（只記誰、哪一筆，不記姓名內容）。
+  if (reviewer && row.member_sub !== s.sub && row.legal_name) await audit(ctx.db, s.sub, "order.view_legal_name", "order", id).run().catch(() => undefined);
   const [events, collectors] = await Promise.all([
     ctx.db.prepare("SELECT id, actor_sub, actor_name, actor_title, action, reason_code, message, note, created_at FROM order_events WHERE order_id = ? ORDER BY created_at, rowid").bind(id).all<{
       id: string;
@@ -858,7 +868,7 @@ async function reviewList(ctx: Ctx): Promise<{ rows: OrderRow[]; scope: ReviewSc
   if (q.get("center")) add("o.center_key = ?", centerKey(q.get("center")!));
   if (q.get("hglobal") === "0") add("o.hglobal = 0");
   const term = (q.get("q") ?? "").trim().slice(0, 50);
-  if (term) add("(o.member_name_snapshot LIKE ? OR o.id LIKE ?)", `%${term}%`, `%${term}%`);
+  if (term) add("(o.member_name_snapshot LIKE ? OR o.id LIKE ? OR o.pay_ref LIKE ? OR o.member_sub = ?)", `%${term}%`, `%${term}%`, `%${term}%`, term);
   const { results } = await ctx.db.prepare(`${ORDER_SELECT} WHERE ${conds.join(" AND ")} ORDER BY o.created_at DESC LIMIT 2000`).bind(...args).all<OrderRow>();
   return { rows: results, scope };
 }
@@ -883,8 +893,8 @@ async function reviewCsv(ctx: Ctx): Promise<Response> {
   const statusLabel = (o: Order) => (o.revoked ? "已撤銷" : o.status === "opened" ? "已開通" : o.status === "rejected" ? "已退回" : o.deferred ? "延後再審" : "待審核");
   const method: Record<string, string> = { cash: "現金", transfer: "轉帳", vip: "VIP 免繳費", online: "線上", free: "免費" };
   const lines = [
-    ["報名編號", "報名時間", "課程／場次", "姓名", "真實姓名（對帳）", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
-    ...orders.map((o) => [o.id, o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.legalName ?? "", o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
+    ["報名編號", "付款代碼", "會員 ID", "報名時間", "課程／場次", "姓名", "真實姓名（對帳）", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
+    ...orders.map((o) => [o.id, o.payRef ?? "", o.memberSub ?? "", o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.legalName ?? "", o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
   ];
   await audit(ctx.db, ctx.session!.sub, "order.export", "report", "csv", String(orders.length)).run();
   return new Response("﻿" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n"), {

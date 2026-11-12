@@ -10,7 +10,7 @@ export function OrderCard({ order, onPress, showMember }: { order: Order; onPres
     <Card onPress={onPress} accessibilityLabel={`報名 ${order.id}，${s.label}`}>
       <View style={styles.head}>
         <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
-          {order.id} · {dateTime(order.createdAt)}
+          {order.id}{order.payRef ? ` · 付款代碼 ${order.payRef}` : ""} · {dateTime(order.createdAt)}
         </AppText>
         <Pill label={s.label} tone={s.tone} />
       </View>
@@ -18,9 +18,15 @@ export function OrderCard({ order, onPress, showMember }: { order: Order; onPres
         <View style={styles.head}>
           <AppText variant="headline">{order.memberName}</AppText>
           {order.legalName ? <AppText variant="callout" tone="muted">真實姓名：{order.legalName}</AppText> : null}
+          {order.memberSub ? <AppText variant="caption" tone="muted" selectable>會員 ID：{order.memberSub}</AppText> : null}
           {order.centerLabel ? <Pill label={order.centerLabel} tone="accent" /> : null}
           {!order.hglobal ? <Pill label="非寰宇系統" tone="warning" /> : null}
         </View>
+      ) : null}
+      {!showMember && order.payRef && order.status === "pending" ? (
+        <AppText variant="callout" tone="warning">
+          匯款時請在備註填寫付款代碼：{order.payRef}（窗口用代碼核對款項）
+        </AppText>
       ) : null}
       {order.items.map((i) => (
         <View key={`${i.courseId}:${i.runId}`} style={styles.head}>

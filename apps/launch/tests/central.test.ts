@@ -108,6 +108,7 @@ test("中央會員領課、資料只以 sub 關聯；超級管理員可審核", 
   const bob = token({ sub: "m_bob" });
   const [order] = (await call<Order[]>("POST", "/orders", { token: alice, body: { courseIds: ["share"] } })).data;
   assert.equal(order.legalName, "王小明（本名）", "付費報名存下真實姓名快照（對帳用）");
+  assert.match(order.payRef ?? "", /^P[A-Z2-9]{8}$/, "付費報名有唯一付款代碼");
   assert.equal(order.memberName, "愛麗絲");
   assert.equal((await call("POST", `/admin/orders/${order.id}/review`, { token: alice, body: { action: "paid" } })).status, 404);
   const approved = await call<Order>("POST", `/admin/orders/${order.id}/review`, { token: bob, body: { action: "paid" } });
