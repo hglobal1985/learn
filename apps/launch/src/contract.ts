@@ -14,6 +14,8 @@ export type Member = {
   rank: Rank | null;
   role: Role;
   demo: boolean;
+  /** 會員中心的頭像網址（公開；沒有頭像或模擬會員為 null）。 */
+  avatarUrl?: string | null;
   /** 職務名稱（中央職務＋本 App 的窗口身分），顯示用。 */
   titles: string[];
   /** 是否有任何報名審核權限。 */

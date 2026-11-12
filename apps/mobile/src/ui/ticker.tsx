@@ -50,8 +50,8 @@ export function Ticker({ items }: { items: string[] }) {
 
   if (!items.length) return null;
   return (
-    <View style={[styles.box, { backgroundColor: c.accentSoft }]} accessibilityRole="text" accessibilityLabel={`公告：${items.join("；")}`}>
-      <Icon name="megaphone-outline" size={18} color={c.accentText} />
+    <View style={[styles.box, { backgroundColor: c.warningSoft }]} accessibilityRole="text" accessibilityLabel={`公告：${items.join("；")}`}>
+      <Icon name="megaphone-outline" size={18} color={c.warning} />
       <ScrollView
         ref={ref}
         style={styles.scroll}
@@ -80,7 +80,7 @@ export function Ticker({ items }: { items: string[] }) {
       >
         {rows.map((text, i) => (
           <View key={`${i}-${text}`} style={styles.row}>
-            <AppText variant="callout" numberOfLines={2} style={{ color: c.accentText }}>
+            <AppText variant="callout" numberOfLines={2} style={{ color: c.warning }}>
               {text}
             </AppText>
           </View>

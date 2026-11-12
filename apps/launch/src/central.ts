@@ -101,15 +101,22 @@ async function callCentral(token: string, path: string, init: RequestInit = {}):
   }
 }
 
-/** 顯示名稱（供訂單審核辨識；不是 Amway 資料）。 */
-export async function displayName(sub: string, token: string): Promise<string> {
+/** 顯示名稱與頭像網址（頭像在會員中心本來就是公開的；只放記憶體快取，不寫入資料庫）。不是 Amway 資料。 */
+export async function profileSummary(sub: string, token: string): Promise<{ name: string; avatarUrl: string | null }> {
   return cached(`name:${sub}`, 300_000, async () => {
     const res = await callCentral(token, "/v1/me/profile");
-    if (!res?.ok) return "會員";
-    const body = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
+    if (!res?.ok) return { name: "會員", avatarUrl: null };
+    const body = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }>; avatar?: { url?: unknown } } | null;
     const v = body?.fields?.display_name?.value;
-    return typeof v === "string" && v.trim() ? v.trim().slice(0, 50) : "會員";
+    const a = typeof body?.avatar?.url === "string" ? body.avatar.url : "";
+    const avatarUrl = a.startsWith("/") ? `${CENTRAL}${a}` : /^https:\/\//.test(a) ? a : null;
+    return { name: typeof v === "string" && v.trim() ? v.trim().slice(0, 50) : "會員", avatarUrl };
   });
+}
+
+/** 顯示名稱（供訂單審核辨識）。 */
+export async function displayName(sub: string, token: string): Promise<string> {
+  return (await profileSummary(sub, token)).name;
 }
 
 /**

@@ -1,8 +1,7 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { ACCOUNT_URL } from "@/api/central";
+import { openAccountCenter } from "@/features/account-link";
 import type { AppConfig, Member } from "@/api/client";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -19,7 +18,6 @@ function confirm(title: string, message: string, ok: string): Promise<boolean> {
   );
 }
 
-const openAccountCenter = () => (Platform.OS === "web" ? Linking.openURL(ACCOUNT_URL) : WebBrowser.openBrowserAsync(ACCOUNT_URL));
 
 /**
  * 頁尾：與寰宇中央會員網站的頁尾相同（淡色小字：左邊「隱私權政策」連結、右邊設計者署名）。
