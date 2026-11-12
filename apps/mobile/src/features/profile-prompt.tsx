@@ -104,11 +104,11 @@ function Btn({ label, icon, onPress, disabled }: { label: string; icon: IconName
  * 系統／中心／獎銜右邊都有與中央會員相同的「無」勾選框；獎銜需先有系統與中心。
  * 直接用會員本人的身分寫回會員中心（行動大學不保存）。「我是 Amway 會員」的勾選與同意說明在會員中心，這裡不代為勾選。
  */
-export function ProfilePrompt({ onClose }: { onClose: () => void }) {
+export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void; initial?: View_ | null }) {
   const { c } = useTheme();
   const { width, height } = useWindowDimensions();
   const { invalidate } = useSession();
-  const [data, setData] = useState<View_ | null>(null);
+  const [data, setData] = useState<View_ | null>(first ?? null);
   const [error, setError] = useState<string | null>(null);
   const [vals, setVals] = useState({ legal_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
   const [rankOpen, setRankOpen] = useState(false);
@@ -123,7 +123,11 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
       })
       .catch((e: Error) => setError(e.message));
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    // 開啟時如果首頁已經把資料帶來了，就直接用（不用再等一次網路）；否則才向伺服器要。
+    if (first) setVals({ legal_name: first.legalName, contact_email: first.email, education_system: first.fields.education_system.value, education_center: first.fields.education_center.value, rank: first.fields.rank.value });
+    else load();
+  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
   const canRank = !!vals.education_system.trim() && !!vals.education_center.trim();
   const rankNone = vals.rank === "none";
   const rankLabel = (v: string) => data?.rankOptions.find((o) => o.value === v)?.label ?? v;

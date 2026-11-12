@@ -20,6 +20,8 @@ export type Member = {
   rankLabel?: string | null;
   /** 會員中心資料還有哪些空白（例如「Email」「Amway 會員資料」）；空陣列表示完整。 */
   profileMissing?: string[];
+  /** 資料不完整時一併帶回的「完善資料」視窗內容（即時取自會員中心，不保存）。 */
+  profileForm?: ProfileForm;
   /** 職務名稱（中央職務＋本 App 的窗口身分），顯示用。 */
   titles: string[];
   /** 是否有任何報名審核權限。 */
@@ -263,3 +265,13 @@ export type CoverBackground = { id: string; url: string; uploaderName: string; u
 
 /** 首頁跑馬燈公告（只有超級管理員與總部秘書可管理）。 */
 export type Announcement = { id: string; text: string; enabled: boolean };
+
+/** 「完善資料」視窗的內容：真實姓名、Email，以及勾選 Amway 會員時的系統、中心、獎銜。 */
+export type ProfileForm = {
+  legalName: string;
+  email: string;
+  enabled: boolean;
+  hglobal: boolean;
+  fields: Record<"education_system" | "education_center" | "rank", { value: string; pending: string | null; status: string }>;
+  rankOptions: { value: string; label: string }[];
+};

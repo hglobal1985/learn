@@ -80,13 +80,27 @@ export async function verifyAccessToken(token: string): Promise<string | null> {
 
 /** 短時效記憶體快取（只在單一 Worker 執行個體內，不落地）。 */
 const memo = new Map<string, { value: unknown; until: number }>();
+const inflight = new Map<string, Promise<unknown>>();
+/** 查詢結果短暫放記憶體；同一時間同樣的查詢只送一次（同一個請求裡好幾個地方都要同一份資料時，不會重複問會員中心）；查不到（undefined）不快取。 */
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
   const hit = memo.get(key);
   if (hit && hit.until > Date.now()) return hit.value as T;
-  const value = await load();
-  memo.set(key, { value, until: Date.now() + ttlMs });
-  if (memo.size > 2000) memo.delete(memo.keys().next().value!);
-  return value;
+  const running = inflight.get(key);
+  if (running) return (await running) as T;
+  const p = (async () => {
+    const value = await load();
+    if (value !== undefined) {
+      memo.set(key, { value, until: Date.now() + ttlMs });
+      if (memo.size > 2000) memo.delete(memo.keys().next().value!);
+    }
+    return value;
+  })();
+  inflight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    inflight.delete(key);
+  }
 }
 
 async function callCentral(token: string, path: string, init: RequestInit = {}): Promise<Response | null> {
@@ -102,22 +116,30 @@ async function callCentral(token: string, path: string, init: RequestInit = {}):
 }
 
 /** 顯示名稱與頭像網址（頭像在會員中心本來就是公開的；只放記憶體快取，不寫入資料庫）。不是 Amway 資料。 */
-export async function profileSummary(sub: string, token: string): Promise<{ name: string; avatarUrl: string | null }> {
-  return cached(`name:${sub}`, 300_000, async () => {
+type ProfileDoc = { fields?: Record<string, { value?: unknown }>; avatar?: { url?: unknown } };
+/** GET /v1/me/profile 只打一次（名稱、頭像、聯絡信箱、真實姓名共用；放記憶體 2 分鐘）。查不到回 undefined。 */
+async function profileDoc(sub: string, token: string): Promise<ProfileDoc | undefined> {
+  return cached(`pdoc:${sub}`, 120_000, async () => {
     const res = await callCentral(token, "/v1/me/profile");
-    if (!res?.ok) return { name: "會員", avatarUrl: null };
-    const body = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }>; avatar?: { url?: unknown } } | null;
-    const v = body?.fields?.display_name?.value;
-    const a = typeof body?.avatar?.url === "string" ? body.avatar.url : "";
-    const avatarUrl = a.startsWith("/") ? `${CENTRAL}${a}` : /^https:\/\//.test(a) ? a : null;
-    return { name: typeof v === "string" && v.trim() ? v.trim().slice(0, 50) : "會員", avatarUrl };
+    if (!res?.ok) return undefined;
+    const b = (await res.json().catch(() => null)) as ProfileDoc | null;
+    return b?.fields ? b : undefined;
   });
+}
+
+export async function profileSummary(sub: string, token: string): Promise<{ name: string; avatarUrl: string | null }> {
+  const body = await profileDoc(sub, token);
+  if (!body) return { name: "會員", avatarUrl: null };
+  const v = body.fields?.display_name?.value;
+  const a = typeof body.avatar?.url === "string" ? body.avatar.url : "";
+  const avatarUrl = a.startsWith("/") ? `${CENTRAL}${a}` : /^https:\/\//.test(a) ? a : null;
+  return { name: typeof v === "string" && v.trim() ? v.trim().slice(0, 50) : "會員", avatarUrl };
 }
 
 /** 會員在會員中心的獎銜（只放記憶體快取供首頁顯示，不寫入資料庫；業主 2026-11-12 授權讀取）。查不到回 undefined。 */
 type AmwayMe = { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> };
 /** GET /v1/me/amway 只打一次（獎銜顯示與資料補填提醒共用；放記憶體 2 分鐘）。 */
-async function amwayMe(sub: string, token: string): Promise<AmwayMe | undefined> {
+export async function amwayMe(sub: string, token: string): Promise<AmwayMe | undefined> {
   return cached(`amway:${sub}`, 120_000, async () => {
     const res = await callCentral(token, "/v1/me/amway");
     if (!res?.ok) return undefined;
@@ -191,11 +213,9 @@ export async function displayName(sub: string, token: string): Promise<string> {
  * 另可在 Worker 變數 LEARN_ADMIN_SUBS（逗號分隔的會員 ID）指定其他管理員。查不到一律否。
  */
 export async function isAdmin(sub: string, token: string, extraAdmins = ""): Promise<boolean> {
-  if (extraAdmins.split(",").map((x) => x.trim()).filter(Boolean).includes(sub)) return true;
-  return cached(`admin:${sub}`, 60_000, async () => {
-    const res = await callCentral(token, `/v1/apps/${APP_ID}/handoff`);
-    return res?.status === 200;
-  });
+  // 超級管理員、總部秘書由 memberContext 的職務判斷，不再每個請求多問一次會員中心；這裡只看 LEARN_ADMIN_SUBS。
+  void token;
+  return extraAdmins.split(",").map((x) => x.trim()).filter(Boolean).includes(sub);
 }
 
 /** 獎銜資格（批次）：min_rank 為 none 的課程只需登入；其餘向中央查詢，失敗一律不符合。 */
@@ -271,23 +291,17 @@ export const validEmail = (s: string) => s.length <= 254 && EMAIL_RE.test(s);
  * 回傳 undefined＝查不到（中央無回應等），呼叫端不可因此清除已存的副本。
  */
 export async function contactEmail(sub: string, token: string): Promise<string | null | undefined> {
-  const hit = memo.get(`mail:${sub}`);
-  if (hit && hit.until > Date.now()) return hit.value as string | null;
-  const res = await callCentral(token, "/v1/me/profile");
-  if (!res?.ok) return undefined;
-  const body = (await res.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
-  if (!body?.fields) return undefined;
-  const v = body.fields.contact_email?.value;
-  const email = typeof v === "string" && validEmail(v.trim()) ? v.trim().toLowerCase() : null;
-  memo.set(`mail:${sub}`, { value: email, until: Date.now() + 60_000 });
-  return email;
+  const body = await profileDoc(sub, token);
+  if (!body) return undefined;
+  const v = body.fields?.contact_email?.value;
+  return typeof v === "string" && validEmail(v.trim()) ? v.trim().toLowerCase() : null;
 }
 
 /** 把聯絡信箱寫回會員中心（null＝清除）。成功才回 true。 */
 export async function saveContactEmail(sub: string, token: string, email: string | null): Promise<boolean> {
   const res = await callCentral(token, "/v1/me/profile/fields/contact_email", { method: "PUT", body: JSON.stringify({ value: email }) });
   if (!res?.ok) return false;
-  memo.set(`mail:${sub}`, { value: email, until: Date.now() + 60_000 });
+  forgetMember(sub);
   return true;
 }
 
@@ -314,15 +328,13 @@ export type CentralProfileView = { legalName: string; email: string; enabled: bo
 const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");
 
 /** 資料補填視窗要顯示的欄位（即時讀取、不快取、不保存）：真實姓名、培訓系統、地區教育中心、獎銜。 */
-export async function centralProfileView(token: string): Promise<CentralProfileView | null> {
-  const [pr, am, opts] = await Promise.all([callCentral(token, "/v1/me/profile"), callCentral(token, "/v1/me/amway"), rankOptionList(token)]);
-  if (!pr?.ok || !am?.ok) return null;
-  const p = (await pr.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
-  const a = (await am.json().catch(() => null)) as { enabled?: boolean; hglobal?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | null;
-  if (!a) return null;
+export async function centralProfileView(sub: string, token: string): Promise<CentralProfileView | null> {
+  const [p, a0, opts] = await Promise.all([profileDoc(sub, token), amwayMe(sub, token), rankOptionList(token)]);
+  const a = a0 as { enabled?: boolean; hglobal?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | undefined;
+  if (!p || !a) return null;
   const f = (k: string): AmwayFieldView => ({ value: textOf(a.fields?.[k]?.value), pending: a.fields?.[k]?.pending_value != null ? textOf(a.fields[k].pending_value) : null, status: a.fields?.[k]?.status ?? "not_required" });
-  const em = p?.fields?.contact_email?.value;
-  return { legalName: typeof p?.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
+  const em = p.fields?.contact_email?.value;
+  return { legalName: typeof p.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
 }
 
 /** 把一個欄位寫回會員中心（用會員本人的 token）。失敗時回中央的錯誤訊息。 */

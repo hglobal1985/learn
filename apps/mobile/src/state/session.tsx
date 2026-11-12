@@ -66,6 +66,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const r = await handleWebSsoReturn(m?.sub ?? null);
           if (r.changed) m = known(await fetchMember());
           setSsoNext(r.next);
+        } else if (m) {
+          // 已經登入：共用登入的檢查放到背景做，不要讓使用者先等它（若需要會自動換頁）。
+          webSsoCheck().catch(() => false);
         } else if (await webSsoCheck()) return "redirecting";
       }
       setMember(m);

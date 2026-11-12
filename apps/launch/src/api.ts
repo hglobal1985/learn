@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { amwayMe, centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -112,14 +112,15 @@ function requireAdmin(ctx: Ctx): Session {
 
 const demoEnabled = (env: Env) => env.DEMO_LOGIN === "on";
 
-async function loadSession(env: Env, req: Request): Promise<Session | null> {
+async function loadSession(env: Env, req: Request, warmAmway = false): Promise<Session | null> {
   const db = env.DB;
   const auth = req.headers.get("authorization") ?? "";
   const jwt = /^Bearer (\S+)$/.exec(auth)?.[1];
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [prof, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
+    // 向會員中心的查詢同時送出（/me 還會順便預先查好 Amway 資料，後面直接用快取）。
+    const [prof, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt), warmAmway ? amwayMe(sub, jwt) : undefined]);
     // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
     const admin = superAdmin || mc.roles.includes("super_admin") || mc.roles.includes("secretary");
     return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
@@ -1320,6 +1321,8 @@ const routes: [string, RegExp, Handler][] = [
         if (rv !== undefined) member.rankLabel = rv && rv !== "none" && rv !== "無" ? (opts?.get(rv) ?? rankLabelOf(rv, rankMap)) : "安麗寶寶";
         // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
         member.profileMissing = missing ?? [];
+        // 資料不完整時，把視窗要用的資料一起帶回去（來源都已在快取，不用再問會員中心，視窗才能立刻顯示）。
+        if (member.profileMissing.length) member.profileForm = (await centralProfileView(central.sub, central.token).catch(() => null)) ?? undefined;
       }
       return { member };
     },
@@ -1873,7 +1876,7 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx) => {
       const s = requireMember(ctx);
       if (s.kind !== "central") return fail(400, "central_only", "只有中央會員可以使用");
-      return (await centralProfileView(s.token)) ?? fail(502, "central_unavailable", "會員中心暫時無法連線，請稍後再試");
+      return (await centralProfileView(s.sub, s.token)) ?? fail(502, "central_unavailable", "會員中心暫時無法連線，請稍後再試");
     },
   ],
   [
@@ -2358,6 +2361,7 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
       : {};
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   const path = url.pathname.replace(/^\/api\/v2/, "") || "/";
+  const started = Date.now();
   let res: Response;
   try {
     const route = routes.find(([m, re]) => m === req.method && re.test(path));
@@ -2376,6 +2380,8 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
     }
   }
   for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+  // 伺服器處理時間（含向會員中心查詢），方便在瀏覽器開發者工具的 Network → Timing 看哪一步慢。
+  res.headers.set("server-timing", `app;dur=${Date.now() - started}`);
   // 有寫入動作時，把新產生的站內通知也寄成 Email（背景處理，失敗不影響回應）。
   if (req.method !== "GET" && res.status < 400 && env.EMAIL) {
     const job = flushEmails(env).catch((e) => console.error("flush emails", e instanceof Error ? e.message : "error"));
@@ -2389,6 +2395,6 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
 const NO_SESSION = /^\/api\/v2\/(announcements|quotes\/random|config|media\/(pub|img|file|audio))(\?|$)/;
 
 async function context(req: Request, env: Env, url: URL): Promise<Ctx> {
-  const session = NO_SESSION.test(url.pathname) ? null : await loadSession(env, req);
+  const session = NO_SESSION.test(url.pathname) ? null : await loadSession(env, req, req.method === "GET" && url.pathname === "/api/v2/me");
   return { env, db: env.DB, req, url, platform: platformOf(req), session };
 }

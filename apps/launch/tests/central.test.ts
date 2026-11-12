@@ -36,6 +36,7 @@ function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
   if (url.endsWith("/v1/eligibility/context")) {
     if (sub === "m_pres") return ok({ member_id: sub, roles: [{ role: "president" }], hglobal_verified: true, center: { key: "台北中心", label: "台北中心" } });
     if (sub === "m_sec") return ok({ member_id: sub, roles: [{ role: "secretary" }], hglobal_verified: true, center: null });
+    if (sub === "m_bob") return ok({ member_id: sub, roles: [{ role: "super_admin" }], hglobal_verified: true, center: null });
     if (sub === "m_alice") return ok({ member_id: sub, roles: [], hglobal_verified: true, center: { key: "台北中心", label: "台北中心" } });
     return ok({ member_id: sub, roles: [], hglobal_verified: false, center: null });
   }

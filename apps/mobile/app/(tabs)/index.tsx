@@ -50,7 +50,7 @@ export default function HomeScreen() {
   const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
   return (
     <>
-    {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} /> : null}
+    {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} initial={member.profileForm ?? null} /> : null}
     <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
       <View style={styles.inner}>
         <View style={styles.head}>
