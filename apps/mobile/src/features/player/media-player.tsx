@@ -20,6 +20,7 @@ export function MediaPlayer({ url, audio, start, end, onSegmentEnd }: MediaPlaye
     p.loop = false;
     p.timeUpdateEventInterval = 0.5;
     if (start) p.currentTime = start;
+    p.play(); // 點章節進來就自動播放
   });
   useEventListener(player, "statusChange", ({ status }) => {
     if (status === "readyToPlay" && start && player.currentTime < start - 1) player.currentTime = start;

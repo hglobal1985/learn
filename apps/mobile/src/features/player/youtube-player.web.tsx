@@ -8,7 +8,7 @@ export function YouTubePlayer({ videoId, start, end }: { videoId: string; start?
   return (
     <View style={styles.frame}>
       {createElement("iframe", {
-        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&modestbranding=1${range}`,
+        src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?rel=0&modestbranding=1&autoplay=1${range}`,
         title: "課程影片",
         allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen",
         allowFullScreen: true,

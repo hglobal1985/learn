@@ -18,10 +18,13 @@ export function MediaPlayer({ url, audio, start, end, onSegmentEnd }: MediaPlaye
     setError(null);
     let hls: { destroy(): void } | null = null;
     let cancelled = false;
+    // 使用者點章節進來就自動播放；瀏覽器若擋下自動播放（例如直接開連結），維持手動按播放。
+    const tryPlay = () => void el.play().catch(() => undefined);
     const seekToStart = () => {
       if (start && el.currentTime < start - 1) el.currentTime = start;
     };
     el.addEventListener("loadedmetadata", seekToStart);
+    el.addEventListener("canplay", tryPlay, { once: true });
     const isHls = /\.m3u8(\?|$)/.test(url);
     if (isHls) {
       // 一律優先用 hls.js（行為一致、可回報錯誤）；不支援時才交給瀏覽器原生 HLS（舊版 iPhone Safari）。
@@ -48,6 +51,7 @@ export function MediaPlayer({ url, audio, start, end, onSegmentEnd }: MediaPlaye
     return () => {
       cancelled = true;
       el.removeEventListener("loadedmetadata", seekToStart);
+      el.removeEventListener("canplay", tryPlay);
       el.removeEventListener("error", onError);
       hls?.destroy();
       el.removeAttribute("src");
