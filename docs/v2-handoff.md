@@ -201,3 +201,4 @@
 ## 2026-11-13：App 圖示與標題反光
 - **App 圖示**：以寰宇 logo 為固定圖案。網頁：`/favicon.ico`、`/favicon-32.png`、`/apple-touch-icon.png`（180）、`/icon-192.png`、`/icon-512.png`、`/icon-maskable-512.png`、`/manifest.webmanifest`（名稱「寰宇行動大學」、主題色 #2F5D3A、standalone），加到主畫面時使用同一圖案；`<link>` 標籤由 `apps/launch/scripts/embed-static.mjs` 在打包時補進 `index.html`。原生 App 圖示（`assets/icon.png`、`adaptive-icon.png`，Android 背景改白）與商店圖示同步。**中央會員的 App 捷徑要顯示相同圖示：圖示網址固定為 `https://learn.hglobal1985.com/icon-512.png`（需要中央登記 App 時提供圖示欄位）。**
 - **首頁標題**：移除逐字跳動，改為「反光」——文字顏色沿 logo 色系流動，並週期性（4.2 秒）掃過一道由左到右的亮光（淺色模式亮金、深色模式白光，含光暈），logo 同步呼吸；沒有位移。
+- **（2026-11-13 業主決定）封測階段不建立 staging**：行動大學直接本機測試＋正式部署；正式上架 App Store／Google Play 後，才改成「每次修改先 staging 再 production」。中央串接新標準（webhook、聯絡查詢）因此改為：本機以模擬中央測試，業主在中央後台建立 production 金鑰後再接真實事件。
