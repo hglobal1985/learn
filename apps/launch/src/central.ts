@@ -290,3 +290,54 @@ export async function saveContactEmail(sub: string, token: string, email: string
   memo.set(`mail:${sub}`, { value: email, until: Date.now() + 60_000 });
   return true;
 }
+
+/** 寫入或查詢後，丟掉這位會員在記憶體裡的中央資料快取（下一次讀取會拿到最新的）。 */
+export function forgetMember(sub: string): void {
+  for (const k of [...memo.keys()]) if (k.includes(`:${sub}`)) memo.delete(k);
+}
+
+export type RankOption = { value: string; label: string };
+/** 獎銜選項清單（依階梯順序）；快取 1 天。 */
+export async function rankOptionList(token: string): Promise<RankOption[]> {
+  return cached("rank-option-list", 86_400_000, async () => {
+    const res = await callCentral(token, "/v1/amway/field-definitions");
+    if (!res?.ok) return [];
+    const b = (await res.json().catch(() => null)) as unknown;
+    const list: unknown[] = Array.isArray(b) ? b : b && typeof b === "object" ? Object.values((b as { fields?: unknown }).fields ?? b) : [];
+    const rank = list.find((f) => f && typeof f === "object" && (f as { key?: unknown }).key === "rank") as { options?: { value?: unknown; label?: unknown }[] } | undefined;
+    return (rank?.options ?? []).filter((o): o is RankOption => typeof o.value === "string" && typeof o.label === "string");
+  });
+}
+
+export type AmwayFieldView = { value: string; pending: string | null; status: string };
+export type CentralProfileView = { legalName: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
+const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");
+
+/** 資料補填視窗要顯示的欄位（即時讀取、不快取、不保存）：真實姓名、培訓系統、地區教育中心、獎銜。 */
+export async function centralProfileView(token: string): Promise<CentralProfileView | null> {
+  const [pr, am, opts] = await Promise.all([callCentral(token, "/v1/me/profile"), callCentral(token, "/v1/me/amway"), rankOptionList(token)]);
+  if (!pr?.ok || !am?.ok) return null;
+  const p = (await pr.json().catch(() => null)) as { fields?: Record<string, { value?: unknown }> } | null;
+  const a = (await am.json().catch(() => null)) as { enabled?: boolean; hglobal?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown; status?: string }> } | null;
+  if (!a) return null;
+  const f = (k: string): AmwayFieldView => ({ value: textOf(a.fields?.[k]?.value), pending: a.fields?.[k]?.pending_value != null ? textOf(a.fields[k].pending_value) : null, status: a.fields?.[k]?.status ?? "not_required" });
+  return { legalName: typeof p?.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
+}
+
+/** 把一個欄位寫回會員中心（用會員本人的 token）。失敗時回中央的錯誤訊息。 */
+export async function centralWriteField(token: string, key: "legal_name" | "education_system" | "education_center" | "rank", value: string | null): Promise<{ ok: true; status: string | null } | { ok: false; status: number; message: string }> {
+  const path = key === "legal_name" ? "/v1/me/profile/fields/legal_name" : `/v1/me/amway/fields/${key}`;
+  const res = await callCentral(token, path, { method: "PUT", body: JSON.stringify({ value }) });
+  if (!res) return { ok: false, status: 502, message: "會員中心暫時無法連線，請稍後再試" };
+  const b = (await res.json().catch(() => null)) as { status?: string; error?: { message?: string } } | null;
+  if (!res.ok) return { ok: false, status: res.status === 403 ? 403 : res.status === 422 ? 422 : 502, message: b?.error?.message ?? "會員中心拒絕了這次修改" };
+  return { ok: true, status: b?.status ?? null };
+}
+
+/** 關聯詞建議（培訓系統、地區教育中心）。 */
+export async function centralSuggest(token: string, pool: "education_system" | "education_center", q: string): Promise<string[]> {
+  const res = await callCentral(token, `/v1/vocab/suggestions?pool=${pool}&q=${encodeURIComponent(q.slice(0, 30))}`);
+  if (!res?.ok) return [];
+  const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;
+  return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string").slice(0, 12);
+}

@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, contactEmail, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -1865,6 +1865,45 @@ const routes: [string, RegExp, Handler][] = [
         audit(ctx.db, admin.sub, "lesson.attachment_edit", "lesson", row.lesson_id, id),
       ]);
       return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/me\/central-profile$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (s.kind !== "central") return fail(400, "central_only", "只有中央會員可以使用");
+      return (await centralProfileView(s.token)) ?? fail(502, "central_unavailable", "會員中心暫時無法連線，請稍後再試");
+    },
+  ],
+  [
+    "PUT",
+    /^\/me\/central-profile$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (s.kind !== "central") return fail(400, "central_only", "只有中央會員可以使用");
+      const body = await readJson<{ key?: unknown; value?: unknown }>(ctx.req);
+      const keys = ["legal_name", "education_system", "education_center", "rank"] as const;
+      const key = keys.find((k) => k === body.key);
+      if (!key) return fail(400, "invalid_field", "不能修改這個欄位");
+      const value = typeof body.value === "string" ? body.value.trim().slice(0, 50) : body.value === null ? null : undefined;
+      if (value === undefined) return fail(400, "invalid_value", "內容格式不正確");
+      // 資料正本在會員中心：直接寫過去，這裡不保存（也不寫日誌）。
+      const r = await centralWriteField(s.token, key, value === "" ? null : value);
+      forgetMember(s.sub);
+      if (!r.ok) return fail(r.status, "central_rejected", r.message);
+      return { ok: true, status: r.status };
+    },
+  ],
+  [
+    "GET",
+    /^\/me\/vocab$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (s.kind !== "central") return [];
+      const pool = ctx.url.searchParams.get("pool");
+      if (pool !== "education_system" && pool !== "education_center") return fail(400, "invalid_pool", "不支援這個詞庫");
+      return centralSuggest(s.token, pool, ctx.url.searchParams.get("q") ?? "");
     },
   ],
   [
