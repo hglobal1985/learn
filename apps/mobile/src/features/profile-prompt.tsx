@@ -67,7 +67,7 @@ function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: 
 }
 
 /**
- * 會員資料未完整時的彈出視窗：蓋在首頁上層，約 86%×80%、內容可上下捲動；「暫時不要」可暫時關閉（下次登入會再提醒）。
+ * 會員資料未完整時的彈出視窗：蓋在首頁上層，約 73%×80%、內容可上下捲動；「暫時不要」可暫時關閉（下次登入會再提醒）。
  * 最上方置中兩顆同樣式的按鈕並排：「儲存」（一次儲存所有改過的欄位）與「暫時不要」。
  * 欄位：真實姓名、培訓系統、地區教育中心、獎銜；直接用會員本人的身分寫回會員中心（行動大學不保存）。
  * 「我是 Amway 會員」的勾選與同意說明在會員中心，這裡不代為勾選。
@@ -117,15 +117,15 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose} accessibilityViewIsModal>
       <View style={styles.backdrop}>
-        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(300, width * 0.86), maxWidth: 520, maxHeight: height * 0.8 }]}>
+        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(260, width * 0.73), maxWidth: 442, maxHeight: height * 0.8 }]}>
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator keyboardShouldPersistTaps="handled">
-            <AppText variant="title">完善資料審核開通權限</AppText>
+            <AppText variant="title">先完善資料才能開通權限</AppText>
             <View style={styles.actions}>
               <View style={{ flex: 1 }}>
                 <Button label="儲存" icon="save-outline" disabled={busy || !changed.length} loading={busy} onPress={save} fullWidth />
               </View>
               <View style={{ flex: 1 }}>
-                <Button label="暫時不要" onPress={onClose} fullWidth />
+                <Button label="暫時不要" icon="close" onPress={onClose} fullWidth />
               </View>
             </View>
             {msg ? <NoticeBox tone={msg.ok ? "success" : "danger"} text={msg.text} /> : null}
