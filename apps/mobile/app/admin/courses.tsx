@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { api, type CourseSummary, type Rank } from "@/api/client";
+import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
@@ -11,14 +12,14 @@ import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, P
 export default function AdminCoursesScreen() {
   const { c } = useTheme();
   const { member, invalidate } = useSession();
-  const isAdmin = member?.role === "admin";
+  const isAdmin = canManageCourses(member);
   const courses = useApi<CourseSummary[]>(isAdmin ? "/admin/courses" : null);
   const ranks = useApi<Rank[]>("/ranks");
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
 
-  if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要管理員權限" /></Screen>;
+  if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (!courses.data || !ranks.data)
     return <Screen header={false}>{courses.error ? <ErrorView message={courses.error} onRetry={courses.reload} /> : <LoadingView />}</Screen>;
 
@@ -97,7 +98,7 @@ export default function AdminCoursesScreen() {
 }
 
 const styles = StyleSheet.create({
-  head: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  head: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: { minHeight: minTouch - 8, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
 });

@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-n
 import { api, HQ_UNIT, type CourseDeleteImpact, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
 import { CoverManager } from "@/features/admin/cover-manager";
 import { ntd, parseLocal, toLocal } from "@/features/format";
+import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
@@ -22,12 +23,13 @@ export default function CourseEditScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { c } = useTheme();
   const { member, invalidate } = useSession();
-  const isAdmin = member?.role === "admin";
-  const course = useApi<CourseDetail>(isAdmin && id ? `/courses/${id}` : null);
+  const canManage = canManageCourses(member);
+  const isAdmin = member?.role === "admin"; // 總部管理員：可選指導／主辦單位；會長、音控固定為自己的中心
+  const course = useApi<CourseDetail>(canManage && id ? `/courses/${id}` : null);
   const ranks = useApi<Rank[]>("/ranks");
   const centers = useApi<string[]>(isAdmin ? "/centers" : null);
-  const groups = useApi<ReviewGroup[]>(isAdmin ? "/admin/review-groups" : null);
-  const [form, setForm] = useState<Form>(empty);
+  const groups = useApi<ReviewGroup[]>(canManage ? "/admin/review-groups" : null);
+  const [form, setForm] = useState<Form>(() => ({ ...empty, ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -58,7 +60,7 @@ export default function CourseEditScreen() {
       });
   }, [course.data]);
 
-  if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要管理員權限" /></Screen>;
+  if (!canManage) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
   const set = (k: Exclude<keyof Form, "allowPresident">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -91,6 +93,11 @@ export default function CourseEditScreen() {
     setMsg(null);
     try {
       const info = await api<CourseDeleteImpact>("GET", `/admin/courses/${id}/delete-impact`);
+      if (info.registrations > 0 && !isAdmin) {
+        setMsg({ tone: "danger", text: "已有人報名的課程請改為「下架」；刪除只有總部管理員可以做。" });
+        setBusy(null);
+        return;
+      }
       if (info.registrations > 0) {
         setImpact(info);
         setYes("");
@@ -158,12 +165,16 @@ export default function CourseEditScreen() {
           <AppText variant="callout" tone="muted">
             指導單位（會公開顯示）
           </AppText>
-          <Chips label="指導單位" options={[{ key: HQ_UNIT, label: HQ_UNIT }, { key: "", label: "不顯示" }]} value={form.guidanceUnit} onChange={set("guidanceUnit")} />
+          <Chips label="指導單位" options={isAdmin ? [{ key: HQ_UNIT, label: HQ_UNIT }, { key: "", label: "不顯示" }] : [{ key: member?.center ?? "", label: member?.center ?? "" }, { key: "", label: "不顯示" }]} value={form.guidanceUnit} onChange={set("guidanceUnit")} />
           {form.guidanceUnit === HQ_UNIT ? <NoticeBox text="由寰宇總部指導的課程，只有總部秘書與超級管理員可以指派審核人員。" /> : null}
           <AppText variant="callout" tone="muted">
             主辦單位（會公開顯示）
           </AppText>
-          <Chips label="主辦單位" options={[{ key: "", label: "不顯示" }, { key: HQ_UNIT, label: HQ_UNIT }, ...(centers.data ?? []).map((x) => ({ key: x, label: x }))]} value={form.hostUnit} onChange={set("hostUnit")} />
+          {isAdmin ? (
+            <Chips label="主辦單位" options={[{ key: "", label: "不顯示" }, { key: HQ_UNIT, label: HQ_UNIT }, ...(centers.data ?? []).map((x) => ({ key: x, label: x }))]} value={form.hostUnit} onChange={set("hostUnit")} />
+          ) : (
+            <NoticeBox text={`主辦單位固定為「${member?.center ?? ""}」；你只能管理自己中心主辦的課程。`} />
+          )}
         </Card>
       </Section>
 
@@ -187,7 +198,7 @@ export default function CourseEditScreen() {
         <Card>
           <Chips
             label="審核群組"
-            options={[{ key: "", label: "未指定（由總部審核）" }, ...(groups.data ?? []).filter((g) => form.guidanceUnit !== HQ_UNIT || g.ownerCenter === null).map((g) => ({ key: g.id, label: g.name }))]}
+            options={[{ key: "", label: isAdmin ? "未指定（由總部審核）" : "未指定（由本中心會長與總部處理）" }, ...(groups.data ?? []).filter((g) => (isAdmin ? form.guidanceUnit !== HQ_UNIT || g.ownerCenter === null : g.ownerCenter === member?.center)).map((g) => ({ key: g.id, label: g.name }))]}
             value={form.reviewGroupId}
             onChange={set("reviewGroupId")}
           />

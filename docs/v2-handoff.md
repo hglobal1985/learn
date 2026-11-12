@@ -230,3 +230,10 @@
 - 資料補填視窗標籤：欄位**填了就隱藏「必填」**；**中心、獎銜通過審核**（中央 status=approved、沒有待審新值、內容沒被改動）時標籤改為「審核通過」，外觀與「必填」相同（橘色小標籤）。
 - 資料補填視窗標籤統一：中心、獎銜**等待審核**時標籤顯示「審核中...」（外觀同「必填」）；取消標題後面的「（等待中心管理員審核）」文字。標籤規則：沒填＝必填；等待審核＝審核中...；已通過＝審核通過；其餘不顯示。
 - 資料補填視窗：**已通過審核的中心、獎銜被改動**時，標籤旁顯示純文字「變更需再重新審核」（無外框，顏色同標籤文字）；改回原值或儲存後就不再顯示。
+
+## 2026-11-13（三）：中央新標準接入、各中心自行上架課程
+- **中央新標準**：`POST /api/v2/central/webhook`（驗 `X-HG-Signature`、5 分鐘時間窗、依事件編號去重 `central_events`；`member.deleted` 刪除該會員在本 App 的所有資料、`member.profile_changed` 清快取）。Secret：`CENTRAL_WEBHOOK_SECRET`、`CENTRAL_SERVICE_SECRET`（業主已在 Cloudflare 設定；中央後台已設網址並測試 `delivered`）。
+- **不再保存聯絡信箱**：寄 Email 時才用服務金鑰（`/v1/service/token`）呼叫 `contacts/lookup` 查信箱（用途：繳費相關通知 `payment_notice`、其餘 `course_notice`），用完即丟；migration `0018` 已清空既有副本。「通知設定」顯示的信箱即時向中央讀；只有模擬會員（測試）仍寫本地欄位。沒有 `CENTRAL_SERVICE_SECRET` 時不寄信（站內通知照常）。**真實寄信尚待業主用兩個帳號實測**。
+- **版本回報**：超級管理員登入時（背景、每小時一次）呼叫 `handoff?integrated=2026-11-13.9&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile`；`least_scope` 由業主在中央後台勾選，程式不宣稱。
+- **各中心自行上架課程**：會長、音控（需有所屬中心）可在「設定 → 課程設定」新增並管理**主辦單位是自己中心**的課程（含章節、場次、附件、音檔、封面）。限制：主辦單位固定為自己的中心；指導單位不能是「寰宇總部」；審核群組只能用自己中心的；不能用 Mux 影片；已有人報名的課程／場次不能刪（只能下架），刪除限總部管理員。管理清單只列自己中心的課程。後端以 `requireCourseManager`（`api.ts`）統一把關；App 以 `canManageCourses`（`src/lib/roles.ts`）決定是否顯示入口。測試 `tests/center-courses.test.ts`（後端共 53 項）。
+- 手機寬度（390px）已用瀏覽器實際看過課程設定清單、編輯頁；順手修正清單按鈕在窄螢幕被切掉。**尚未用真實會長帳號實測**。

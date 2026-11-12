@@ -316,10 +316,12 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
   };
 }
 
-async function listCourses(ctx: Ctx, all: boolean): Promise<CourseSummary[]> {
-  const where = all ? "" : " WHERE c.status = 'published'";
+async function listCourses(ctx: Ctx, all: boolean, manager?: Session): Promise<CourseSummary[]> {
+  // 管理清單：管理員看全部；會長、音控只看主辦單位是自己中心的課程。
+  const own = all && manager && manager.role !== "admin";
+  const where = all ? (own ? " WHERE c.host_center_key = ?" : "") : " WHERE c.status = 'published'";
   const [{ results }, rankMap, state] = await Promise.all([
-    ctx.db.prepare(`${COURSE_SELECT}${where} ORDER BY c.sort_order, c.created_at`).all<CourseRow>(),
+    ctx.db.prepare(`${COURSE_SELECT}${where} ORDER BY c.sort_order, c.created_at`).bind(...(own ? [manager.center?.key ?? ""] : [])).all<CourseRow>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, ctx.session?.sub),
   ]);
@@ -342,10 +344,13 @@ function runOpen(r: RunRow, used: number, now = iso()): boolean {
 }
 
 /** 課程介紹頁：需登入（未登入只能看課程清單）。 */
+/** 管理員，或主辦單位是自己中心的會長、音控：可看草稿、預覽、看到管理欄位。 */
+const managesCourse = (s: Session, hostCenterKey: string | null) => s.role === "admin" || (!!s.center && !!hostCenterKey && hostCenterKey === s.center.key && s.roles.some((r) => ART_TYPES.has(r)));
+
 async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const s = requireMember(ctx);
   const row = await ctx.db.prepare(`${COURSE_SELECT} WHERE c.id = ?`).bind(id).first<CourseRow>();
-  if (!row || (row.status !== "published" && s.role !== "admin")) return fail(404, "not_found", "找不到這門課程");
+  if (!row || (row.status !== "published" && !managesCourse(s, row.host_center_key))) return fail(404, "not_found", "找不到這門課程");
   const [rankMap, state, lessons, done, runs, usage] = await Promise.all([
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
@@ -360,7 +365,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const completed = new Set(done.results.map((r) => r.lesson_id));
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
   const web = ctx.platform === "web";
-  const admin = s.role === "admin";
+  const admin = managesCourse(s, row.host_center_key);
   return {
     ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code])),
     description: row.description ?? "",
@@ -405,6 +410,10 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
 async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promise<boolean> {
   const s = requireMember(ctx);
   if (s.role === "admin") return true;
+  if (s.center && s.roles.some((r) => ART_TYPES.has(r))) {
+    const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
+    if (c && managesCourse(s, c.host_center_key)) return true;
+  }
   const row = runId
     ? await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? AND run_id = ?").bind(s.sub, courseId, runId).first()
     : await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
@@ -469,6 +478,30 @@ async function requireCourseArt(ctx: Ctx, s: Session, courseId: string): Promise
   if (!c) return fail(404, "not_found", "找不到這門課程");
   if (s.role === "admin") return;
   if (!s.center || !s.roles.some((r) => ART_TYPES.has(r)) || c.host_center_key !== s.center.key) fail(403, "forbidden", "只能編輯主辦單位是自己中心的課程");
+}
+
+/** 課程管理者：管理員（超級管理員、總部秘書）不限；各中心的會長、音控只能管理「主辦單位是自己中心」的課程。 */
+async function requireCourseManager(ctx: Ctx, courseId: string): Promise<Session> {
+  const s = requireMember(ctx);
+  if (s.role === "admin") return s;
+  const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
+  if (!c) return fail(404, "not_found", "找不到這門課程");
+  if (!s.center || !s.roles.some((r) => ART_TYPES.has(r)) || c.host_center_key !== s.center.key) fail(403, "forbidden", "只能管理主辦單位是自己中心的課程");
+  return s;
+}
+async function managerVia(ctx: Ctx, sql: string, id: string, what: string): Promise<Session> {
+  const row = await ctx.db.prepare(sql).bind(id).first<{ course_id: string }>();
+  if (!row) return fail(404, "not_found", `找不到這個${what}`);
+  return requireCourseManager(ctx, row.course_id);
+}
+const requireLessonManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM lessons WHERE id = ?", id, "章節");
+const requireRunManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM course_runs WHERE id = ?", id, "場次");
+const requireAttachmentManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM lesson_attachments WHERE id = ?", id, "附件");
+/** 可以新增課程的人：管理員，或有中心的會長、音控。 */
+function requireCourseCreator(ctx: Ctx): Session {
+  const s = requireMember(ctx);
+  if (s.role !== "admin" && !(s.center && s.roles.some((r) => ART_TYPES.has(r)))) fail(403, "forbidden", "只有管理員、各中心的會長與音控可以管理課程");
+  return s;
 }
 
 const ATTACH_TYPES: Record<string, string> = {
@@ -941,7 +974,8 @@ function randomId(n: number): string {
 }
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
-async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: boolean) {
+async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: boolean, who: Session) {
+  const centerOnly = who.role !== "admin"; // 會長、音控：主辦單位固定是自己的中心，不能自稱總部指導，審核群組只能用自己中心的
   const sets: [string, unknown][] = [];
   const t = text(body.title, 120);
   if (t !== undefined) {
@@ -971,9 +1005,14 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   }
   if (body.allowPresident !== undefined) sets.push(["allow_president", body.allowPresident === true ? 1 : 0]);
   const guidance = text(body.guidanceUnit, 60);
+  if (centerOnly && guidance === HQ_UNIT) fail(403, "forbidden", `指導單位「${HQ_UNIT}」只有總部管理員可以設定`);
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
+  else if (centerOnly && creating && who.center) sets.push(["guidance_unit", who.center.label]);
   const host = text(body.hostUnit, 100);
-  if (host !== undefined) sets.push(["host_unit", host], ["host_center_key", host && host !== HQ_UNIT ? centerKey(host) : null]);
+  if (centerOnly) {
+    const center = who.center ?? fail(403, "forbidden", "需要有所屬中心才能管理課程");
+    if (creating || host !== undefined) sets.push(["host_unit", center.label], ["host_center_key", center.key]);
+  } else if (host !== undefined) sets.push(["host_unit", host], ["host_center_key", host && host !== HQ_UNIT ? centerKey(host) : null]);
   if (body.eventStart !== undefined || body.eventEnd !== undefined) {
     const day = (v: unknown) => (v === null || v === "" || v === undefined ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : fail(400, "invalid_date", "活動日期格式請用 2026-12-01"));
     const start = day(body.eventStart);
@@ -991,6 +1030,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     else {
       const g = await ctx.db.prepare("SELECT owner_center_key FROM review_groups WHERE id = ?").bind(String(body.reviewGroupId)).first<{ owner_center_key: string | null }>();
       if (!g) fail(400, "invalid_group", "審核群組不存在");
+      if (centerOnly && g?.owner_center_key !== who.center?.key) fail(403, "forbidden", "只能使用自己中心的審核群組");
       sets.push(["review_group_id", body.reviewGroupId]);
     }
   }
@@ -1006,7 +1046,7 @@ async function checkGuidanceGroup(ctx: Ctx, guidance: unknown, groupId: unknown)
 
 async function createCourse(ctx: Ctx, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
-  const sets = await courseFields(ctx, body, true);
+  const sets = await courseFields(ctx, body, true, admin);
   await checkGuidanceGroup(ctx, body.guidanceUnit, body.reviewGroupId);
   const id = `c${randomId(7)}`;
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
@@ -1022,7 +1062,7 @@ async function createCourse(ctx: Ctx, admin: Session) {
 
 async function updateCourse(ctx: Ctx, id: string, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
-  const sets = await courseFields(ctx, body, false);
+  const sets = await courseFields(ctx, body, false, admin);
   if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
   const cur = await ctx.db.prepare("SELECT guidance_unit, review_group_id FROM courses WHERE id = ?").bind(id).first<{ guidance_unit: string; review_group_id: string | null }>();
   const pick = (col: string, old: unknown) => (sets.find(([c]) => c === col) ?? [col, old])[1];
@@ -1054,6 +1094,7 @@ const seconds = (v: unknown): number | null | undefined => {
 /** 修改章節：名稱、影片來源（示範／YouTube／Mux）、時間軸區間。音檔由上傳流程設定。 */
 async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   const body = await readJson<{ title?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
+  if (body.mediaType === "mux" && admin.role !== "admin") fail(403, "forbidden", "Mux 影片由總部管理，請改用 YouTube 或音檔，或請總部協助");
   const cur = await ctx.db
     .prepare("SELECT media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE id = ?")
     .bind(id)
@@ -1635,7 +1676,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/courses\/([\w-]+)\/runs$/,
     async (ctx, [courseId]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireCourseManager(ctx, courseId);
       if (!(await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ?").bind(courseId).first())) fail(404, "not_found", "找不到這門課程");
       const f = runFields(await readJson(ctx.req), true);
       const id = `r${randomId(8)}`;
@@ -1650,7 +1691,7 @@ const routes: [string, RegExp, Handler][] = [
     "PATCH",
     /^\/admin\/runs\/([\w-]+)$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireRunManager(ctx, id);
       const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
       if (!run) return fail(404, "not_found", "找不到這個場次");
       const f = runFields(await readJson(ctx.req), false);
@@ -1663,7 +1704,7 @@ const routes: [string, RegExp, Handler][] = [
     "GET",
     /^\/admin\/runs\/([\w-]+)\/delete-impact$/,
     async (ctx, [id]) => {
-      requireAdmin(ctx);
+      await requireRunManager(ctx, id);
       return runDeleteImpact(ctx.db, id);
     },
   ],
@@ -1675,6 +1716,7 @@ const routes: [string, RegExp, Handler][] = [
       const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
       if (!run) return fail(404, "not_found", "找不到這個場次");
       const impact = await runDeleteImpact(ctx.db, id);
+      if (impact.registrations > 0 && admin.role !== "admin") fail(403, "forbidden", "已有人報名的場次只有總部管理員可以刪除");
       if (impact.registrations === 0) {
         await ctx.db.batch([ctx.db.prepare("DELETE FROM course_runs WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "run.delete", "course_run", id)]);
         return courseDetail(ctx, run.course_id);
@@ -1704,7 +1746,7 @@ const routes: [string, RegExp, Handler][] = [
   [
     "PATCH",
     /^\/admin\/lessons\/([\w-]+)$/,
-    async (ctx, [id]) => updateLesson(ctx, id, requireAdmin(ctx)),
+    async (ctx, [id]) => updateLesson(ctx, id, await requireLessonManager(ctx, id)),
   ],
   [
     "DELETE",
@@ -1725,7 +1767,7 @@ const routes: [string, RegExp, Handler][] = [
     "GET",
     /^\/admin\/lessons\/([\w-]+)\/check$/,
     async (ctx, [id]) => {
-      requireAdmin(ctx);
+      await requireLessonManager(ctx, id);
       const l = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
       if (!l) return fail(404, "not_found", "找不到這個章節");
       if (l.media_type === "mux" && l.media_ref) return checkMuxPlayback(ctx.env, l.media_ref);
@@ -1740,7 +1782,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/lessons\/([\w-]+)\/audio\/start$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireLessonManager(ctx, id);
       const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
       const body = await readJson<{ fileName?: unknown; contentType?: unknown; size?: unknown }>(ctx.req);
       const type = typeof body.contentType === "string" ? body.contentType : "";
@@ -1758,7 +1800,7 @@ const routes: [string, RegExp, Handler][] = [
     "PUT",
     /^\/admin\/lessons\/([\w-]+)\/audio\/part$/,
     async (ctx, [id]) => {
-      requireAdmin(ctx);
+      await requireLessonManager(ctx, id);
       const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
       const key = ctx.url.searchParams.get("key") ?? "";
       const uploadId = ctx.url.searchParams.get("uploadId") ?? "";
@@ -1772,7 +1814,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/lessons\/([\w-]+)\/audio\/complete$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireLessonManager(ctx, id);
       const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "音檔儲存空間尚未啟用");
       const body = await readJson<{ key?: unknown; uploadId?: unknown; parts?: unknown; durationSeconds?: unknown }>(ctx.req);
       const key = typeof body.key === "string" ? body.key : "";
@@ -1805,7 +1847,7 @@ const routes: [string, RegExp, Handler][] = [
     "GET",
     /^\/admin\/lessons\/([\w-]+)\/attachments$/,
     async (ctx, [id]) => {
-      requireAdmin(ctx);
+      await requireLessonManager(ctx, id);
       const { results } = await ctx.db.prepare(`SELECT ${ATTACH_COLS} FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at`).bind(id).all<AttachmentRow>();
       return Promise.all(results.map((r) => attachmentOut(ctx.env, r, false)));
     },
@@ -1814,7 +1856,7 @@ const routes: [string, RegExp, Handler][] = [
     "PUT",
     /^\/admin\/lessons\/([\w-]+)\/attachments$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireLessonManager(ctx, id);
       const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "檔案儲存空間尚未啟用");
       const lesson = await ctx.db.prepare("SELECT course_id FROM lessons WHERE id = ?").bind(id).first<{ course_id: string }>();
       if (!lesson) return fail(404, "not_found", "找不到這個章節");
@@ -1845,7 +1887,7 @@ const routes: [string, RegExp, Handler][] = [
     "DELETE",
     /^\/admin\/attachments\/([\w-]+)$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireAttachmentManager(ctx, id);
       const row = await ctx.db.prepare("SELECT r2_key, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ r2_key: string | null; lesson_id: string }>();
       if (!row) return fail(404, "not_found", "找不到這個附件");
       await ctx.db.batch([ctx.db.prepare("DELETE FROM lesson_attachments WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.attachment_delete", "lesson", row.lesson_id, id)]);
@@ -1857,7 +1899,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/lessons\/([\w-]+)\/links$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireLessonManager(ctx, id);
       const lesson = await ctx.db.prepare("SELECT course_id FROM lessons WHERE id = ?").bind(id).first<{ course_id: string }>();
       if (!lesson) return fail(404, "not_found", "找不到這個章節");
       const body = await readJson<{ url?: unknown; title?: unknown }>(ctx.req);
@@ -1879,7 +1921,7 @@ const routes: [string, RegExp, Handler][] = [
     "PATCH",
     /^\/admin\/attachments\/([\w-]+)$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireAttachmentManager(ctx, id);
       const row = await ctx.db.prepare("SELECT kind, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ kind: string; lesson_id: string }>();
       if (!row) return fail(404, "not_found", "找不到這個附件");
       const body = await readJson<{ title?: unknown; url?: unknown }>(ctx.req);
@@ -2307,14 +2349,14 @@ const routes: [string, RegExp, Handler][] = [
       }
     },
   ],
-  ["GET", /^\/admin\/courses$/, async (ctx) => (requireAdmin(ctx), listCourses(ctx, true))],
-  ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireAdmin(ctx))],
-  ["PATCH", /^\/admin\/courses\/([\w-]+)$/, async (ctx, [id]) => updateCourse(ctx, id, requireAdmin(ctx))],
+  ["GET", /^\/admin\/courses$/, async (ctx) => listCourses(ctx, true, requireCourseCreator(ctx))],
+  ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireCourseCreator(ctx))],
+  ["PATCH", /^\/admin\/courses\/([\w-]+)$/, async (ctx, [id]) => updateCourse(ctx, id, await requireCourseManager(ctx, id))],
   [
     "GET",
     /^\/admin\/courses\/([\w-]+)\/delete-impact$/,
     async (ctx, [id]) => {
-      requireAdmin(ctx);
+      await requireCourseManager(ctx, id);
       return courseDeleteImpact(ctx.db, id);
     },
   ],
@@ -2322,8 +2364,9 @@ const routes: [string, RegExp, Handler][] = [
     "DELETE",
     /^\/admin\/courses\/([\w-]+)$/,
     async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireCourseManager(ctx, id);
       const impact = await courseDeleteImpact(ctx.db, id);
+      if (impact.registrations > 0 && admin.role !== "admin") fail(403, "forbidden", "已有人報名的課程請改為下架；刪除只有總部管理員可以做");
       const body = (await ctx.req.json().catch(() => ({}))) as { confirm?: unknown };
       // 已有人報名：必須明確輸入 YES 才能刪除，且報名紀錄、審核紀錄與學習進度會一併刪除。
       if (impact.registrations > 0 && body.confirm !== "YES") fail(409, "confirm_required", `這門課程已有 ${impact.registrations} 筆報名紀錄；刪除需輸入 YES 確認`);
@@ -2351,7 +2394,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/courses\/([\w-]+)\/lessons$/,
     async (ctx, [courseId]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireCourseManager(ctx, courseId);
       const body = await readJson<{ title?: unknown }>(ctx.req);
       const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
       if (!title) fail(400, "title_required", "請輸入章節名稱");
@@ -2369,7 +2412,7 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/admin\/courses\/([\w-]+)\/lessons\/order$/,
     async (ctx, [courseId]) => {
-      const admin = requireAdmin(ctx);
+      const admin = await requireCourseManager(ctx, courseId);
       const body = await readJson<{ ids?: unknown }>(ctx.req);
       const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string") : [];
       const current = await ctx.db.prepare("SELECT id FROM lessons WHERE course_id = ?").bind(courseId).all<{ id: string }>();

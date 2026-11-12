@@ -5,6 +5,7 @@ import { api, type CourseDetail, type CourseRun, type Lesson, type MediaType } f
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
 import { AttachmentManager } from "@/features/attachments";
 import { RunsEditor } from "@/features/admin/runs-editor";
+import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
@@ -43,12 +44,12 @@ export default function LessonManagerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { c } = useTheme();
   const { member, invalidate } = useSession();
-  const isAdmin = member?.role === "admin";
+  const isAdmin = canManageCourses(member);
   const course = useApi<CourseDetail>(isAdmin ? `/courses/${id}` : null);
   const [newTitle, setNewTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要管理員權限" /></Screen>;
+  if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (!course.data) return <Screen header={false}>{course.error ? <ErrorView message={course.error} onRetry={course.reload} /> : <LoadingView />}</Screen>;
   const lessons = course.data.lessons;
 
@@ -85,6 +86,7 @@ export default function LessonManagerScreen() {
         <LessonEditor
           key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.runId}`}
           lesson={l}
+          allowMux={member?.role === "admin"}
           runs={course.data!.runs}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
@@ -155,7 +157,9 @@ function LessonEditor({
   onDown,
   onDelete,
   disabled,
+  allowMux,
 }: {
+  allowMux: boolean;
   lesson: Lesson;
   runs: CourseRun[];
   onSaved: () => void;
@@ -244,7 +248,7 @@ function LessonEditor({
         style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
       />
       <View style={styles.row}>
-        {kinds.map((k) => {
+        {kinds.filter((k) => allowMux || k.key !== "mux" || kind === "mux").map((k) => {
           const active = k.key === kind;
           return (
             <Pressable

@@ -9,7 +9,7 @@
 
 ## 二、現況（全部已上線）
 - 正式站：https://learn.hglobal1985.com（Worker `learn`＋D1 `learn-v2`＋R2 `learn`）；`/privacy`、`/support` 由 Worker `learn-legal`（`apps/legal`）提供。
-- 程式在 repo `hglobal1985/learn` 的開發分支 **`ccr-8555db5d-ggc3bl`（已推送、領先 main 很多）**；**`main` 還沒更新**（過去業主同意「推開發分支再快轉 main」，下次要快轉請先問一次）。後端測試 48 項（`npm test -w @learn/launch`），App 型別檢查 `npm run typecheck -w @learn/mobile`。
+- 程式在 repo `hglobal1985/learn` 的開發分支 **`ccr-8555db5d-ggc3bl`（已推送、領先 main 很多）**；**`main` 還沒更新**（過去業主同意「推開發分支再快轉 main」，下次要快轉請先問一次）。後端測試 53 項（`npm test -w @learn/launch`），App 型別檢查 `npm run typecheck -w @learn/mobile`。
 - 主要功能（細節都在 `v2-handoff.md`）：Google 登入＋網頁共用登入；課程／場次／章節／Mux／YouTube／音檔；**附件教材（檔案＋網址，自動判斷類型與圖示）**；**EDM 與封面（網頁版裁切、底圖圖庫、HEIC）**；活動日期；報名審核（審核群組、付款代碼、會員 ID、真實姓名快照、CSV）；留言板；**Email 通知（Cloudflare Email Service，寄件 `noreply@learn.hglobal1985.com`）**；**首頁**（寰宇 logo＋流動變色反光標題、跑馬燈公告可關閉、左右兩欄 EDM 輪播、骨架畫面）；**學習金句（超級管理員可編輯）**；**「完善資料」小視窗**（直接寫回中央：本名、暱稱、Email、系統、中心、獎銜，依中央串接指令 2026-11-13.9 規則）；底部分頁列永遠顯示（首頁／全部課程／已報名／通知／設定）；App 圖示＝學士帽（`apps/mobile/scripts/make-icon.py` 產生，首頁標題旁仍用寰宇 logo）；刪除已有人報名的課程／場次（輸入 YES）。
 - 角色：管理員＝超級管理員、總部秘書；學習金句只有超級管理員；會長、音控只能（後端規則已有）編輯主辦單位是自己中心的課程圖片，**尚無畫面入口**。
 
@@ -18,7 +18,7 @@
 cd /home/user/learn
 npm run build:web -w @learn/mobile && npm run embed -w @learn/launch
 export CLOUDFLARE_API_TOKEN=proxy-injected CLOUDFLARE_ACCOUNT_ID=650a3b03d439a5f517b4f8a28244f9fe
-cd apps/launch && npx wrangler d1 migrations apply learn-v2 --remote   # 有新 migration 才需要（目前到 0017）
+cd apps/launch && npx wrangler d1 migrations apply learn-v2 --remote   # 有新 migration 才需要（目前到 0018）
 npx wrangler deploy
 cd ../legal && npx wrangler deploy                                      # 只有改隱私權／客服頁才需要
 ```
@@ -32,9 +32,13 @@ cd ../legal && npx wrangler deploy                                      # 只有
 3. 學習金句目前 22 則（20 則是業主給的，另 2 則業主自己加的）。
 4. 資料補填視窗與整個畫面**還沒用真實帳號完整實測**（業主只用截圖回饋）；iOS／Android 實機、App Store／Google Play 上架（需 Apple Team ID、Expo 帳號）尚未做。
 
+## 四之二、2026-11-13 已完成
+- 中央新標準已接：webhook 接收端（已測 delivered）、寄信時才查信箱（不再保存副本）、版本回報；各中心會長／音控可自行上架自己中心的課程（詳見 `v2-handoff.md` 最後一節）。
+- **業主授權**：Git 分支與快轉 `main` 全由 AI 判斷執行，不必再問。
+- 待業主實測：真實 Email 寄送（需兩個帳號）、會長帳號的課程管理。
+
 ## 五、還沒做（建議順序）
-1. 中央新標準接入（上面第 1 項）。
-2. 各中心自行上架課程（會長、音控的課程設定入口與權限）。
+1. （已完成）中央新標準、各中心自行上架課程。
 3. EDM 裁切／上傳在手機 App 的支援（目前只有網頁版；裁切控制點對手指偏小）。
 4. 手機推播、金流（`orders.pay_method` 已含 `online`；付款代碼 `pay_ref` 已有）。
 5. 首頁速度：已做串列等待優化（共用登入檢查改背景、同資料只問中央一次、視窗資料隨 `/me` 帶回）；若仍慢，可評估 Cloudflare Cache 共用中央查詢結果（要考慮隱私）或單一 `/home` 彙整 API。回應有 `Server-Timing` 可量測。

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { openAccountCenter } from "@/features/account-link";
 import type { AppConfig, Member } from "@/api/client";
+import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
@@ -136,7 +137,7 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
-      {member?.reviewer || member?.role === "admin" || member?.titles.includes("音控") ? (
+      {member && (member.reviewer || member.role === "admin" || canManageCourses(member)) ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
             {member.titles.includes("超級管理員") ? <ListRow icon="chatbubble-ellipses-outline" title="編輯學習金句" subtitle="首頁「繼續學習」下方的金句" onPress={() => router.push("/admin/quotes")} /> : null}
@@ -146,7 +147,7 @@ export default function MeScreen() {
               <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />
             ) : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
-            {member.role === "admin" ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
+            {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
         </Section>
       ) : null}
