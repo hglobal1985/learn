@@ -355,3 +355,86 @@ export async function centralSuggest(token: string, pool: "education_system" | "
   const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;
   return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string").slice(0, q.trim() ? 12 : 100);
 }
+
+// ---------- 中央新標準（2026-11-12.10）：webhook 驗簽、服務金鑰查信箱、版本回報 ----------
+
+/** 這份程式採用的中央串接指令版本，以及已做到的平台標準（least_scope 由業主在中央後台勾選，不在程式內宣稱）。 */
+export const INTEGRATED_VERSION = "2026-11-13.9";
+export const STANDARDS = ["webhook", "delete_copy", "no_email_copy", "snapshot_reconcile"];
+export const SIGNATURE_TOLERANCE_SECONDS = 300;
+
+const te = new TextEncoder();
+const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+
+/** 驗證中央 webhook：X-HG-Signature = v1=HMAC-SHA256(金鑰, `${時間戳}.${原始內容}`)，常數時間比對，時間窗 5 分鐘。 */
+export async function verifyWebhook(secret: string, timestamp: string | null, signature: string | null, raw: string, nowMs = Date.now()): Promise<boolean> {
+  if (!timestamp || !signature || !/^\d{9,13}$/.test(timestamp)) return false;
+  const t = Number(timestamp);
+  const seconds = t > 1e12 ? t / 1000 : t;
+  if (Math.abs(nowMs / 1000 - seconds) > SIGNATURE_TOLERANCE_SECONDS) return false;
+  const key = await crypto.subtle.importKey("raw", te.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const want = `v1=${hex(await crypto.subtle.sign("HMAC", key, te.encode(`${timestamp}.${raw}`)))}`;
+  if (want.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
+
+let svcToken: { token: string; until: number } | null = null;
+async function serviceToken(secret: string): Promise<string | null> {
+  if (svcToken && svcToken.until > Date.now() + 30_000) return svcToken.token;
+  try {
+    const res = await centralFetch(`${CENTRAL}/v1/service/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ app_id: APP_ID, client_secret: secret }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const b = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
+    if (typeof b.access_token !== "string") return null;
+    svcToken = { token: b.access_token, until: Date.now() + (typeof b.expires_in === "number" ? b.expires_in : 300) * 1000 };
+    return svcToken.token;
+  } catch {
+    return null;
+  }
+}
+
+export type ContactPurpose = "payment_notice" | "course_notice";
+
+/**
+ * 寄信時才向中央查聯絡信箱（用完即丟，不寫入資料庫或日誌）。查不到的會員不在結果裡；
+ * 中央無法連線或金鑰無效時回傳空表（寧可不寄，也不用舊副本）。
+ */
+export async function lookupContactEmails(secret: string | undefined, subs: string[], purpose: ContactPurpose): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const ids = [...new Set(subs)];
+  if (!secret || !ids.length) return out;
+  const token = await serviceToken(secret);
+  if (!token) return out;
+  for (let i = 0; i < ids.length; i += 50) {
+    try {
+      const res = await centralFetch(`${CENTRAL}/v1/apps/${APP_ID}/contacts/lookup`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ member_ids: ids.slice(i, i + 50), purpose }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.status === 401) svcToken = null;
+      if (!res.ok) continue;
+      const b = (await res.json()) as { contacts?: { member_id?: unknown; email?: unknown }[] };
+      for (const c of b.contacts ?? []) if (typeof c.member_id === "string" && typeof c.email === "string" && validEmail(c.email)) out.set(c.member_id, c.email);
+    } catch {
+      /* 查不到就不寄 */
+    }
+  }
+  return out;
+}
+
+let lastReport = 0;
+/** 向中央回報採用的串接指令版本與已符合的標準（只有超級管理員的 token 會被接受；每小時最多一次，失敗不影響任何功能）。 */
+export async function reportIntegration(token: string): Promise<void> {
+  if (Date.now() - lastReport < 3_600_000) return;
+  lastReport = Date.now();
+  await callCentral(token, `/v1/apps/${APP_ID}/handoff?integrated=${INTEGRATED_VERSION}&standards=${STANDARDS.join(",")}`);
+}

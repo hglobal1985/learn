@@ -51,4 +51,8 @@ export interface Env {
   EMAIL?: import("./email.ts").Mailer;
   /** 寄件地址，例如 noreply@learn.hglobal1985.com。 */
   EMAIL_FROM?: string;
+  /** 中央會員 webhook 的簽章金鑰（Secret）。沒設定就不接收事件。 */
+  CENTRAL_WEBHOOK_SECRET?: string;
+  /** 中央會員「服務金鑰」（Secret）：寄信時向中央查詢聯絡信箱。沒設定就不寄 Email。 */
+  CENTRAL_SERVICE_SECRET?: string;
 }

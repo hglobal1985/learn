@@ -4,6 +4,7 @@
  * - 沒有設定 EMAIL 綁定（或沒有寄件地址）就完全不動作，通知維持原樣。
  * - 失敗不影響主流程；信箱不寫入日誌。
  */
+import { lookupContactEmails, type ContactPurpose } from "./central.ts";
 import type { D1PreparedStatement, Env } from "./d1.ts";
 
 export interface Mailer {
@@ -24,7 +25,8 @@ type Pending = { id: string; recipient_sub: string | null; recipient_role: strin
 /** 寄出最近 30 分鐘內、尚未處理的通知。回傳寄出的封數。 */
 export async function flushEmails(env: Env): Promise<number> {
   const m = mailerOf(env);
-  if (!m) return 0;
+  // 信箱不再保存：沒有中央服務金鑰就無法查詢收件人，直接不寄（站內通知照常）。
+  if (!m || !env.CENTRAL_SERVICE_SECRET) return 0;
   const db = env.DB;
   const since = new Date(Date.now() - 30 * 60_000).toISOString();
   const { results } = await db
@@ -36,7 +38,8 @@ export async function flushEmails(env: Env): Promise<number> {
     // 先標記再寄：寧可漏寄也不重複寄（站內通知仍在）。
     const claim = await db.prepare("UPDATE notifications SET emailed_at = ? WHERE id = ? AND emailed_at IS NULL").bind(new Date().toISOString(), n.id).run();
     if (claim.meta?.changes === 0) continue;
-    const to = await recipients(db, n);
+    const purpose: ContactPurpose = /^\/(admin\/)?orders\//.test(n.link) ? "payment_notice" : "course_notice";
+    const to = [...(await lookupContactEmails(env.CENTRAL_SERVICE_SECRET, await recipients(db, n), purpose)).values()];
     for (const email of to) {
       try {
         const link = `${SITE}${n.link.startsWith("/") ? n.link : `/${n.link}`}`;
@@ -52,12 +55,13 @@ export async function flushEmails(env: Env): Promise<number> {
   return sent;
 }
 
+/** 收件會員（只查誰要收；信箱本身寄信時才向中央查）。 */
 async function recipients(db: Env["DB"], n: Pending): Promise<string[]> {
   let stmt: D1PreparedStatement;
-  if (n.recipient_sub) stmt = db.prepare("SELECT email FROM member_contacts WHERE member_sub = ? AND notify_email = 1 AND email IS NOT NULL").bind(n.recipient_sub);
-  else if (n.recipient_role === "admin") stmt = db.prepare("SELECT email FROM member_contacts WHERE is_admin = 1 AND notify_email = 1 AND email IS NOT NULL");
-  else if (n.recipient_role === "president" && n.recipient_center_key) stmt = db.prepare("SELECT email FROM member_contacts WHERE president_center_key = ? AND notify_email = 1 AND email IS NOT NULL").bind(n.recipient_center_key);
+  if (n.recipient_sub) stmt = db.prepare("SELECT member_sub FROM member_contacts WHERE member_sub = ? AND notify_email = 1").bind(n.recipient_sub);
+  else if (n.recipient_role === "admin") stmt = db.prepare("SELECT member_sub FROM member_contacts WHERE is_admin = 1 AND notify_email = 1");
+  else if (n.recipient_role === "president" && n.recipient_center_key) stmt = db.prepare("SELECT member_sub FROM member_contacts WHERE president_center_key = ? AND notify_email = 1").bind(n.recipient_center_key);
   else return [];
-  const { results } = await stmt.all<{ email: string }>();
-  return [...new Set(results.map((r) => r.email))];
+  const { results } = await stmt.all<{ member_sub: string }>();
+  return results.map((r) => r.member_sub);
 }

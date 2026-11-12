@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { amwayMe, centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { amwayMe, centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, reportIntegration, saveContactEmail, validEmail, verifyWebhook, APP_ID, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -191,6 +191,23 @@ function notify(db: D1Database, to: { sub: string } | { role: "admin" } | { role
   return db
     .prepare("INSERT INTO notifications (id, recipient_sub, recipient_role, recipient_center_key, title, body, link) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .bind(crypto.randomUUID(), "sub" in to ? to.sub : null, "role" in to ? to.role : null, "centerKey" in to ? to.centerKey : null, title, body, link);
+}
+
+/** 刪除一位會員在本 App 的所有資料。 */
+export async function purgeMember(db: D1Database, sub: string, actor: string, action: string): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM course_comments WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM comment_blocks WHERE member_sub = ? OR blocked_sub = ?").bind(sub, sub),
+    db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(sub),
+    db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM orders WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM notifications WHERE recipient_sub = ?").bind(sub),
+    db.prepare("DELETE FROM member_contacts WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM sessions WHERE member_sub = ?").bind(sub),
+    audit(db, actor, action, "member", sub),
+  ]);
+  forgetMember(sub);
 }
 
 // ---------- courses ----------
@@ -738,30 +755,22 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
   };
 }
 
-/** 登入時把會員中心的聯絡信箱同步成副本，並記下是否為管理員／哪個中心的會長（寄給角色型通知用）。 */
+/** 登入時記下是否為管理員／哪個中心的會長（寄給角色型通知時用來找收件人）。聯絡信箱不保存，寄信時才向中央查。 */
 async function syncContact(ctx: Ctx, s: Session): Promise<void> {
   const president = s.roles.includes("president") && s.center ? s.center.key : null;
-  let email: string | null | undefined;
-  if (s.kind === "central") email = await contactEmail(s.sub, s.token);
-  if (email === undefined) {
-    // 查不到（或模擬會員）：不動信箱，只更新身分欄位。
-    await ctx.db
-      .prepare("INSERT INTO member_contacts (member_sub, is_admin, president_center_key) VALUES (?, ?, ?) ON CONFLICT(member_sub) DO UPDATE SET is_admin = excluded.is_admin, president_center_key = excluded.president_center_key")
-      .bind(s.sub, s.role === "admin" ? 1 : 0, president)
-      .run();
-    return;
-  }
   await ctx.db
-    .prepare(
-      "INSERT INTO member_contacts (member_sub, email, is_admin, president_center_key) VALUES (?, ?, ?, ?) ON CONFLICT(member_sub) DO UPDATE SET email = excluded.email, is_admin = excluded.is_admin, president_center_key = excluded.president_center_key, synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-    )
-    .bind(s.sub, email, s.role === "admin" ? 1 : 0, president)
+    .prepare("INSERT INTO member_contacts (member_sub, is_admin, president_center_key) VALUES (?, ?, ?) ON CONFLICT(member_sub) DO UPDATE SET is_admin = excluded.is_admin, president_center_key = excluded.president_center_key")
+    .bind(s.sub, s.role === "admin" ? 1 : 0, president)
     .run();
+  // 超級管理員登入時順便向中央回報採用的串接版本（背景、每小時一次、失敗不影響）。
+  if (s.kind === "central" && s.role === "admin") void reportIntegration(s.token).catch(() => undefined);
 }
 
 async function contactSettings(ctx: Ctx, s: Session): Promise<NotificationSettings> {
   const row = await ctx.db.prepare("SELECT email, notify_email FROM member_contacts WHERE member_sub = ?").bind(s.sub).first<{ email: string | null; notify_email: number }>();
-  return { email: row?.email ?? null, notifyEmail: (row?.notify_email ?? 1) === 1, emailReady: !!ctx.env.EMAIL && !!ctx.env.EMAIL_FROM, source: s.kind === "central" ? "central" : "local" };
+  // 中央會員：信箱只即時向中央查，不看本地；模擬會員（測試用）才用本地欄位。
+  const email = s.kind === "central" ? ((await contactEmail(s.sub, s.token)) ?? null) : (row?.email ?? null);
+  return { email, notifyEmail: (row?.notify_email ?? 1) === 1, emailReady: !!ctx.env.EMAIL && !!ctx.env.EMAIL_FROM, source: s.kind === "central" ? "central" : "local" };
 }
 
 async function dutyOf(ctx: Ctx, s: Session): Promise<string | undefined> {
@@ -1284,10 +1293,12 @@ const routes: [string, RegExp, Handler][] = [
       if (email !== undefined) {
         // 正本在會員中心：先寫回中央，成功才更新這裡的副本。
         if (s.kind === "central" && !(await saveContactEmail(s.sub, s.token, email))) return fail(502, "central_unavailable", "會員中心暫時無法儲存，請稍後再試");
-        await ctx.db
-          .prepare("INSERT INTO member_contacts (member_sub, email) VALUES (?, ?) ON CONFLICT(member_sub) DO UPDATE SET email = excluded.email, synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
-          .bind(s.sub, email)
-          .run();
+        // 中央會員不在本地留副本；只有模擬會員（測試）寫本地欄位。
+        if (s.kind !== "central")
+          await ctx.db
+            .prepare("INSERT INTO member_contacts (member_sub, email) VALUES (?, ?) ON CONFLICT(member_sub) DO UPDATE SET email = excluded.email, synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+            .bind(s.sub, email)
+            .run();
       }
       if (typeof body.notifyEmail === "boolean") {
         await ctx.db
@@ -1333,19 +1344,36 @@ const routes: [string, RegExp, Handler][] = [
     "DELETE",
     /^\/me$/,
     async (ctx) => {
-      // 模擬會員：清除這位會員在本 App 的所有資料。串接中央會員後改為導向官方刪除流程。
+      // 清除這位會員在本 App 的所有資料（會員中心 webhook 通知刪除帳號時也走同一條）。
       const s = requireMember(ctx);
+      await purgeMember(ctx.db, s.sub, s.sub, "member.delete_app_data");
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/central\/webhook$/,
+    async (ctx) => {
+      // 會員中心事件通知：驗簽 → 依事件編號去重 → 處理。5 秒內回 2xx。
+      const secret = ctx.env.CENTRAL_WEBHOOK_SECRET;
+      if (!secret) return fail(503, "not_configured", "尚未設定 webhook 金鑰");
+      const raw = await ctx.req.text();
+      if (!(await verifyWebhook(secret, ctx.req.headers.get("x-hg-timestamp"), ctx.req.headers.get("x-hg-signature"), raw))) return fail(401, "bad_signature", "簽章不正確");
+      let ev: { id?: unknown; type?: unknown; member_id?: unknown; app_id?: unknown };
+      try {
+        ev = JSON.parse(raw);
+      } catch {
+        return fail(400, "invalid_request", "內容格式不正確");
+      }
+      if (typeof ev.id !== "string" || typeof ev.type !== "string" || (ev.app_id !== undefined && ev.app_id !== APP_ID)) return fail(400, "invalid_request", "內容格式不正確");
+      const seen = await ctx.db.prepare("SELECT 1 AS x FROM central_events WHERE id = ?").bind(ev.id).first();
+      if (seen) return { ok: true, duplicate: true };
+      if (ev.type === "member.deleted" && typeof ev.member_id === "string") await purgeMember(ctx.db, ev.member_id, "central", "member.deleted_by_central");
+      else if (ev.type === "member.profile_changed" && typeof ev.member_id === "string") forgetMember(ev.member_id);
+      // webhook.test 與不認得的事件：只回 2xx（容忍未來新增的事件）。
       await ctx.db.batch([
-        ctx.db.prepare("DELETE FROM course_comments WHERE member_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM comment_blocks WHERE member_sub = ? OR blocked_sub = ?").bind(s.sub, s.sub),
-        ctx.db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM orders WHERE member_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM notifications WHERE recipient_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM member_contacts WHERE member_sub = ?").bind(s.sub),
-        ctx.db.prepare("DELETE FROM sessions WHERE member_sub = ?").bind(s.sub),
-        audit(ctx.db, s.sub, "member.delete_app_data", "member", s.sub),
+        ctx.db.prepare("INSERT OR IGNORE INTO central_events (id) VALUES (?)").bind(ev.id),
+        ctx.db.prepare("DELETE FROM central_events WHERE received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')"),
       ]);
       return { ok: true };
     },
@@ -2406,7 +2434,7 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
 }
 
 /** 不需要登入身分的公開路徑：不必為它們向會員中心查詢（首頁的公告、金句、設定每次都會打）。 */
-const NO_SESSION = /^\/api\/v2\/(announcements|quotes\/random|config|media\/(pub|img|file|audio))(\?|$)/;
+const NO_SESSION = /^\/api\/v2\/(announcements|quotes\/random|config|central\/webhook|media\/(pub|img|file|audio))(\?|$)/;
 
 async function context(req: Request, env: Env, url: URL): Promise<Ctx> {
   const light = /^\/api\/v2\/me\/(central-profile|vocab)$/.test(url.pathname);
