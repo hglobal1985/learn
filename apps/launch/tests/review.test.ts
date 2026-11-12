@@ -88,6 +88,18 @@ test("審核群組：依中心通知窗口與會長；只能審核自己中心�
   assert.equal((await call("POST", `/admin/review-groups/${own[0].id}/members`, { token: pres, body: { memberSub: "demo-desk", duty: "review" } })).status, 200);
 });
 
+test("自己的報名：超級管理員／秘書可自己審核，會長與窗口不行", async () => {
+  const { call, login } = setup();
+  const [admin, pres] = await Promise.all(["demo-admin", "demo-president"].map(login));
+  await call("PATCH", "/admin/courses/share", { token: admin, body: { guidanceUnit: "寰宇總部", hostUnit: "台北中心" } });
+  const [a] = (await call<Order[]>("POST", "/orders", { token: admin, body: { courseIds: ["share"] } })).data;
+  const detail = (await call<Order>("GET", `/orders/${a.id}`, { token: admin })).data;
+  assert.equal(detail.canReview, true);
+  assert.equal((await call("POST", `/admin/orders/${a.id}/review`, { token: admin, body: { action: "paid", paidTwd: 0 } })).status, 200);
+  const [p] = (await call<Order[]>("POST", "/orders", { token: pres, body: { courseIds: ["share"] } })).data;
+  assert.equal((await call("POST", `/admin/orders/${p.id}/review`, { token: pres, body: { action: "paid" } })).status, 403, "會長不能審核自己");
+});
+
 test("對帳報表 CSV：依權限範圍匯出，含實收與審核人員", async () => {
   const { call, raw, login } = setup();
   const [admin, pres, taipei, taichung] = await Promise.all(["demo-admin", "demo-president", "demo-student", "demo-silver"].map(login));

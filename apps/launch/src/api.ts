@@ -591,7 +591,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
         createdAt: e.created_at,
       })),
     collectors: collectors.results.map((c) => c.member_name),
-    canReview: reviewer && row.member_sub !== s.sub,
+    canReview: reviewer && (row.member_sub !== s.sub || s.role === "admin"),
     canRevoke: s.role === "admin" && row.status === "opened" && row.total_twd > 0,
   };
 }
@@ -609,7 +609,7 @@ async function reviewOrder(ctx: Ctx, id: string, body: Record<string, unknown>):
   if (!["paid", "vip", "reject", "defer", "revoke"].includes(action)) fail(400, "invalid_action", "審核動作不正確");
   const order = await ctx.db.prepare("SELECT id, member_sub, status, total_twd FROM orders WHERE id = ?").bind(id).first<{ id: string; member_sub: string; status: string; total_twd: number }>();
   if (!order || !(await canReviewOrder(ctx, s, id))) return fail(404, "not_found", "找不到這筆報名");
-  if (order.member_sub === s.sub) fail(403, "self_review", "不能審核自己的報名");
+  if (order.member_sub === s.sub && s.role !== "admin") fail(403, "self_review", "不能審核自己的報名");
   if (action === "revoke") {
     if (s.role !== "admin") fail(403, "forbidden", "只有總部秘書與超級管理員可以撤銷開通");
     if (order.status !== "opened") fail(409, "not_opened", "這筆報名尚未開通");
