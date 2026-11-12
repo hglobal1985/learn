@@ -125,4 +125,4 @@
   - 寄信方式：每個寫入類 API 成功後，`flushEmails`（`src/email.ts`）把最近 30 分鐘內 `notifications.emailed_at` 為空的站內通知寄出；先標記再寄，寧可漏寄不重複寄。角色型通知（總部、某中心會長）依 `member_contacts.is_admin／president_center_key` 找收件人，這兩欄在登入時更新。站內通知永遠保留；學員可關閉 Email。
   - API：`GET／PUT /api/v2/me/notification-settings`；畫面 `app/settings/notifications.tsx`。手機推播尚未做（畫面顯示「即將推出」）。
 - 後端測試 41 項（新增 `tests/email.test.ts`）。
-- **還沒驗證**：用真實帳號在正式站填信箱、確認會員中心的聯絡信箱有同步改、實際收到信（含是否進垃圾匣）；沒登入過新版的人還沒有信箱副本。
+- **業主已實測（2026-11-12）**：真實帳號填信箱後，會員中心的聯絡信箱有同步改；另一個帳號報名付費課程後，有收到通知信。尚未驗證：信是否進垃圾信匣、各種通知（審核結果、留言、會長通知）的信件內容。沒登入過新版的人還沒有信箱副本，暫時收不到 Email。
