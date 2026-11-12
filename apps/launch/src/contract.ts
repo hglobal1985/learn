@@ -231,3 +231,6 @@ export type AttachmentType =
  * name 是管理員自訂的顯示標題；url 只給已開通學員與管理員。
  */
 export type Attachment = { id: string; name: string; kind: "file" | "link"; type: AttachmentType; size: number; url?: string };
+
+/** 刪除課程前的影響統計（有報名紀錄時，畫面要求輸入 YES 才能刪除）。 */
+export type CourseDeleteImpact = { title: string; registrations: number; pending: number; opened: number; students: number; comments: number; paidTwd: number };

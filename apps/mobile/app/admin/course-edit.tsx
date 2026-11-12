@@ -1,8 +1,8 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { api, HQ_UNIT, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
-import { parseLocal, toLocal } from "@/features/format";
+import { api, HQ_UNIT, type CourseDeleteImpact, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
+import { ntd, parseLocal, toLocal } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
@@ -78,11 +78,35 @@ export default function CourseEditScreen() {
       setBusy(null);
     }
   };
+  // 已有人報名：先顯示影響，管理員必須手動輸入 YES 才能刪除。
+  const [impact, setImpact] = useState<CourseDeleteImpact | null>(null);
+  const [yes, setYes] = useState("");
   const remove = async () => {
-    if (!id || !(await confirm("刪除課程", `確定刪除「${form.title}」？章節與音檔會一併刪除，無法復原。`))) return;
+    if (!id) return;
+    setBusy("delete");
+    setMsg(null);
+    try {
+      const info = await api<CourseDeleteImpact>("GET", `/admin/courses/${id}/delete-impact`);
+      if (info.registrations > 0) {
+        setImpact(info);
+        setYes("");
+        setBusy(null);
+        return;
+      }
+      if (!(await confirm("刪除課程", `確定刪除「${form.title}」？章節與音檔會一併刪除，無法復原。`))) return setBusy(null);
+      await api("DELETE", `/admin/courses/${id}`);
+      invalidate();
+      router.replace("/admin/courses");
+    } catch (e) {
+      setMsg({ tone: "danger", text: (e as Error).message });
+      setBusy(null);
+    }
+  };
+  const removeConfirmed = async () => {
+    if (!id || yes !== "YES") return;
     setBusy("delete");
     try {
-      await api("DELETE", `/admin/courses/${id}`);
+      await api("DELETE", `/admin/courses/${id}`, { confirm: yes });
       invalidate();
       router.replace("/admin/courses");
     } catch (e) {
@@ -226,8 +250,21 @@ export default function CourseEditScreen() {
           <Button variant="secondary" label="下架" icon="eye-off-outline" loading={busy === "draft"} disabled={!!busy} onPress={() => save("draft")} fullWidth />
         ) : null}
         {id ? <Button variant="secondary" label="章節與影片" icon="list-outline" onPress={() => router.push({ pathname: "/admin/course/[id]", params: { id } })} fullWidth /> : null}
-        {id ? <Button variant="danger" label="刪除課程" icon="trash-outline" loading={busy === "delete"} disabled={!!busy} onPress={remove} fullWidth /> : null}
+        {id ? <Button variant="danger" label="刪除課程" icon="trash-outline" loading={busy === "delete" && !impact} disabled={!!busy} onPress={remove} fullWidth /> : null}
       </View>
+      {impact ? (
+        <Card>
+          <NoticeBox
+            tone="danger"
+            text={`警告：「${impact.title}」已有 ${impact.registrations} 筆報名紀錄（待審核 ${impact.pending}、已開通 ${impact.opened}，${impact.students} 位學員，已確認收款合計 ${ntd(impact.paidTwd)}）。刪除後，這些報名紀錄、繳費審核紀錄、學習進度、留言與章節、附件、音檔都會一併刪除，無法復原。建議先到「報名審核」匯出對帳報表（CSV）。`}
+          />
+          <Field label="確定要刪除請輸入大寫 YES" value={yes} onChange={setYes} placeholder="YES" />
+          <View style={styles.row}>
+            <Button variant="danger" label="確定刪除" icon="trash-outline" loading={busy === "delete"} disabled={yes !== "YES" || !!busy} onPress={removeConfirmed} />
+            <Button variant="ghost" label="取消" disabled={!!busy} onPress={() => (setImpact(null), setYes(""))} />
+          </View>
+        </Card>
+      ) : null}
     </Screen>
   );
 }

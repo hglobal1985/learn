@@ -14,6 +14,7 @@ import {
   type Member,
   type Attachment,
   type AttachmentType,
+  type CourseDeleteImpact,
   type Notice,
   type NotificationSettings,
   type Order,
@@ -357,6 +358,27 @@ async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promi
     ? await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? AND run_id = ?").bind(s.sub, courseId, runId).first()
     : await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
   return !!row;
+}
+
+/** 刪除課程前的影響：多少筆報名紀錄、多少人已開通、已確認收款多少（供「輸入 YES」確認畫面顯示）。 */
+async function courseDeleteImpact(db: D1Database, id: string): Promise<CourseDeleteImpact> {
+  const c = await db.prepare("SELECT title FROM courses WHERE id = ?").bind(id).first<{ title: string }>();
+  if (!c) return fail(404, "not_found", "找不到這門課程");
+  const r = await db
+    .prepare(
+      `SELECT COUNT(DISTINCT i.order_id) AS registrations,
+              COUNT(DISTINCT CASE WHEN o.status = 'pending' THEN o.id END) AS pending,
+              COUNT(DISTINCT CASE WHEN o.status = 'opened' THEN o.id END) AS opened,
+              COALESCE(SUM(CASE WHEN o.status = 'opened' THEN i.price_twd ELSE 0 END), 0) AS paid
+       FROM order_items i JOIN orders o ON o.id = i.order_id WHERE i.course_id = ?`,
+    )
+    .bind(id)
+    .first<{ registrations: number; pending: number; opened: number; paid: number }>();
+  const [students, comments] = await Promise.all([
+    db.prepare("SELECT COUNT(DISTINCT member_sub) AS n FROM enrollments WHERE course_id = ?").bind(id).first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM course_comments WHERE course_id = ?").bind(id).first<{ n: number }>(),
+  ]);
+  return { title: c.title, registrations: r?.registrations ?? 0, pending: r?.pending ?? 0, opened: r?.opened ?? 0, students: students?.n ?? 0, comments: comments?.n ?? 0, paidTwd: r?.paid ?? 0 };
 }
 
 const ATTACH_TYPES: Record<string, string> = {
@@ -1785,18 +1807,35 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireAdmin(ctx))],
   ["PATCH", /^\/admin\/courses\/([\w-]+)$/, async (ctx, [id]) => updateCourse(ctx, id, requireAdmin(ctx))],
   [
+    "GET",
+    /^\/admin\/courses\/([\w-]+)\/delete-impact$/,
+    async (ctx, [id]) => {
+      requireAdmin(ctx);
+      return courseDeleteImpact(ctx.db, id);
+    },
+  ],
+  [
     "DELETE",
     /^\/admin\/courses\/([\w-]+)$/,
     async (ctx, [id]) => {
       const admin = requireAdmin(ctx);
-      const used = await ctx.db
-        .prepare("SELECT (SELECT COUNT(*) FROM order_items WHERE course_id = ?) + (SELECT COUNT(*) FROM enrollments WHERE course_id = ?) AS n")
-        .bind(id, id)
-        .first<{ n: number }>();
-      if ((used?.n ?? 0) > 0) fail(409, "in_use", "這門課程已有學員報名，不能刪除；請改用「下架」");
+      const impact = await courseDeleteImpact(ctx.db, id);
+      const body = (await ctx.req.json().catch(() => ({}))) as { confirm?: unknown };
+      // 已有人報名：必須明確輸入 YES 才能刪除，且報名紀錄、審核紀錄與學習進度會一併刪除。
+      if (impact.registrations > 0 && body.confirm !== "YES") fail(409, "confirm_required", `這門課程已有 ${impact.registrations} 筆報名紀錄；刪除需輸入 YES 確認`);
       const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE course_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
       const files = await attachmentKeys(ctx.db, "course_id", id);
-      const [res] = await ctx.db.batch([ctx.db.prepare("DELETE FROM courses WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "course.delete", "course", id)]);
+      // 只含這門課的報名紀錄整筆刪除；同時報名多門課的紀錄只移除這門課並扣掉金額。
+      const onlyThis = "id IN (SELECT order_id FROM order_items WHERE course_id = ?1) AND NOT EXISTS (SELECT 1 FROM order_items x WHERE x.order_id = orders.id AND x.course_id <> ?1)";
+      const [, , , , , , res] = await ctx.db.batch([
+        ctx.db.prepare(`DELETE FROM notifications WHERE (link LIKE '/orders/%' AND substr(link, 9) IN (SELECT id FROM orders WHERE ${onlyThis})) OR (link LIKE '/admin/orders/%' AND substr(link, 15) IN (SELECT id FROM orders WHERE ${onlyThis}))`).bind(id),
+        ctx.db.prepare("DELETE FROM enrollments WHERE course_id = ?").bind(id),
+        ctx.db.prepare(`DELETE FROM orders WHERE ${onlyThis}`).bind(id),
+        ctx.db.prepare("UPDATE orders SET total_twd = MAX(0, total_twd - (SELECT COALESCE(SUM(price_twd), 0) FROM order_items WHERE order_id = orders.id AND course_id = ?1)) WHERE id IN (SELECT order_id FROM order_items WHERE course_id = ?1)").bind(id),
+        ctx.db.prepare("DELETE FROM order_items WHERE course_id = ?").bind(id),
+        audit(ctx.db, admin.sub, "course.delete", "course", id, JSON.stringify({ title: impact.title, registrations: impact.registrations, students: impact.students, paidTwd: impact.paidTwd })),
+        ctx.db.prepare("DELETE FROM courses WHERE id = ?").bind(id),
+      ]);
       if (res.meta?.changes === 0) fail(404, "not_found", "找不到這門課程");
       for (const k of files) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
       for (const a of audio.results) await ctx.env.MEDIA?.delete(a.media_ref).catch(() => undefined);

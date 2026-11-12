@@ -9,6 +9,7 @@ export type {
   Attachment,
   ClientPlatform,
   CourseComment,
+  CourseDeleteImpact,
   CourseDetail,
   CourseRun,
   Duty,
