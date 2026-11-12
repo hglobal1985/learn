@@ -72,22 +72,21 @@ function NoneBox({ on, onToggle, disabled }: { on: boolean; onToggle: () => void
 /**
  * 自訂下拉選單（不用系統原生選單）：依螢幕剩餘空間自動往下或往上展開；選項超過 12 個時上方有搜尋框。
  */
-function Dropdown({ options, value, label, disabled, onPick }: { options: { value: string; label: string }[]; value: string; label: string; disabled?: boolean; onPick: (v: string) => void }) {
+function Dropdown({ options, value, label, disabled, onPick, open, onOpenChange }: { options: { value: string; label: string }[]; value: string; label: string; disabled?: boolean; onPick: (v: string) => void; open: boolean; onOpenChange: (o: boolean) => void }) {
   const { c } = useTheme();
   const { height: winH } = useWindowDimensions();
   const box = useRef<HostInstance>(null);
-  const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [pos, setPos] = useState({ up: false, max: 240 });
   const toggle = () => {
-    if (open) return setOpen(false);
+    if (open) return onOpenChange(false);
     box.current?.measureInWindow((_x, y, _w, h) => {
       const below = winH - (y + h) - 24;
       const above = y - 24;
       const up = below < 240 && above > below;
       setPos({ up, max: Math.max(140, Math.min(300, up ? above : below)) });
       setQ("");
-      setOpen(true);
+      onOpenChange(true);
     });
   };
   const list = q.trim() ? options.filter((o) => o.label.toLowerCase().includes(q.trim().toLowerCase())) : options;
@@ -100,13 +99,13 @@ function Dropdown({ options, value, label, disabled, onPick }: { options: { valu
         <Icon name={open ? "chevron-up" : "chevron-down"} size={20} color={c.textMuted} />
       </Pressable>
       {open ? (
-        <View style={[styles.dropdown, pos.up ? { bottom: FIELD_H + 4 } : { top: FIELD_H + 4 }, { maxHeight: pos.max, borderColor: c.border, backgroundColor: c.surface }]}>
+        <View style={[styles.dropdown, pos.up ? { bottom: FIELD_H + 4 } : { top: FIELD_H + 4 }, { maxHeight: pos.max, borderWidth: 2, borderColor: c.accentText, backgroundColor: c.surface, shadowColor: "#000", shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 }]}>
           {options.length > 12 ? (
             <TextInput value={q} onChangeText={setQ} placeholder="搜尋" placeholderTextColor={c.textMuted} autoCapitalize="none" style={[styles.search, { color: c.text, borderColor: c.border }]} />
           ) : null}
           <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {list.map((o) => (
-              <Pressable key={o.value} onPress={() => (onPick(o.value), setOpen(false))} accessibilityRole="button" style={[styles.opt, o.value === value && { backgroundColor: c.accentSoft }]}>
+              <Pressable key={o.value} onPress={() => (onPick(o.value), onOpenChange(false))} accessibilityRole="button" style={[styles.opt, o.value === value && { backgroundColor: c.accentSoft }]}>
                 <AppText numberOfLines={1}>{o.label}</AppText>
               </Pressable>
             ))}
@@ -153,6 +152,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const [vals, setVals] = useState<Record<Key, string>>({ legal_name: "", display_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
   const [terms, setTerms] = useState<{ education_system: string[]; education_center: string[] }>({ education_system: [], education_center: [] });
   const [otherPick, setOtherPick] = useState<{ education_system?: boolean; education_center?: boolean }>({});
+  const [openKey, setOpenKey] = useState<string | null>(null); // 目前展開的下拉選單：展開中的那一列要蓋在所有列的上面
   const [busy, setBusy] = useState(false);
   const [showBad, setShowBad] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -225,7 +225,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
     const sel = none ? "" : other ? OTHER : v;
     const options = [{ value: "", label: "（未選擇）" }, ...list.map((t) => ({ value: t, label: t })), { value: OTHER, label: "其他" }];
     return (
-      <Row z={key === "education_system" ? 30 : 20} bad={showBad && missing.includes(key)}>
+      <Row z={openKey === key ? 100 : key === "education_system" ? 30 : 20} bad={showBad && missing.includes(key)}>
         <Label text={label} pending={pendingNew} required />
         <View style={styles.line}>
           <Dropdown
@@ -233,6 +233,8 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
             value={sel}
             label={none ? "無" : other ? "其他" : v || "（未選擇）"}
             disabled={none}
+            open={openKey === key}
+            onOpenChange={(o) => setOpenKey(o ? key : null)}
             onPick={(p) => {
               if (p === OTHER) {
                 setOtherPick((s) => ({ ...s, [key]: true }));
@@ -319,7 +321,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                       </View>
                     </Row>
                   )}
-                  <Row z={10} bad={showBad && missing.includes("rank")}>
+                  <Row z={openKey === "rank" ? 100 : 10} bad={showBad && missing.includes("rank")}>
                     <Label text="獎銜" pending={data.fields.rank.pending !== null} required />
                     <View style={styles.line}>
                       <Dropdown
@@ -327,6 +329,8 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                         value={rankNone ? "" : vals.rank}
                         label={!canRank ? "請先填系統與中心" : rankNone ? "無" : vals.rank ? rankLabel(vals.rank) : "請選擇"}
                         disabled={!canRank || rankNone}
+                        open={openKey === "rank"}
+                        onOpenChange={(o) => setOpenKey(o ? "rank" : null)}
                         onPick={set("rank")}
                       />
                       <NoneBox on={rankNone} disabled={!canRank} onToggle={() => set("rank")(rankNone ? "" : "none")} />
