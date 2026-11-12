@@ -284,7 +284,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
               <View style={styles.line}>
                 <View style={{ flex: 1 }}>
                   <Row>
-                    <Label text="真實姓名" />
+                    <Label text="本姓(窗口對賬用途)" />
                     <Input value={vals.legal_name} onChange={set("legal_name")} />
                   </Row>
                 </View>
