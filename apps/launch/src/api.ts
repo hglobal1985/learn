@@ -13,6 +13,7 @@ import {
   type CourseSummary,
   type Member,
   type Attachment,
+  type AttachmentType,
   type Notice,
   type NotificationSettings,
   type Order,
@@ -21,6 +22,7 @@ import {
 import { flushEmails } from "./email.ts";
 import { centerKey, centerList, contactEmail, displayName, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
+import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, verifyAudioUrl, verifyFileUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
@@ -372,12 +374,20 @@ const ATTACH_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
 };
+const ATTACH_KIND: Record<string, AttachmentType> = { pdf: "pdf", doc: "word", docx: "word", ppt: "ppt", pptx: "ppt", xls: "excel", xlsx: "excel", csv: "excel", txt: "text", zip: "zip", png: "image", jpg: "image", jpeg: "image" };
+type AttachmentRow = { id: string; name: string; size: number; r2_key: string | null; kind: "file" | "link"; link_url: string | null; att_type: AttachmentType };
+const ATTACH_COLS = "id, name, size, r2_key, kind, link_url, att_type";
+async function attachmentOut(env: Env, r: AttachmentRow, withUrl: boolean): Promise<Attachment> {
+  const url = r.kind === "link" ? (r.link_url ?? undefined) : withUrl && r.r2_key ? ((await fileUrl(env, r.r2_key)) ?? undefined) : undefined;
+  return { id: r.id, name: r.name, kind: r.kind, type: r.att_type, size: r.size, url };
+}
+const cleanTitle = (v: unknown) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80) : "");
 const ATTACH_MAX = 50 * 1024 * 1024;
 const ATTACH_PER_LESSON = 20;
 
 /** 刪除章節／課程時一併清掉附件檔（資料列由 ON DELETE CASCADE 處理，須在刪資料前先取出鍵）。 */
 async function attachmentKeys(db: D1Database, where: "lesson_id" | "course_id", id: string): Promise<string[]> {
-  const { results } = await db.prepare(`SELECT r2_key FROM lesson_attachments WHERE ${where} = ?`).bind(id).all<{ r2_key: string }>();
+  const { results } = await db.prepare(`SELECT r2_key FROM lesson_attachments WHERE r2_key IS NOT NULL AND ${where} = ?`).bind(id).all<{ r2_key: string }>();
   return results.map((r) => r.r2_key);
 }
 
@@ -1599,10 +1609,8 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
-      const { results } = await ctx.db.prepare("SELECT id, name, size, r2_key FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at").bind(lessonId).all<{ id: string; name: string; size: number; r2_key: string }>();
-      const out: Attachment[] = [];
-      for (const r of results) out.push({ id: r.id, name: r.name, size: r.size, url: (await fileUrl(ctx.env, r.r2_key)) ?? undefined });
-      return out;
+      const { results } = await ctx.db.prepare(`SELECT ${ATTACH_COLS} FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at`).bind(lessonId).all<AttachmentRow>();
+      return Promise.all(results.map((r) => attachmentOut(ctx.env, r, true)));
     },
   ],
   [
@@ -1610,8 +1618,8 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/lessons\/([\w-]+)\/attachments$/,
     async (ctx, [id]) => {
       requireAdmin(ctx);
-      const { results } = await ctx.db.prepare("SELECT id, name, size FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at").bind(id).all<Attachment>();
-      return results;
+      const { results } = await ctx.db.prepare(`SELECT ${ATTACH_COLS} FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at`).bind(id).all<AttachmentRow>();
+      return Promise.all(results.map((r) => attachmentOut(ctx.env, r, false)));
     },
   ],
   [
@@ -1636,11 +1644,13 @@ const routes: [string, RegExp, Handler][] = [
       const key = `files/${id}/${crypto.randomUUID()}.${ext}`;
       await bucket.put(key, data, { httpMetadata: { contentType: type } });
       const attId = crypto.randomUUID();
+      const attType = ATTACH_KIND[ext] ?? "file";
+      const title = cleanTitle(ctx.url.searchParams.get("title")) || name;
       await ctx.db.batch([
-        ctx.db.prepare("INSERT INTO lesson_attachments (id, lesson_id, course_id, name, r2_key, size, content_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(attId, id, lesson.course_id, name, key, data.byteLength, type, admin.sub),
+        ctx.db.prepare("INSERT INTO lesson_attachments (id, lesson_id, course_id, name, r2_key, size, content_type, kind, att_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'file', ?, ?)").bind(attId, id, lesson.course_id, title, key, data.byteLength, type, attType, admin.sub),
         audit(ctx.db, admin.sub, "lesson.attachment_add", "lesson", id, attId),
       ]);
-      return { id: attId, name, size: data.byteLength } satisfies Attachment;
+      return { id: attId, name: title, kind: "file", type: attType, size: data.byteLength } satisfies Attachment;
     },
   ],
   [
@@ -1648,10 +1658,57 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/attachments\/([\w-]+)$/,
     async (ctx, [id]) => {
       const admin = requireAdmin(ctx);
-      const row = await ctx.db.prepare("SELECT r2_key, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ r2_key: string; lesson_id: string }>();
+      const row = await ctx.db.prepare("SELECT r2_key, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ r2_key: string | null; lesson_id: string }>();
       if (!row) return fail(404, "not_found", "找不到這個附件");
       await ctx.db.batch([ctx.db.prepare("DELETE FROM lesson_attachments WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.attachment_delete", "lesson", row.lesson_id, id)]);
-      await ctx.env.MEDIA?.delete(row.r2_key).catch(() => undefined);
+      if (row.r2_key) await ctx.env.MEDIA?.delete(row.r2_key).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/lessons\/([\w-]+)\/links$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const lesson = await ctx.db.prepare("SELECT course_id FROM lessons WHERE id = ?").bind(id).first<{ course_id: string }>();
+      if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      const body = await readJson<{ url?: unknown; title?: unknown }>(ctx.req);
+      const u = parseHttpsUrl(body.url);
+      if (!u) return fail(400, "invalid_url", "請輸入 https 開頭的有效網址");
+      const count = await ctx.db.prepare("SELECT COUNT(*) AS n FROM lesson_attachments WHERE lesson_id = ?").bind(id).first<{ n: number }>();
+      if ((count?.n ?? 0) >= ATTACH_PER_LESSON) return fail(409, "too_many", `每個章節最多 ${ATTACH_PER_LESSON} 個附件`);
+      const type = classifyLink(u);
+      const title = cleanTitle(body.title) || LINK_DEFAULT_TITLE[type];
+      const attId = crypto.randomUUID();
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO lesson_attachments (id, lesson_id, course_id, name, kind, link_url, att_type, created_by) VALUES (?, ?, ?, ?, 'link', ?, ?, ?)").bind(attId, id, lesson.course_id, title, u.toString(), type, admin.sub),
+        audit(ctx.db, admin.sub, "lesson.link_add", "lesson", id, attId),
+      ]);
+      return { id: attId, name: title, kind: "link", type, size: 0, url: u.toString() } satisfies Attachment;
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/attachments\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const row = await ctx.db.prepare("SELECT kind, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ kind: string; lesson_id: string }>();
+      if (!row) return fail(404, "not_found", "找不到這個附件");
+      const body = await readJson<{ title?: unknown; url?: unknown }>(ctx.req);
+      const title = cleanTitle(body.title);
+      if (!title) return fail(400, "title_required", "請輸入顯示標題");
+      let url: URL | null = null;
+      if (body.url !== undefined) {
+        if (row.kind !== "link") return fail(400, "not_link", "只有網址附件可以修改網址");
+        url = parseHttpsUrl(body.url);
+        if (!url) return fail(400, "invalid_url", "請輸入 https 開頭的有效網址");
+      }
+      await ctx.db.batch([
+        url
+          ? ctx.db.prepare("UPDATE lesson_attachments SET name = ?, link_url = ?, att_type = ? WHERE id = ?").bind(title, url.toString(), classifyLink(url), id)
+          : ctx.db.prepare("UPDATE lesson_attachments SET name = ? WHERE id = ?").bind(title, id),
+        audit(ctx.db, admin.sub, "lesson.attachment_edit", "lesson", row.lesson_id, id),
+      ]);
       return { ok: true };
     },
   ],

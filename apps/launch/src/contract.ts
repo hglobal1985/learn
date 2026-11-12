@@ -205,5 +205,29 @@ export type NotificationSettings = {
   source: "central" | "local";
 };
 
-/** 章節附件教材。url 為 1 小時內有效的簽名下載網址（只給已開通學員與管理員）。 */
-export type Attachment = { id: string; name: string; size: number; url?: string };
+/** 附件類型：上傳檔案依副檔名判斷，網址依網域判斷；畫面依類型顯示圖示。 */
+export type AttachmentType =
+  | "youtube"
+  | "vimeo"
+  | "canva"
+  | "google_slides"
+  | "google_docs"
+  | "google_sheets"
+  | "google_forms"
+  | "google_drive"
+  | "notion"
+  | "web"
+  | "pdf"
+  | "word"
+  | "ppt"
+  | "excel"
+  | "zip"
+  | "image"
+  | "text"
+  | "file";
+
+/**
+ * 章節附件教材：上傳檔案（kind=file，url 為 1 小時內有效的簽名下載網址）或外部網址（kind=link，url 為原網址）。
+ * name 是管理員自訂的顯示標題；url 只給已開通學員與管理員。
+ */
+export type Attachment = { id: string; name: string; kind: "file" | "link"; type: AttachmentType; size: number; url?: string };

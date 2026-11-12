@@ -134,3 +134,4 @@
 - 檔案放 R2（鍵 `files/<章節>/<uuid>.<副檔名>`），清單在 D1 `lesson_attachments`（migration `0008`）。下載用 1 小時有效的簽名網址（`GET /api/v2/media/file`，簽章用 `MEDIA_URL_SECRET`），只有已開通該場／該課的學員與管理員拿得到；一律以附件下載、`nosniff`。刪除附件、章節、課程時一併刪 R2 檔。
 - API：`GET /courses/:cid/lessons/:lid/attachments`、`GET／PUT /admin/lessons/:id/attachments?name=`、`DELETE /admin/attachments/:id`。
 - 後端測試 42 項；已部署。**待業主實測**：上傳附件、用已開通帳號下載、未開通帳號看不到。
+- **網址附件（同日）**：附件除了上傳檔案，也可新增 https 網址（migration `0009`，`lesson_attachments` 重建，新增 `kind`／`link_url`／`att_type`）。伺服器依網域／副檔名自動判斷類型（`src/links.ts`）：YouTube、Vimeo、Canva、Google 簡報／文件／試算表／表單／雲端硬碟、Notion、PDF、一般網頁；上傳檔案依副檔名（PDF／Word／PowerPoint／Excel／壓縮檔／圖片／文字）。畫面依類型顯示圖示（`src/features/attachments.tsx`）。標題可自訂（空白＝依類型自動命名；上傳檔案空白＝檔名），可修改標題與網址。API：`POST /admin/lessons/:id/links`、`PATCH /admin/attachments/:id`；上傳檔案可加 `&title=`。只收 https、不收帶帳密的網址；網址附件只有已開通學員與管理員拿得到。後端測試 43 項。待業主實測。

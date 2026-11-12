@@ -217,3 +217,53 @@ test("附件教材：只有管理員能上傳、已開通學員才拿得到下�
   assert.equal((await call("DELETE", "/admin/lessons/start-review", { token: admin })).status, 200);
   assert.equal(r2.objects.size, 0, "刪章節時一併刪檔");
 });
+
+test("網址附件：自動判斷類型、自訂標題、只收 https、可改標題與網址、學員需開通才看得到", async () => {
+  const { call, login } = setup({ MEDIA: fakeR2(), MEDIA_URL_SECRET: "test-secret" });
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  type A = { id: string; name: string; kind: string; type: string; url?: string };
+  const add = (token: string, body: unknown) => call<A>("POST", "/admin/lessons/start-review/links", { token, body });
+  assert.equal((await add(student, { url: "https://youtu.be/abc" })).status, 403, "學員不能新增");
+  assert.equal((await add(admin, { url: "http://example.com/a" })).status, 400, "只收 https");
+  assert.equal((await add(admin, { url: "javascript:alert(1)" })).status, 400);
+  assert.equal((await add(admin, { url: "https://user:pw@example.com/" })).status, 400, "不收帳密網址");
+  assert.equal((await add(admin, { url: "not a url" })).status, 400);
+  const cases: [string, string, string][] = [
+    ["https://www.youtube.com/watch?v=abc", "youtube", "YouTube 影片"],
+    ["https://youtu.be/abc", "youtube", "YouTube 影片"],
+    ["https://www.canva.com/design/DAF/view", "canva", "Canva 簡報"],
+    ["https://docs.google.com/presentation/d/xyz/edit", "google_slides", "Google 簡報"],
+    ["https://docs.google.com/document/d/xyz/edit", "google_docs", "Google 文件"],
+    ["https://docs.google.com/spreadsheets/d/xyz/edit", "google_sheets", "Google 試算表"],
+    ["https://forms.gle/abc", "google_forms", "Google 表單"],
+    ["https://drive.google.com/file/d/xyz/view", "google_drive", "Google 雲端硬碟"],
+    ["https://example.com/files/a.pdf", "pdf", "PDF 文件"],
+    ["https://example.com/page", "web", "網頁連結"],
+    ["example.org/no-scheme", "web", "網頁連結"],
+  ];
+  for (const [url, type, title] of cases) {
+    const r = await add(admin, { url });
+    assert.equal(r.status, 200, url);
+    assert.deepEqual([r.data.kind, r.data.type, r.data.name], ["link", type, title], url);
+  }
+  const custom = (await add(admin, { url: "https://www.canva.com/design/x", title: "  第4堂 簡報  " })).data;
+  assert.equal(custom.name, "第4堂 簡報");
+
+  const path = "/courses/start/lessons/start-review/attachments";
+  assert.equal((await call("GET", path, { token: student })).status, 403, "未報名看不到");
+  await call("POST", "/orders", { token: student, body: { courseIds: ["start"] } });
+  const list = (await call<A[]>("GET", path, { token: student })).data;
+  assert.ok(list.some((a) => a.id === custom.id && a.url === "https://www.canva.com/design/x"));
+
+  // 改標題與網址（網址改了，類型重新判斷）
+  assert.equal((await call("PATCH", `/admin/attachments/${custom.id}`, { token: admin, body: { title: "" } })).status, 400);
+  assert.equal((await call("PATCH", `/admin/attachments/${custom.id}`, { token: admin, body: { title: "影片版", url: "https://youtu.be/zzz" } })).status, 200);
+  const after = (await call<A[]>("GET", "/admin/lessons/start-review/attachments", { token: admin })).data.find((a) => a.id === custom.id)!;
+  assert.deepEqual([after.name, after.type, after.url], ["影片版", "youtube", "https://youtu.be/zzz"]);
+
+  // 上傳檔案也能自訂標題，並判斷類型
+  const up = await call<A>("PUT", `/admin/lessons/start-review/attachments?name=${encodeURIComponent("x.pptx")}&title=${encodeURIComponent("講義簡報")}`, { token: admin, bytes: new Uint8Array([1]) });
+  assert.deepEqual([up.data.name, up.data.kind, up.data.type], ["講義簡報", "file", "ppt"]);
+  assert.equal((await call("PATCH", `/admin/attachments/${up.data.id}`, { token: admin, body: { title: "改名", url: "https://example.com" } })).status, 400, "檔案不能改網址");
+  assert.equal((await call("DELETE", `/admin/attachments/${custom.id}`, { token: admin })).status, 200);
+});
