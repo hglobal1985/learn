@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
+import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { Icon } from "./icon";
@@ -13,7 +13,7 @@ const PAUSE = 8000; // 手指滑過之後暫停自動輪播的時間
  * 首頁跑馬燈：多則公告自動上下滾動輪流播放，也可以用手指上下滑動快速查看。
  * 只有一則時不捲動。接在最後多放一份第一則，捲到底後無縫跳回第一則。
  */
-export function Ticker({ items }: { items: string[] }) {
+export function Ticker({ items, onClose }: { items: string[]; onClose?: () => void }) {
   const { c } = useTheme();
   const ref = useRef<ScrollViewInstance | null>(null);
   const index = useRef(0);
@@ -86,6 +86,11 @@ export function Ticker({ items }: { items: string[] }) {
           </View>
         ))}
       </ScrollView>
+      {onClose ? (
+        <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="關閉公告" hitSlop={8} style={styles.close}>
+          <Icon name="close" size={30} color={c.warning} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -93,5 +98,6 @@ export function Ticker({ items }: { items: string[] }) {
 const styles = StyleSheet.create({
   box: { flexDirection: "row", alignItems: "center", gap: space.sm, paddingHorizontal: space.md, borderRadius: radius.md, height: ROW },
   scroll: { flex: 1, height: ROW },
+  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -space.sm, alignSelf: "flex-start", marginTop: -space.xs },
   row: { height: ROW, justifyContent: "center" },
 });

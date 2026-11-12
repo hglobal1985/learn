@@ -50,6 +50,9 @@ export type CourseSummary = {
   hostUnit: string;
   /** 最近一場的開課時間（沒有場次為 null）。 */
   nextRunAt: string | null;
+  /** 活動日期（YYYY-MM-DD）；eventEnd 只有連續 2～3 天的活動才有。 */
+  eventStart: string | null;
+  eventEnd: string | null;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;

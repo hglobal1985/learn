@@ -1,13 +1,12 @@
 import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import { api, type CourseDetail, type CourseRun, type Order } from "@/api/client";
+import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { api, resolveUrl, type CourseDetail, type CourseRun, type Order } from "@/api/client";
 import { CommentBoard } from "@/features/comments/comment-board";
 import { CoursePriceTag, UnitTags } from "@/features/courses/course-card";
-import { dateTime, ntd } from "@/features/format";
+import { dateTime, eventDays, ntd } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
-import { EdmView } from "@/features/courses/edm-view";
 import { AppText, Button, Card, CourseCover, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
 const isWeb = Platform.OS === "web";
@@ -65,7 +64,13 @@ export default function CourseDetailScreen() {
   return (
     <Screen header={false}>
       <Stack.Screen options={{ title: course.title }} />
-      <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
+      {course.edmUrl ? (
+        <Pressable onPress={() => Linking.openURL(resolveUrl(course.edmUrl!))} accessibilityRole="link" accessibilityLabel="開啟課程海報原圖">
+          <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
+        </Pressable>
+      ) : (
+        <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
+      )}
       <View style={{ gap: space.sm }}>
         <AppText variant="display">{course.title}</AppText>
         <AppText tone="muted">{course.subtitle}</AppText>
@@ -76,15 +81,10 @@ export default function CourseDetailScreen() {
           {course.freeNow && course.freeUntil ? <Pill label={`限時免費至 ${dateTime(course.freeUntil)}`} tone="accent" /> : null}
         </View>
         <AppText variant="callout" tone="muted">
-          講師：{course.teacher} · {course.lessonCount} 堂 · 約 {course.totalMinutes} 分鐘
+          講師：{course.teacher} · {course.lessonCount} 堂 · 約 {course.totalMinutes} 分鐘{course.eventStart ? ` · 活動日期 ${eventDays(course.eventStart, course.eventEnd)}` : ""}
         </AppText>
         {course.description ? <AppText>{course.description}</AppText> : null}
       </View>
-      {course.edmUrl ? (
-        <Section title="課程海報（EDM）">
-          <EdmView url={course.edmUrl} />
-        </Section>
-      ) : null}
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {nextLesson && (course.enrollment === "opened" || admin) ? (
         <Button label={course.completedLessons ? "繼續上課" : "開始上課"} icon="play" onPress={() => router.push(`/learn/${course.id}/${nextLesson.id}`)} fullWidth />

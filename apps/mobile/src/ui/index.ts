@@ -15,3 +15,4 @@ export { Chips } from "./chips";
 export { Ticker } from "./ticker";
 export { Field } from "./field";
 export { BottomBar } from "./bottom-bar";
+export { BrandTitle } from "./brand-title";

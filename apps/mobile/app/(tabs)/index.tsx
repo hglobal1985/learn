@@ -8,7 +8,7 @@ import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { maxContentWidth, space } from "@/theme/tokens";
-import { AppText, Button, ErrorView, LoadingView, Ticker } from "@/ui";
+import { AppText, BrandTitle, Button, ErrorView, LoadingView, Ticker } from "@/ui";
 
 /**
  * 首頁：固定一頁、不上下捲動。上方置中顯示大標題與會員頭像＋姓名（點擊進入會員中心編輯基本資料）、跑馬燈公告，下方左右兩個直式區塊（繼續學習、推薦課程），
@@ -21,9 +21,11 @@ export default function HomeScreen() {
   const [avatarFailed, setAvatarFailed] = useState(false);
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
   const [quote, setQuote] = useState<string | null>(null);
+  const [noticeClosed, setNoticeClosed] = useState(false);
   // 每次進入首頁換一則學習金句。
   useFocusEffect(
     useCallback(() => {
+      setNoticeClosed(false); // 每次進入首頁，公告都會再顯示
       api<{ text: string | null }>("GET", "/quotes/random")
         .then((r) => setQuote(r.text))
         .catch(() => undefined);
@@ -40,12 +42,7 @@ export default function HomeScreen() {
     <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
       <View style={styles.inner}>
         <View style={styles.head}>
-          <View style={styles.brand}>
-            <Image source={require("../../assets/logo.png")} style={styles.logo} resizeMode="contain" accessibilityLabel="寰宇 Global 標誌" />
-            <AppText variant="display" accessibilityRole="header" style={{ textAlign: "center" }}>
-              寰宇行動大學
-            </AppText>
-          </View>
+          <BrandTitle />
           {member ? (
             <Pressable
               onPress={member.demo ? undefined : openAccountCenter}
@@ -80,7 +77,7 @@ export default function HomeScreen() {
             </AppText>
           )}
         </View>
-        <Ticker items={(notices.data ?? []).map((n) => n.text)} />
+        {noticeClosed ? null : <Ticker items={(notices.data ?? []).map((n) => n.text)} onClose={() => setNoticeClosed(true)} />}
         {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
         {loading && !data ? <LoadingView /> : null}
         {data ? (
@@ -88,6 +85,8 @@ export default function HomeScreen() {
           <View style={styles.rails}>
             <HomeRail
               title="繼續學習"
+              icon="book-outline"
+              tone="green"
               courses={mine}
               note={quote ?? undefined}
               progress
@@ -108,6 +107,8 @@ export default function HomeScreen() {
             />
             <HomeRail
               title="推薦課程"
+              icon="sparkles-outline"
+              tone="orange"
               courses={recommended}
               note="只顯示符合獎銜資格的課程"
               empty={
@@ -133,6 +134,6 @@ const styles = StyleSheet.create({
   logo: { width: 44, height: 44 },
   rank: { borderWidth: 1, borderColor: "#e6c48c", backgroundColor: "#fdf0e3", borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 },
   avatar: { width: 48, height: 48, borderRadius: 24 },
-  rails: { flexDirection: "row", gap: space.md, alignItems: "flex-start" },
-  middle: { flex: 1, justifyContent: "center", paddingBottom: space.xl },
+  rails: { flex: 1, flexDirection: "row", gap: space.md, alignItems: "stretch" },
+  middle: { flex: 1, paddingBottom: space.sm },
 });

@@ -9,8 +9,8 @@ import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { AppText, Button, Card, Chips, CourseCover, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -44,6 +44,8 @@ export default function CourseEditScreen() {
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
         freeUntil: toLocal(d.admin?.freeUntil),
+        eventStart: d.eventStart ?? "",
+        eventEnd: d.eventEnd ?? "",
         reviewGroupId: d.admin?.reviewGroupId ?? "",
         title: d.title,
         subtitle: d.subtitle,
@@ -162,6 +164,13 @@ export default function CourseEditScreen() {
             主辦單位（會公開顯示）
           </AppText>
           <Chips label="主辦單位" options={[{ key: "", label: "不顯示" }, { key: HQ_UNIT, label: HQ_UNIT }, ...(centers.data ?? []).map((x) => ({ key: x, label: x }))]} value={form.hostUnit} onChange={set("hostUnit")} />
+        </Card>
+      </Section>
+
+      <Section title="活動日期（選填）">
+        <Card>
+            <Field label="活動開始日期（選填）" value={form.eventStart} onChange={set("eventStart")} placeholder="2026-12-01" />
+            <Field label="活動結束日期（連續 2～3 天才填，單日留白）" value={form.eventEnd} onChange={set("eventEnd")} placeholder="2026-12-03" hint="顯示在課程介紹頁與首頁；最多連續 3 天。" />
         </Card>
       </Section>
 

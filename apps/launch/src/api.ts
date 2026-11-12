@@ -206,6 +206,8 @@ type CourseRow = {
   review_group_id: string | null;
   allow_president: number;
   next_run_at: string | null;
+  event_start: string | null;
+  event_end: string | null;
   edm_key: string | null;
   cover_key: string | null;
   cover_bg_id: string | null;
@@ -215,7 +217,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -277,6 +279,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     guidanceUnit: row.guidance_unit,
     hostUnit: row.host_unit,
     nextRunAt: row.next_run_at,
+    eventStart: row.event_start,
+    eventEnd: row.event_end,
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
@@ -943,6 +947,14 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
   const host = text(body.hostUnit, 100);
   if (host !== undefined) sets.push(["host_unit", host], ["host_center_key", host && host !== HQ_UNIT ? centerKey(host) : null]);
+  if (body.eventStart !== undefined || body.eventEnd !== undefined) {
+    const day = (v: unknown) => (v === null || v === "" || v === undefined ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : fail(400, "invalid_date", "活動日期格式請用 2026-12-01"));
+    const start = day(body.eventStart);
+    const end = day(body.eventEnd);
+    if (end && !start) fail(400, "invalid_date", "請先填活動開始日期");
+    if (start && end && (end < start || Date.parse(end) - Date.parse(start) > 2 * 86400000)) fail(400, "invalid_date", "活動結束日要在開始日之後，且最多連續 3 天");
+    sets.push(["event_start", start], ["event_end", end && end !== start ? end : null]);
+  }
   for (const [k, col] of [["freeFrom", "free_from"], ["freeUntil", "free_until"]] as const) {
     const v = isoOrNull(body[k]);
     if (v !== undefined) sets.push([col, v]);

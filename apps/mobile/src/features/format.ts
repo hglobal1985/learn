@@ -40,3 +40,9 @@ export function toLocal(isoText: string | null | undefined): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+/** 活動日期顯示：單日「2026-11-20」，連續多天「2026-11-20～11-22」。 */
+export function eventDays(start: string | null | undefined, end?: string | null): string {
+  if (!start) return "";
+  return end && end !== start ? `${start}～${end.slice(5)}` : start;
+}
