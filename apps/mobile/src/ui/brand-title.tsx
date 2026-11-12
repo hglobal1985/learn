@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
@@ -7,10 +7,27 @@ import { space } from "@/theme/tokens";
 const LIGHT = ["#14663f", "#486c48", "#cc6c0c", "#e09a10", "#e0734a", "#14663f"];
 const DARK = ["#5fcf94", "#9bc79b", "#f0a050", "#f2dc27", "#f4a884", "#5fcf94"];
 const TEXT = "寰宇行動大學";
+const STEPS = 48; // 動畫取樣點數（越多越平順）
+
+const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+const mix = (a: number[], b: number[], k: number) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+const rgb = (c: number[]) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+/** 第 i 個字在時間 t（0～1）的顏色：基底色沿 logo 色系流動，再疊上一道由左掃到右的「反光」（顏色被拉向白色）。 */
+function colorAt(palette: string[], shine: number[], t: number, i: number, n: number): { color: string; glow: number } {
+  const u = (t + (i / n) * 0.6) % 1;
+  const pos = u * (palette.length - 1);
+  const k = Math.min(Math.floor(pos), palette.length - 2);
+  const base = mix(hex(palette[k]), hex(palette[k + 1]), pos - k);
+  const x = i / (n - 1);
+  const center = t * 1.5 - 0.25; // 反光帶的位置：從左側外面掃到右側外面
+  const glint = Math.max(0, 1 - Math.abs(x - center) / 0.2);
+  return { color: rgb(mix(base, shine, 0.9 * glint)), glow: glint };
+}
 
 /**
- * 首頁大標題：每個字依序做「色彩流動＋輕輕彈跳」的循環動畫（色系取自寰宇 logo），logo 同步緩慢呼吸旋光。
- * 只用 Animated，網頁與 iOS／Android 都能跑。
+ * 首頁大標題：每個字的色彩沿 logo 色系緩慢流動，並週期性掃過一道由左到右的反光；logo 同步呼吸。
+ * 只用 Animated，網頁與 iOS／Android 都能跑；沒有位移（不會跳動）。
  */
 export function BrandTitle() {
   const { scheme } = useTheme();
@@ -21,30 +38,41 @@ export function BrandTitle() {
     return () => loop.stop();
   }, [t]);
   const palette = scheme === "dark" ? DARK : LIGHT;
+  // 反光色：深色模式用白光；淺色模式背景是米白，白光會看不見，改用亮金色。
+  const shine = useMemo(() => (scheme === "dark" ? [255, 255, 255] : [255, 205, 40]), [scheme]);
   const n = TEXT.length;
-  const logoScale = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.1, 1] });
-  const logoRotate = t.interpolate({ inputRange: [0, 1], outputRange: ["-6deg", "6deg"] });
+  const input = useMemo(() => Array.from({ length: STEPS + 1 }, (_, s) => s / STEPS), []);
+  const letters = useMemo(
+    () =>
+      [...TEXT].map((ch, i) => {
+        const samples = input.map((p) => colorAt(palette, shine, p, i, n));
+        return { ch, color: samples.map((s) => s.color), glow: samples.map((s) => s.glow * 12) };
+      }),
+    [palette, shine, input, n],
+  );
+  const logoScale = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.08, 1] });
   return (
     <View style={styles.row} accessibilityRole="header" accessibilityLabel="寰宇行動大學">
-      <Animated.View style={{ transform: [{ scale: logoScale }, { rotate: logoRotate }] }}>
+      <Animated.View style={{ transform: [{ scale: logoScale }] }}>
         <Image source={require("../../assets/logo.png")} style={styles.logo} resizeMode="contain" />
       </Animated.View>
       <View style={styles.row} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {[...TEXT].map((ch, i) => {
-          // 每個字的相位錯開，顏色像波浪一樣從左流到右
-          const steps = palette.length;
-          const input = Array.from({ length: steps }, (_, s) => s / (steps - 1));
-          const color = t.interpolate({ inputRange: input, outputRange: palette.map((_, s) => palette[(s + Math.round((i / n) * (steps - 1))) % (steps - 1)]) });
-          const bounce = t.interpolate({
-            inputRange: [0, Math.min(0.99, i / n / 1.2), Math.min(0.995, i / n / 1.2 + 0.08), Math.min(0.999, i / n / 1.2 + 0.16), 1],
-            outputRange: [0, 0, -7, 0, 0],
-          });
-          return (
-            <Animated.Text key={i} style={[styles.ch, { color, transform: [{ translateY: bounce }] }]}>
-              {ch}
-            </Animated.Text>
-          );
-        })}
+        {letters.map((l, i) => (
+          <Animated.Text
+            key={i}
+            style={[
+              styles.ch,
+              {
+                color: t.interpolate({ inputRange: input, outputRange: l.color }),
+                textShadowColor: scheme === "dark" ? "rgba(255,255,255,0.95)" : "rgba(255,196,0,0.9)",
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: t.interpolate({ inputRange: input, outputRange: l.glow }),
+              },
+            ]}
+          >
+            {l.ch}
+          </Animated.Text>
+        ))}
       </View>
     </View>
   );

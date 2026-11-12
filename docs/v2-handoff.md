@@ -197,3 +197,7 @@
 - **學習金句（更新）**：改為業主提供的 20 句（migration `0017`，移除先前內建的 11 句；業主自己新增的不動）。
 - **（2026-11-13 更正）真實姓名改為非必填**：不再列入首頁資料補填提醒，付費報名也不再因為沒填而被擋（有填就存快照，沒填則為空；對帳以付款代碼為準）。資料補填提醒的 Amway 檢查改為只看核心三欄（培訓系統、地區教育中心、獎銜）；推薦人與上手欄位因人而異，不列入。Email 有填就不會提醒。
 - **（2026-11-13）Email 不再列入資料補填提醒**：會員用 Google 登入，信箱應由中央預設帶入 Google 信箱（行動大學讀不到 Google 信箱：`/oauth/userinfo` 沒有 email）。已請中央實作預設帶入與備援查詢；完成前，沒填聯絡信箱的會員收不到 Email 通知（站內通知照常）。
+
+## 2026-11-13：App 圖示與標題反光
+- **App 圖示**：以寰宇 logo 為固定圖案。網頁：`/favicon.ico`、`/favicon-32.png`、`/apple-touch-icon.png`（180）、`/icon-192.png`、`/icon-512.png`、`/icon-maskable-512.png`、`/manifest.webmanifest`（名稱「寰宇行動大學」、主題色 #2F5D3A、standalone），加到主畫面時使用同一圖案；`<link>` 標籤由 `apps/launch/scripts/embed-static.mjs` 在打包時補進 `index.html`。原生 App 圖示（`assets/icon.png`、`adaptive-icon.png`，Android 背景改白）與商店圖示同步。**中央會員的 App 捷徑要顯示相同圖示：圖示網址固定為 `https://learn.hglobal1985.com/icon-512.png`（需要中央登記 App 時提供圖示欄位）。**
+- **首頁標題**：移除逐字跳動，改為「反光」——文字顏色沿 logo 色系流動，並週期性（4.2 秒）掃過一道由左到右的亮光（淺色模式亮金、深色模式白光，含光暈），logo 同步呼吸；沒有位移。
