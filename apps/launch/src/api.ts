@@ -1886,6 +1886,18 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   [
+    "PATCH",
+    /^\/admin\/quotes\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      requireSuperAdmin(ctx);
+      const text = cleanAnnouncement((await readJson<{ text?: unknown }>(ctx.req)).text);
+      if (!text) return fail(400, "text_required", "請輸入金句（120 字以內）");
+      const r = await ctx.db.prepare("UPDATE quotes SET body = ? WHERE id = ?").bind(text, id).run();
+      if (r.meta?.changes === 0) return fail(404, "not_found", "找不到這則金句");
+      return { id, text };
+    },
+  ],
+  [
     "DELETE",
     /^\/admin\/quotes\/([\w-]+)$/,
     async (ctx, [id]) => {

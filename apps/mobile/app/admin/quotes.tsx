@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { api } from "@/api/client";
 import { useApi, useSession } from "@/state/session";
 import { AppText, Button, Card, EmptyState, ErrorView, Field, LoadingView, NoticeBox, Screen, Section } from "@/ui";
@@ -13,6 +14,7 @@ export default function QuotesScreen() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
   if (!ok) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="只有超級管理員可以編輯" /></Screen>;
   if (!data) return <Screen header={false}>{error ? <ErrorView message={error} onRetry={reload} /> : <LoadingView />}</Screen>;
   const run = async (fn: () => Promise<unknown>) => {
@@ -40,11 +42,28 @@ export default function QuotesScreen() {
       <Section title={`所有金句（${data.length}）`}>
         {data.map((q) => (
           <Card key={q.id}>
-            <AppText>{q.text}</AppText>
-            <Button variant="danger" label="刪除" disabled={busy} onPress={() => run(() => api("DELETE", `/admin/quotes/${q.id}`))} />
+            {editing?.id === q.id ? (
+              <>
+                <Field label="金句內容" value={editing.text} onChange={(v) => setEditing({ id: q.id, text: v })} multiline />
+                <View style={styles.row}>
+                  <Button label="儲存" disabled={busy || !editing.text.trim()} onPress={() => run(async () => { await api("PATCH", `/admin/quotes/${q.id}`, { text: editing.text }); setEditing(null); })} />
+                  <Button variant="ghost" label="取消" onPress={() => setEditing(null)} />
+                </View>
+              </>
+            ) : (
+              <>
+                <AppText>{q.text}</AppText>
+                <View style={styles.row}>
+                  <Button variant="secondary" label="編輯" disabled={busy} onPress={() => setEditing({ id: q.id, text: q.text })} />
+                  <Button variant="danger" label="刪除" disabled={busy} onPress={() => run(() => api("DELETE", `/admin/quotes/${q.id}`))} />
+                </View>
+              </>
+            )}
           </Card>
         ))}
       </Section>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: 8 } });

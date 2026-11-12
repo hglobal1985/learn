@@ -400,3 +400,20 @@ test("跑馬燈公告：公開只看啟用中的、管理員（超級管理員�
   assert.equal((await call("DELETE", `/admin/announcements/${c.id}`, { token: admin })).status, 404);
   assert.equal((await call("PATCH", `/admin/announcements/${a.id}`, { token: admin, body: {} })).status, 400);
 });
+
+test("學習金句：內建 11 句、隨機取一則、只有超級管理員可新增修改刪除（秘書不行）", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  type Q = { id: string; text: string };
+  const list = (await call<Q[]>("GET", "/admin/quotes", { token: admin })).data;
+  assert.equal(list.length, 11, "初始 11 句");
+  assert.ok(list.some((q) => q.text.startsWith("成功最快的路")));
+  const r = (await call<{ text: string | null }>("GET", "/quotes/random")).data;
+  assert.ok(r.text && list.some((q) => q.text === r.text), "隨機取一則（未登入也可）");
+  assert.equal((await call("GET", "/admin/quotes", { token: student })).status, 403);
+  assert.equal((await call("PATCH", `/admin/quotes/${list[0].id}`, { token: student, body: { text: "x" } })).status, 403);
+  assert.equal((await call("PATCH", `/admin/quotes/${list[0].id}`, { token: admin, body: { text: "改過的金句" } })).status, 200);
+  assert.equal((await call<Q[]>("GET", "/admin/quotes", { token: admin })).data.some((q) => q.text === "改過的金句"), true);
+  assert.equal((await call("PATCH", "/admin/quotes/nope", { token: admin, body: { text: "x" } })).status, 404);
+  assert.equal((await call("DELETE", `/admin/quotes/${list[1].id}`, { token: admin })).status, 200);
+});
