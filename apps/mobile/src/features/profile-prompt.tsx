@@ -30,7 +30,7 @@ const formVals = (d: View_): Record<Key, string> => ({ legal_name: d.legalName, 
 const norm = (s: string) => s.trim().toLowerCase();
 
 /** 欄位標籤：必填欄位旁有橘色「必填」小標籤（中央視覺規範）；等待審核的欄位加上醒目的橘色說明。 */
-function Label({ text, pending, required }: { text: string; pending?: boolean; required?: boolean }) {
+function Label({ text, pending, tag }: { text: string; pending?: boolean; tag?: string }) {
   const { c } = useTheme();
   return (
     <View style={styles.labelRow}>
@@ -38,9 +38,9 @@ function Label({ text, pending, required }: { text: string; pending?: boolean; r
         {text}
         {pending ? <Text style={{ color: c.warning, fontWeight: "800" }}>{PENDING_TEXT}</Text> : null}
       </AppText>
-      {required ? (
+      {tag ? (
         <View style={[styles.req, { backgroundColor: c.warningSoft, borderColor: c.warning }]}>
-          <Text style={{ color: c.warning, fontSize: 12, fontWeight: "800" }}>必填</Text>
+          <Text style={{ color: c.warning, fontSize: 12, fontWeight: "800" }}>{tag}</Text>
         </View>
       ) : null}
     </View>
@@ -193,6 +193,17 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const centerListed = systemHg && terms.education_center.length > 0 && vals.education_center !== undefined;
   const missing: Key[] = data ? ([!vals.display_name.trim() && "display_name", data.enabled && !vals.education_system.trim() && "education_system", data.enabled && !vals.education_center.trim() && "education_center", data.enabled && !vals.rank.trim() && "rank"].filter(Boolean) as Key[]) : [];
 
+  /** 標籤：沒填 → 「必填」；填了就隱藏；中心、獎銜已通過審核（且沒有被改動）→ 「審核通過」（外觀同必填）。 */
+  const tagFor = (key: "education_system" | "education_center" | "rank" | "display_name", reviewed = false): string | undefined => {
+    const v = vals[key];
+    if (!v.trim()) return "必填";
+    if (reviewed && data && key !== "display_name") {
+      const f = data.fields[key];
+      if (f.status === "approved" && f.pending === null && initial && v === initial[key]) return "審核通過";
+    }
+    return undefined;
+  };
+
   const save = async () => {
     if (missing.length) {
       setShowBad(true);
@@ -226,7 +237,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
     const options = [{ value: "", label: "（未選擇）" }, ...list.map((t) => ({ value: t, label: t })), { value: OTHER, label: "其他" }];
     return (
       <Row z={openKey === key ? 100 : key === "education_system" ? 30 : 20} bad={showBad && missing.includes(key)}>
-        <Label text={label} pending={pendingNew} required />
+        <Label text={label} pending={pendingNew} tag={tagFor(key, key === "education_center")} />
         <View style={styles.line}>
           <Dropdown
             options={options}
@@ -290,7 +301,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                 </View>
                 <View style={{ flex: 1 }}>
                   <Row bad={showBad && missing.includes("display_name")}>
-                    <Label text="暱稱" required />
+                    <Label text="暱稱" tag={tagFor("display_name")} />
                     <Input value={vals.display_name} onChange={set("display_name")} />
                   </Row>
                 </View>
@@ -306,7 +317,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                     listedRow("education_center", "中心", data.fields.education_center.pending !== null)
                   ) : (
                     <Row z={20} bad={showBad && missing.includes("education_center")}>
-                      <Label text="中心" pending={data.fields.education_center.pending !== null} required />
+                      <Label text="中心" pending={data.fields.education_center.pending !== null} tag={tagFor("education_center", true)} />
                       <View style={styles.line}>
                         <View style={{ flex: 1 }}>
                           {vals.education_center.trim() === NONE_TERM ? (
@@ -322,7 +333,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                     </Row>
                   )}
                   <Row z={openKey === "rank" ? 100 : 10} bad={showBad && missing.includes("rank")}>
-                    <Label text="獎銜" pending={data.fields.rank.pending !== null} required />
+                    <Label text="獎銜" pending={data.fields.rank.pending !== null} tag={tagFor("rank", true)} />
                     <View style={styles.line}>
                       <Dropdown
                         options={data.rankOptions.filter((o) => o.value !== "none").map((o) => ({ value: o.value, label: o.label }))}
