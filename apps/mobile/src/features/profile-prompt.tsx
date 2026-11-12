@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { api } from "@/api/client";
 import { openAccountCenter } from "@/features/account-link";
 import { useSession } from "@/state/session";
@@ -19,6 +19,20 @@ type View_ = {
 };
 
 const FIELD_H = 44;
+/** 欄位要顯示的內容：有等待審核的新值就顯示新值（使用者剛填的），沒有才顯示目前生效的值。 */
+const shown = (f: { value: string; pending: string | null }) => f.pending ?? f.value;
+const PENDING_TEXT = "（等待中心管理員審核）";
+
+/** 欄位標籤；等待審核的欄位在後面加上醒目的橘色說明。 */
+function Label({ text, pending }: { text: string; pending?: boolean }) {
+  const { c } = useTheme();
+  return (
+    <AppText variant="caption" tone="muted" numberOfLines={1}>
+      {text}
+      {pending ? <Text style={{ color: c.warning, fontWeight: "800" }}>{PENDING_TEXT}</Text> : null}
+    </AppText>
+  );
+}
 
 /** 單行輸入框（樣式與 Field 相同，但不含上方標籤，方便跟「無」勾選框排在同一列）。 */
 function Input({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -38,7 +52,7 @@ function NoneBox({ on, onToggle }: { on: boolean; onToggle: () => void }) {
 }
 
 /** 文字欄位：標籤在上，輸入框＋「無」在同一列；輸入時顯示中央的「關聯詞」建議（單行橫向滑動），點一下帶入。 */
-function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: string; value: string; onChange: (v: string) => void; pool?: "education_system" | "education_center"; pending?: string | null; allowNone?: boolean }) {
+function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: string; value: string; onChange: (v: string) => void; pool?: "education_system" | "education_center"; pending?: boolean; allowNone?: boolean }) {
   const { c } = useTheme();
   const [sugg, setSugg] = useState<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,10 +69,7 @@ function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: 
   };
   return (
     <View style={{ gap: 2 }}>
-      <AppText variant="caption" tone="muted" numberOfLines={1}>
-        {label}
-        {pending ? `（審核中：${pending}）` : ""}
-      </AppText>
+      <Label text={label} pending={pending} />
       <View style={styles.line}>
         <View style={{ flex: 1 }}>
           {none ? (
@@ -87,13 +98,13 @@ function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: 
 }
 
 /** 視窗頂端的按鈕：文字一律單行、不換行。儲存與暫時不要用同一個樣式。 */
-function Btn({ label, icon, onPress, disabled }: { label: string; icon: IconName; onPress: () => void; disabled?: boolean }) {
+function Btn({ label, icon, onPress, disabled, loading }: { label: string; icon: IconName; onPress: () => void; disabled?: boolean; loading?: boolean }) {
   const { c } = useTheme();
   return (
-    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled: !!disabled }} style={[styles.btn, { backgroundColor: c.accent, opacity: disabled ? 0.45 : 1 }]}>
-      <Icon name={icon} size={20} color={c.textOnAccent} />
+    <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled: !!disabled }} style={[styles.btn, { backgroundColor: c.accent, opacity: disabled && !loading ? 0.45 : 1 }]}>
+      {loading ? <ActivityIndicator size="small" color={c.textOnAccent} /> : <Icon name={icon} size={20} color={c.textOnAccent} />}
       <Text numberOfLines={1} style={{ color: c.textOnAccent, fontSize: 16, fontWeight: "700" }}>
-        {label}
+        {loading ? "儲存中" : label}
       </Text>
     </Pressable>
   );
@@ -119,20 +130,20 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
     api<View_>("GET", "/me/central-profile")
       .then((d) => {
         setData(d);
-        setVals({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: d.fields.education_system.value, education_center: d.fields.education_center.value, rank: d.fields.rank.value });
+        setVals({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: shown(d.fields.education_system), education_center: shown(d.fields.education_center), rank: shown(d.fields.rank) });
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
   useEffect(() => {
     // 開啟時如果首頁已經把資料帶來了，就直接用（不用再等一次網路）；否則才向伺服器要。
-    if (first) setVals({ legal_name: first.legalName, display_name: first.nickname, contact_email: first.email, education_system: first.fields.education_system.value, education_center: first.fields.education_center.value, rank: first.fields.rank.value });
+    if (first) setVals({ legal_name: first.legalName, display_name: first.nickname, contact_email: first.email, education_system: shown(first.fields.education_system), education_center: shown(first.fields.education_center), rank: shown(first.fields.rank) });
     else load();
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
   const canRank = !!vals.education_system.trim() && !!vals.education_center.trim();
   const rankNone = vals.rank === "none";
   const rankLabel = (v: string) => data?.rankOptions.find((o) => o.value === v)?.label ?? v;
-  const initial = data ? { legal_name: data.legalName, display_name: data.nickname, contact_email: data.email, education_system: data.fields.education_system.value, education_center: data.fields.education_center.value, rank: data.fields.rank.value } : null;
+  const initial = data ? { legal_name: data.legalName, display_name: data.nickname, contact_email: data.email, education_system: shown(data.fields.education_system), education_center: shown(data.fields.education_center), rank: shown(data.fields.rank) } : null;
   const changed = initial ? (Object.keys(vals) as (keyof typeof vals)[]).filter((k) => (data!.enabled || k === "legal_name" || k === "display_name" || k === "contact_email") && vals[k].trim() !== initial[k].trim()) : [];
   const save = async () => {
     setBusy(true);
@@ -162,7 +173,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
           </AppText>
           <View style={styles.actions}>
             <View style={{ flex: 1 }}>
-              <Btn label="儲存" icon="save-outline" onPress={save} disabled={busy || !changed.length} />
+              <Btn label="儲存" icon="save-outline" onPress={save} disabled={busy || !changed.length} loading={busy} />
             </View>
             <View style={{ flex: 1 }}>
               <Btn label="關閉" icon="close" onPress={onClose} />
@@ -192,12 +203,10 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
               <TextRow label="Email" value={vals.contact_email} onChange={(v) => setVals((s) => ({ ...s, contact_email: v }))} />
               {data.enabled ? (
                 <>
-                  <TextRow label="系統" allowNone value={vals.education_system} onChange={(v) => setVals((s) => ({ ...s, education_system: v }))} pool="education_system" pending={data.fields.education_system.pending} />
-                  <TextRow label="中心" allowNone value={vals.education_center} onChange={(v) => setVals((s) => ({ ...s, education_center: v }))} pool={data.hglobal ? "education_center" : undefined} pending={data.fields.education_center.pending} />
+                  <TextRow label="系統" allowNone value={vals.education_system} onChange={(v) => setVals((s) => ({ ...s, education_system: v }))} pool="education_system" pending={data.fields.education_system.pending !== null} />
+                  <TextRow label="中心" allowNone value={vals.education_center} onChange={(v) => setVals((s) => ({ ...s, education_center: v }))} pool={data.hglobal ? "education_center" : undefined} pending={data.fields.education_center.pending !== null} />
                   <View style={{ gap: 2, zIndex: 5 }}>
-                    <AppText variant="caption" tone="muted" numberOfLines={1}>
-                      獎銜{data.fields.rank.pending ? `（審核中：${rankLabel(data.fields.rank.pending)}）` : ""}
-                    </AppText>
+                    <Label text="獎銜" pending={data.fields.rank.pending !== null} />
                     <View style={styles.line}>
                       <View style={{ flex: 1 }}>
                         <Pressable
