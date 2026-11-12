@@ -5,6 +5,7 @@ import { resolveUrl, type CourseSummary } from "@/api/client";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, radius, space } from "@/theme/tokens";
 import { AppText } from "@/ui";
+import { CoursePriceTag } from "./course-card";
 
 /** 左右兩欄是直式，所以只顯示 EDM 本身（直式 5:7）；沒有上傳 EDM 就用課程名稱當封面。高度最多 340，避免電腦寬螢幕撐出捲軸。 */
 function frameOf(width: number) {
@@ -34,7 +35,7 @@ function Slide({ course, width }: { course: CourseSummary; width: number }) {
  * 首頁的一個區塊（左或右）：直式海報（EDM）的橫向輪播，手指在區塊內左右滑動切換課程；
  * 下方顯示目前這門課的名稱與資訊，點圖或名稱進入課程。
  */
-export function HomeRail({ title, courses, seeAll, onSeeAll, empty, progress }: { title: string; courses: CourseSummary[]; seeAll: string; onSeeAll: () => void; empty: React.ReactNode; progress?: boolean }) {
+export function HomeRail({ title, note, courses, empty, progress }: { title: string; note?: string; courses: CourseSummary[]; empty: React.ReactNode; progress?: boolean }) {
   const { c } = useTheme();
   const [width, setWidth] = useState(0);
   const [page, setPage] = useState(0);
@@ -46,12 +47,12 @@ export function HomeRail({ title, courses, seeAll, onSeeAll, empty, progress }: 
         <AppText variant="headline" numberOfLines={1} style={{ flex: 1 }}>
           {title}
         </AppText>
-        <Pressable onPress={onSeeAll} accessibilityRole="button" accessibilityLabel={`${title}：${seeAll}`} hitSlop={10} style={styles.more}>
-          <AppText variant="caption" style={{ color: c.accentText, fontWeight: "700" }}>
-            {seeAll}
-          </AppText>
-        </Pressable>
       </View>
+      {note ? (
+        <AppText variant="caption" tone="muted" numberOfLines={3} style={{ minHeight: 32 }}>
+          {note}
+        </AppText>
+      ) : null}
       {!courses.length || !width ? (
         <View style={{ minHeight: width ? Math.min(Math.round((width * 7) / 5), 340) : 90, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, padding: space.sm, justifyContent: "center", gap: space.xs }}>{empty}</View>
       ) : (
@@ -75,9 +76,22 @@ export function HomeRail({ title, courses, seeAll, onSeeAll, empty, progress }: 
               <AppText variant="callout" numberOfLines={2} style={{ fontWeight: "700" }}>
                 {cur.title}
               </AppText>
-              <AppText variant="caption" tone="muted" numberOfLines={1}>
-                {progress && cur.lessonCount ? `已完成 ${cur.completedLessons}/${cur.lessonCount} 堂` : cur.teacher}
-              </AppText>
+              {cur.hostUnit ? (
+                <AppText variant="caption" tone="muted" numberOfLines={2}>
+                  主辦：{cur.hostUnit.split(/[、,，;；\n]+/).filter(Boolean).join("、")}
+                </AppText>
+              ) : null}
+              {cur.nextRunAt ? (
+                <AppText variant="caption" tone="muted" numberOfLines={1}>
+                  日期：{cur.nextRunAt.slice(0, 10)}
+                </AppText>
+              ) : null}
+              <CoursePriceTag course={cur} />
+              {progress && cur.lessonCount ? (
+                <AppText variant="caption" tone="muted" numberOfLines={1}>
+                  已完成 {cur.completedLessons}/{cur.lessonCount} 堂
+                </AppText>
+              ) : null}
             </Pressable>
           ) : null}
         </>

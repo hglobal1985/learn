@@ -1,8 +1,8 @@
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { Announcement, CourseSummary } from "@/api/client";
+import { api, type Announcement, type CourseSummary } from "@/api/client";
 import { openAccountCenter } from "@/features/account-link";
 import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
@@ -20,6 +20,15 @@ export default function HomeScreen() {
   const { member } = useSession();
   const [avatarFailed, setAvatarFailed] = useState(false);
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
+  const [quote, setQuote] = useState<string | null>(null);
+  // 每次進入首頁換一則學習金句。
+  useFocusEffect(
+    useCallback(() => {
+      api<{ text: string | null }>("GET", "/quotes/random")
+        .then((r) => setQuote(r.text))
+        .catch(() => undefined);
+    }, []),
+  );
   const notices = useApi<Announcement[]>("/announcements");
   const courses = data ?? [];
   const mine = courses
@@ -31,9 +40,12 @@ export default function HomeScreen() {
     <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
       <View style={styles.inner}>
         <View style={styles.head}>
-          <AppText variant="display" accessibilityRole="header" style={{ textAlign: "center" }}>
-            寰宇行動大學
-          </AppText>
+          <View style={styles.brand}>
+            <Image source={require("../../assets/logo.png")} style={styles.logo} resizeMode="contain" accessibilityLabel="寰宇 Global 標誌" />
+            <AppText variant="display" accessibilityRole="header" style={{ textAlign: "center" }}>
+              寰宇行動大學
+            </AppText>
+          </View>
           {member ? (
             <Pressable
               onPress={member.demo ? undefined : openAccountCenter}
@@ -51,9 +63,16 @@ export default function HomeScreen() {
                   </AppText>
                 </View>
               )}
-              <AppText variant="title" numberOfLines={1} style={{ flexShrink: 1 }}>
+              <AppText variant="title" numberOfLines={1} style={{ flexShrink: 1, fontWeight: "400" }}>
                 {member.name}
               </AppText>
+              {member.rankLabel ? (
+                <View style={styles.rank}>
+                  <AppText variant="callout" style={{ color: "#cc6c0c", fontWeight: "700", lineHeight: 20 }}>
+                    {member.rankLabel}
+                  </AppText>
+                </View>
+              ) : null}
             </Pressable>
           ) : (
             <AppText variant="headline" tone="muted" style={{ textAlign: "center" }}>
@@ -70,8 +89,7 @@ export default function HomeScreen() {
             <HomeRail
               title="繼續學習"
               courses={mine}
-              seeAll="已報名"
-              onSeeAll={() => router.navigate("/learning")}
+              note={quote ?? undefined}
               progress
               empty={
                 member ? (
@@ -91,8 +109,7 @@ export default function HomeScreen() {
             <HomeRail
               title="推薦課程"
               courses={recommended}
-              seeAll="全部課程"
-              onSeeAll={() => router.navigate("/courses")}
+              note="只顯示符合獎銜資格的課程"
               empty={
                 <AppText variant="caption" tone="muted">
                   {member ? "目前沒有符合你獎銜、尚未報名的課程。" : "登入後顯示符合你獎銜的課程。"}
@@ -112,6 +129,9 @@ const styles = StyleSheet.create({
   inner: { width: "100%", maxWidth: maxContentWidth, gap: space.md, flex: 1 },
   head: { alignItems: "center", gap: space.sm },
   who: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.md, minHeight: 56, maxWidth: "100%" },
+  brand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
+  logo: { width: 44, height: 44 },
+  rank: { borderWidth: 1, borderColor: "#e6c48c", backgroundColor: "#fdf0e3", borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 },
   avatar: { width: 48, height: 48, borderRadius: 24 },
   rails: { flexDirection: "row", gap: space.md, alignItems: "flex-start" },
   middle: { flex: 1, justifyContent: "center", paddingBottom: space.xl },

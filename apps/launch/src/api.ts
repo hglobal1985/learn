@@ -24,7 +24,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { centerKey, centerList, contactEmail, profileSummary, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { centerKey, centerList, contactEmail, profileSummary, rankValue, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
@@ -55,7 +55,7 @@ const fail = (status: number, code: string, message: string): never => {
 
 /** demo：模擬會員（rankCode 為示範獎銜）；central：中央會員（不持有獎銜，資格每次向中央查詢）。 */
 type SessionBase = { sub: string; name: string; role: "student" | "admin"; roles: string[]; hglobal: boolean; center: { key: string; label: string } | null };
-type Session = SessionBase & ({ kind: "demo"; rankCode: string } | { kind: "central"; token: string; avatarUrl: string | null });
+type Session = SessionBase & ({ kind: "demo"; rankCode: string } | { kind: "central"; token: string; avatarUrl: string | null; rankValue?: string | null });
 type Ctx = { env: Env; db: D1Database; req: Request; url: URL; platform: ClientPlatform; session: Session | null };
 
 // ---------- helpers ----------
@@ -93,6 +93,12 @@ async function readJson<T>(req: Request): Promise<T> {
 function requireMember(ctx: Ctx): Session {
   return ctx.session ?? fail(401, "unauthenticated", "請先登入");
 }
+/** 最高管理員（超級管理員）；總部秘書沒有這個權限。 */
+function requireSuperAdmin(ctx: Ctx): Session {
+  const s = requireMember(ctx);
+  if (!s.roles.includes("super_admin")) fail(403, "forbidden", "只有超級管理員可以使用");
+  return s;
+}
 function requireAdmin(ctx: Ctx): Session {
   const s = requireMember(ctx);
   if (s.role !== "admin") fail(403, "forbidden", "需要管理員權限");
@@ -108,10 +114,10 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [prof, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
+    const [prof, rv, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), rankValue(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
     // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
     const admin = superAdmin || mc.roles.includes("super_admin") || mc.roles.includes("secretary");
-    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
+    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, rankValue: rv, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
   }
   if (!demoEnabled(env)) return null;
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(auth);
@@ -144,11 +150,16 @@ async function ranks(db: D1Database): Promise<Map<string, Rank>> {
 }
 
 const ROLE_TITLES: Record<string, string> = { super_admin: "超級管理員", secretary: "總部秘書", president: "會長", sound: "音控", course: "課務", reviewer: "審核員" };
+/** 對外顯示的獎銜：會員中心獎銜為「無」（或沒填）時顯示「安麗寶寶」；其餘用獎銜階梯的名稱。 */
+function rankLabelOf(v: string | null, rankMap: Map<string, Rank>): string {
+  if (!v || v === "none" || v === "無") return "安麗寶寶";
+  return rankMap.get(v)?.name ?? v;
+}
 function memberOf(s: Session, rankMap: Map<string, Rank>, extra: { duties?: string[] } = {}): Member {
   const titles = [...s.roles.map((r) => ROLE_TITLES[r]).filter(Boolean), ...(extra.duties ?? [])];
   const base = { sub: s.sub, name: s.name, role: s.role, titles: [...new Set(titles)], reviewer: s.role === "admin" || s.roles.includes("president") || !!extra.duties?.length, center: s.center?.label ?? null };
   // 中央會員的獎銜屬 Amway 資料，App 不取得也不顯示；只有模擬會員帶示範獎銜。
-  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl };
+  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl, rankLabel: s.rankValue === undefined ? null : rankLabelOf(s.rankValue, rankMap) };
   return { ...base, rank: rankMap.get(s.rankCode) ?? null, demo: true };
 }
 
@@ -194,6 +205,7 @@ type CourseRow = {
   free_until: string | null;
   review_group_id: string | null;
   allow_president: number;
+  next_run_at: string | null;
   edm_key: string | null;
   cover_key: string | null;
   cover_bg_id: string | null;
@@ -203,7 +215,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -264,6 +276,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     status: row.status,
     guidanceUnit: row.guidance_unit,
     hostUnit: row.host_unit,
+    nextRunAt: row.next_run_at,
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
@@ -1809,6 +1822,44 @@ const routes: [string, RegExp, Handler][] = [
           : ctx.db.prepare("UPDATE lesson_attachments SET name = ? WHERE id = ?").bind(title, id),
         audit(ctx.db, admin.sub, "lesson.attachment_edit", "lesson", row.lesson_id, id),
       ]);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/quotes\/random$/,
+    async (ctx) => {
+      const r = await ctx.db.prepare("SELECT body FROM quotes ORDER BY RANDOM() LIMIT 1").first<{ body: string }>();
+      return { text: r?.body ?? null };
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/quotes$/,
+    async (ctx) => {
+      requireSuperAdmin(ctx);
+      const { results } = await ctx.db.prepare("SELECT id, body AS text FROM quotes ORDER BY created_at DESC").all<{ id: string; text: string }>();
+      return results;
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/quotes$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const text = cleanAnnouncement((await readJson<{ text?: unknown }>(ctx.req)).text);
+      if (!text) return fail(400, "text_required", "請輸入金句（120 字以內）");
+      const id = crypto.randomUUID();
+      await ctx.db.prepare("INSERT INTO quotes (id, body, created_by) VALUES (?, ?, ?)").bind(id, text, s.sub).run();
+      return { id, text };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/quotes\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      requireSuperAdmin(ctx);
+      await ctx.db.prepare("DELETE FROM quotes WHERE id = ?").bind(id).run();
       return { ok: true };
     },
   ],

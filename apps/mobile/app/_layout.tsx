@@ -33,6 +33,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin/orders/[id]" options={{ title: "審核報名" }} />
             <Stack.Screen name="settings/notifications" options={{ title: "通知設定" }} />
             <Stack.Screen name="admin/announcements" options={{ title: "跑馬燈公告" }} />
+            <Stack.Screen name="admin/quotes" options={{ title: "編輯學習金句" }} />
             <Stack.Screen name="admin/courses" options={{ title: "課程設定" }} />
             <Stack.Screen name="admin/course/[id]" options={{ title: "章節與影片" }} />
             <Stack.Screen name="admin/course-edit" options={{ title: "課程資料" }} />

@@ -114,6 +114,19 @@ export async function profileSummary(sub: string, token: string): Promise<{ name
   });
 }
 
+/** 會員在會員中心的獎銜（只放記憶體快取供首頁顯示，不寫入資料庫；業主 2026-11-12 授權讀取）。查不到回 undefined。 */
+export async function rankValue(sub: string, token: string): Promise<string | null | undefined> {
+  return cached(`rank:${sub}`, 300_000, async () => {
+    const res = await callCentral(token, "/v1/me/amway");
+    if (!res?.ok) return undefined;
+    const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown }> } | null;
+    if (!b) return undefined;
+    const v = b.fields?.rank?.value;
+    const s = typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : null;
+    return s && s.trim() ? s.trim() : null;
+  });
+}
+
 /** 顯示名稱（供訂單審核辨識）。 */
 export async function displayName(sub: string, token: string): Promise<string> {
   return (await profileSummary(sub, token)).name;

@@ -16,6 +16,8 @@ export type Member = {
   demo: boolean;
   /** 會員中心的頭像網址（公開；沒有頭像或模擬會員為 null）。 */
   avatarUrl?: string | null;
+  /** 對外獎銜（取自會員中心；獎銜為「無」顯示「安麗寶寶」）。只放記憶體，不存資料庫。 */
+  rankLabel?: string | null;
   /** 職務名稱（中央職務＋本 App 的窗口身分），顯示用。 */
   titles: string[];
   /** 是否有任何報名審核權限。 */
@@ -46,6 +48,8 @@ export type CourseSummary = {
   /** 指導單位、主辦單位（空字串表示未設定）。 */
   guidanceUnit: string;
   hostUnit: string;
+  /** 最近一場的開課時間（沒有場次為 null）。 */
+  nextRunAt: string | null;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
