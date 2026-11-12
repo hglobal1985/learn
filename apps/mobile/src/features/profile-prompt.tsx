@@ -126,15 +126,16 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const apply = useCallback((d: View_) => {
+    setData(d);
+    setVals({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: shown(d.fields.education_system), education_center: shown(d.fields.education_center), rank: shown(d.fields.rank) });
+    setError(null);
+  }, []);
   const load = useCallback(() => {
     api<View_>("GET", "/me/central-profile")
-      .then((d) => {
-        setData(d);
-        setVals({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: shown(d.fields.education_system), education_center: shown(d.fields.education_center), rank: shown(d.fields.rank) });
-        setError(null);
-      })
+      .then(apply)
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [apply]);
   useEffect(() => {
     // 開啟時如果首頁已經把資料帶來了，就直接用（不用再等一次網路）；否則才向伺服器要。
     if (first) setVals({ legal_name: first.legalName, display_name: first.nickname, contact_email: first.email, education_system: shown(first.fields.education_system), education_center: shown(first.fields.education_center), rank: shown(first.fields.rank) });
@@ -148,14 +149,12 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const save = async () => {
     setBusy(true);
     setMsg(null);
-    let pending = false;
     try {
-      for (const key of changed) {
-        const r = await api<{ status: string | null }>("PUT", "/me/central-profile", { key, value: vals[key] });
-        if (r.status === "pending") pending = true;
-      }
-      setMsg({ ok: true, text: pending ? "已儲存，部分欄位等待審核" : "已儲存到會員中心" });
-      load();
+      // 所有改過的欄位一次送出（伺服器同時寫給會員中心），並把最新狀態一起帶回來，不用再多問一趟。
+      const r = await api<{ ok: boolean; errors: string[]; pending: boolean; form: View_ | null }>("PUT", "/me/central-profile", { changes: changed.map((key) => ({ key, value: vals[key] })) });
+      if (r.form) apply(r.form);
+      else load();
+      setMsg(r.errors.length ? { ok: false, text: r.errors[0] } : { ok: true, text: r.pending ? "已儲存，部分欄位等待審核" : "已儲存到會員中心" });
       invalidate();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });

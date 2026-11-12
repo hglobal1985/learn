@@ -112,13 +112,15 @@ function requireAdmin(ctx: Ctx): Session {
 
 const demoEnabled = (env: Env) => env.DEMO_LOGIN === "on";
 
-async function loadSession(env: Env, req: Request, warmAmway = false): Promise<Session | null> {
+async function loadSession(env: Env, req: Request, warmAmway = false, light = false): Promise<Session | null> {
   const db = env.DB;
   const auth = req.headers.get("authorization") ?? "";
   const jwt = /^Bearer (\S+)$/.exec(auth)?.[1];
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
+    // 「完善資料」視窗的請求只需要知道是誰（帶著會員本人的 Token 轉給會員中心），不必先問名稱與職務，省下一趟。
+    if (light) return { kind: "central", sub, name: "", avatarUrl: null, role: "student", token: jwt, roles: [], hglobal: false, center: null };
     // 向會員中心的查詢同時送出（/me 還會順便預先查好 Amway 資料，後面直接用快取）。
     const [prof, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt), warmAmway ? amwayMe(sub, jwt) : undefined]);
     // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
@@ -1885,24 +1887,39 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx) => {
       const s = requireMember(ctx);
       if (s.kind !== "central") return fail(400, "central_only", "只有中央會員可以使用");
-      const body = await readJson<{ key?: unknown; value?: unknown }>(ctx.req);
-      if (body.key === "contact_email") {
-        const em = typeof body.value === "string" ? body.value.trim().toLowerCase() : "";
-        if (!validEmail(em)) return fail(400, "invalid_email", "Email 格式不正確");
-        if (!(await saveContactEmail(s.sub, s.token, em))) return fail(502, "central_unavailable", "會員中心暫時無法儲存，請稍後再試");
-        forgetMember(s.sub);
-        return { ok: true, status: null };
+      const body = await readJson<{ changes?: unknown; key?: unknown; value?: unknown }>(ctx.req);
+      type Change = { key: "legal_name" | "display_name" | "contact_email" | "education_system" | "education_center" | "rank"; value: string | null };
+      const keys = ["legal_name", "display_name", "contact_email", "education_system", "education_center", "rank"] as const;
+      const raw = Array.isArray(body.changes) ? body.changes : [{ key: body.key, value: body.value }];
+      if (!raw.length || raw.length > 8) return fail(400, "invalid_request", "沒有要儲存的內容");
+      const changes: Change[] = [];
+      for (const r of raw as { key?: unknown; value?: unknown }[]) {
+        const key = keys.find((k) => k === r?.key);
+        if (!key) return fail(400, "invalid_field", "不能修改這個欄位");
+        const v = typeof r.value === "string" ? r.value.trim().slice(0, key === "contact_email" ? 254 : 50) : r.value === null ? null : undefined;
+        if (v === undefined) return fail(400, "invalid_value", "內容格式不正確");
+        if (key === "contact_email" && v && !validEmail(v.toLowerCase())) return fail(400, "invalid_email", "Email 格式不正確");
+        changes.push({ key, value: v === "" ? null : key === "contact_email" ? v!.toLowerCase() : v });
       }
-      const keys = ["legal_name", "display_name", "education_system", "education_center", "rank"] as const;
-      const key = keys.find((k) => k === body.key);
-      if (!key) return fail(400, "invalid_field", "不能修改這個欄位");
-      const value = typeof body.value === "string" ? body.value.trim().slice(0, 50) : body.value === null ? null : undefined;
-      if (value === undefined) return fail(400, "invalid_value", "內容格式不正確");
-      // 資料正本在會員中心：直接寫過去，這裡不保存（也不寫日誌）。
-      const r = await centralWriteField(s.token, key, value === "" ? null : value);
+      // 資料正本在會員中心：直接寫過去（不保存、不寫日誌）。除了獎銜（要先有系統與中心）以外同時送出，最後再送獎銜。
+      const errors: string[] = [];
+      let pending = false;
+      const write = async (c: Change) => {
+        if (c.key === "contact_email") {
+          if (!(await saveContactEmail(s.sub, s.token, c.value))) errors.push("Email：會員中心暫時無法儲存");
+          return;
+        }
+        const r = await centralWriteField(s.token, c.key, c.value);
+        if (!r.ok) errors.push(r.message);
+        else if (r.status === "pending") pending = true;
+      };
+      await Promise.all(changes.filter((c) => c.key !== "rank").map(write));
+      const rank = changes.find((c) => c.key === "rank");
+      if (rank) await write(rank);
       forgetMember(s.sub);
-      if (!r.ok) return fail(r.status, "central_rejected", r.message);
-      return { ok: true, status: r.status };
+      // 把最新的欄位狀態一起回傳，畫面不用再多問一趟。
+      const form = await centralProfileView(s.sub, s.token).catch(() => null);
+      return { ok: errors.length === 0, errors, pending, form };
     },
   ],
   [
@@ -2392,6 +2409,7 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
 const NO_SESSION = /^\/api\/v2\/(announcements|quotes\/random|config|media\/(pub|img|file|audio))(\?|$)/;
 
 async function context(req: Request, env: Env, url: URL): Promise<Ctx> {
-  const session = NO_SESSION.test(url.pathname) ? null : await loadSession(env, req, req.method === "GET" && url.pathname === "/api/v2/me");
+  const light = /^\/api\/v2\/me\/(central-profile|vocab)$/.test(url.pathname);
+  const session = NO_SESSION.test(url.pathname) ? null : await loadSession(env, req, req.method === "GET" && url.pathname === "/api/v2/me", light);
   return { env, db: env.DB, req, url, platform: platformOf(req), session };
 }
