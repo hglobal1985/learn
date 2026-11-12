@@ -9,7 +9,7 @@ import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { maxContentWidth, space } from "@/theme/tokens";
-import { AppText, BrandTitle, Button, ErrorView, LoadingView, Ticker } from "@/ui";
+import { AppText, BrandTitle, Button, ErrorView, HomeRailsSkeleton, Ticker } from "@/ui";
 
 /**
  * 首頁：固定一頁、不上下捲動。上方置中顯示大標題與會員頭像＋姓名（點擊進入會員中心編輯基本資料）、跑馬燈公告，下方左右兩個直式區塊（繼續學習、推薦課程），
@@ -23,7 +23,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { member } = useSession();
   const [avatarFailed, setAvatarFailed] = useState(false);
-  const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
+  const { data, error, reload } = useApi<CourseSummary[]>("/courses");
   const [quote, setQuote] = useState<string | null>(null);
   const [noticeClosed, setNoticeClosed] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -92,7 +92,7 @@ export default function HomeScreen() {
         </View>
         {noticeClosed ? null : <Ticker items={(notices.data ?? []).map((n) => n.text)} onClose={() => setNoticeClosed(true)} />}
         {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
-        {loading && !data ? <LoadingView /> : null}
+        {!data && !error ? <HomeRailsSkeleton /> : null}
         {data ? (
           <View style={styles.middle}>
           <View style={styles.rails}>

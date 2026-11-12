@@ -13,6 +13,7 @@ export { LoadingView, ErrorView } from "./state-views";
 export { NoticeBox } from "./notice-box";
 export { Chips } from "./chips";
 export { Ticker } from "./ticker";
+export { HomeRailsSkeleton, SkeletonBlock } from "./skeleton";
 export { Field } from "./field";
 export { BottomBar } from "./bottom-bar";
 export { BrandTitle } from "./brand-title";
