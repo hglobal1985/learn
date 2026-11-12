@@ -118,7 +118,7 @@
 ## 2026-11-12（四）：R2、自己審核、Email 通知
 - **R2 已綁定**：bucket `learn`、綁定 `MEDIA`（已部署）。**仍待業主設定 Secret `MEDIA_URL_SECRET`**，音檔才能上傳／播放。
 - **管理員（超級管理員、總部秘書）可審核自己的報名**；會長、窗口、審核員仍不行（`reviewOrder`、`canReview`）。
-- **寄信網域**：Cloudflare Email Service 子網域 `learn.hglobal1985.com` 已開通（SPF／DKIM／DMARC／退信 MX 都在 `cf-bounce.learn…`、`_dmarc.learn…` 底下，不動網站本身與主網域的 service@ 轉寄、Gmail 寄信，因為主網域會被加上 `p=reject`）。2026-11-12 由 `mail.hglobal1985.com` 改為此網域；舊的 `mail.hglobal1985.com` 寄信功能仍開著，確認新網域收信正常後再關閉。寄件人 `noreply@learn.hglobal1985.com`，Worker 綁定 `EMAIL`、變數 `EMAIL_FROM`，不需任何金鑰。**尚未實際寄過一封測試信。**
+- **寄信網域**：Cloudflare Email Service 子網域 `learn.hglobal1985.com` 已開通（SPF／DKIM／DMARC／退信 MX 都在 `cf-bounce.learn…`、`_dmarc.learn…` 底下，不動網站本身與主網域的 service@ 轉寄、Gmail 寄信，因為主網域會被加上 `p=reject`）。2026-11-12 由 `mail.hglobal1985.com` 改為此網域；業主確認新網域收信正常後，已刪除舊的 `mail.hglobal1985.com` 寄信子網域。寄件人 `noreply@learn.hglobal1985.com`，Worker 綁定 `EMAIL`、變數 `EMAIL_FROM`，不需任何金鑰。
 - **Email 通知設計**：
   - 收件信箱＝會員中心個人資料「聯絡信箱」`contact_email`（正本在中央；行動大學已有權限，**未修改會員中心**）。
   - 登入時（`GET /me`、通知設定頁）把它同步成副本，存在 D1 `member_contacts`（migration `0007`），因為通知常寄給不在線上的人。學員在「我的 → 通知設定」改信箱時，先 `PUT /v1/me/profile/fields/contact_email` 寫回中央，成功才更新副本。刪除學習資料時整列刪除。信箱不寫稽核紀錄與日誌。
@@ -126,3 +126,5 @@
   - API：`GET／PUT /api/v2/me/notification-settings`；畫面 `app/settings/notifications.tsx`。手機推播尚未做（畫面顯示「即將推出」）。
 - 後端測試 41 項（新增 `tests/email.test.ts`）。
 - **業主已實測（2026-11-12）**：真實帳號填信箱後，會員中心的聯絡信箱有同步改；另一個帳號報名付費課程後，有收到通知信。尚未驗證：信是否進垃圾信匣、各種通知（審核結果、留言、會長通知）的信件內容。沒登入過新版的人還沒有信箱副本，暫時收不到 Email。
+
+- **待中央確認（2026-11-12）**：行動大學保存的個人資料副本（聯絡信箱、顯示名稱、報名時的中心名稱）尚未取得會員中心端對《隱私同意文字》的書面確認，也還沒有「會員在會員中心刪帳號時通知行動大學刪副本」的機制；業主將轉請中央會員 AI 評估。
