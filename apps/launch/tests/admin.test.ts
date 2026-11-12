@@ -401,13 +401,13 @@ test("跑馬燈公告：公開只看啟用中的、管理員（超級管理員�
   assert.equal((await call("PATCH", `/admin/announcements/${a.id}`, { token: admin, body: {} })).status, 400);
 });
 
-test("學習金句：內建 11 句、隨機取一則、只有超級管理員可新增修改刪除（秘書不行）", async () => {
+test("學習金句：內建 20 句、隨機取一則、只有超級管理員可新增修改刪除（秘書不行）", async () => {
   const { call, login } = setup();
   const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
   type Q = { id: string; text: string };
   const list = (await call<Q[]>("GET", "/admin/quotes", { token: admin })).data;
-  assert.equal(list.length, 11, "初始 11 句");
-  assert.ok(list.some((q) => q.text.startsWith("成功最快的路")));
+  assert.equal(list.length, 20, "初始 20 句");
+  assert.ok(list.some((q) => q.text.startsWith("經驗是最好的老師")));
   const r = (await call<{ text: string | null }>("GET", "/quotes/random")).data;
   assert.ok(r.text && list.some((q) => q.text === r.text), "隨機取一則（未登入也可）");
   assert.equal((await call("GET", "/admin/quotes", { token: student })).status, 403);
