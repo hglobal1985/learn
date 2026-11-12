@@ -21,7 +21,7 @@ function setup() {
     return { status: res.status, data: (await res.json()) as T };
   };
   const login = async (sub: string) => (await call<{ token: string }>("POST", "/auth/demo", { body: { sub } })).data.token;
-  return { raw, call, login };
+  return { raw, call, login, env };
 }
 const titles = (n: Notice[]) => n.map((x) => x.title);
 
@@ -156,4 +156,43 @@ test("場次：每場各自報名與審核、名額與截止、章節只給該�
   assert.equal((await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data[0].status, "opened");
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { freeUntil: "2001-01-01T00:00:00Z" } });
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.priceTwd, 1280);
+});
+
+test("刪除已有人報名的場次：先看影響、必須輸入 YES、報名／進度／場次專屬章節一併刪除，別的場次不受影響", async () => {
+  const { call, login, env } = setup();
+  const [admin, student, silver] = await Promise.all(["demo-admin", "demo-student", "demo-silver"].map(login));
+  let c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "11 月", capacity: 5 } })).data;
+  c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "12 月", capacity: 5 } })).data;
+  const nov = c.runs.find((r) => r.title === "11 月")!;
+  const dec = c.runs.find((r) => r.title === "12 月")!;
+  await call("PATCH", "/admin/lessons/share-welcome", { token: admin, body: { runId: nov.id } });
+  const [o1] = (await call<Order[]>("POST", "/orders", { token: student, body: { items: [{ courseId: "share", runId: nov.id }] } })).data;
+  const [o2] = (await call<Order[]>("POST", "/orders", { token: silver, body: { items: [{ courseId: "share", runId: dec.id }] } })).data;
+  await call("POST", `/admin/orders/${o1.id}/review`, { token: admin, body: { action: "paid", paidTwd: 0 } });
+  await call("POST", "/courses/share/lessons/share-welcome/complete", { token: student });
+
+  type Impact = { registrations: number; opened: number; pending: number; students: number; lessons: number; title: string };
+  const imp = (await call<Impact>("GET", `/admin/runs/${nov.id}/delete-impact`, { token: admin })).data;
+  assert.deepEqual([imp.title, imp.registrations, imp.opened, imp.students, imp.lessons], ["11 月", 1, 1, 1, 1]);
+  assert.equal((await call("GET", `/admin/runs/${nov.id}/delete-impact`, { token: student })).status, 403);
+  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: admin })).status, 409, "沒帶確認");
+  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: admin, body: { confirm: "yes" } })).status, 409);
+  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: student, body: { confirm: "YES" } })).status, 403);
+  const res = await call<CourseDetail>("DELETE", `/admin/runs/${nov.id}`, { token: admin, body: { confirm: "YES" } });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.deepEqual(res.data.runs.map((r) => r.title), ["12 月"]);
+
+  const n = async (sql: string) => (await env.DB.prepare(sql).first<{ n: number }>())!.n;
+  assert.equal(await n(`SELECT COUNT(*) AS n FROM orders WHERE id = '${o1.id}'`), 0);
+  assert.equal(await n(`SELECT COUNT(*) AS n FROM enrollments WHERE run_id = '${nov.id}'`), 0);
+  assert.equal(await n("SELECT COUNT(*) AS n FROM lessons WHERE id = 'share-welcome'"), 0, "場次專屬章節一併刪除");
+  assert.equal(await n("SELECT COUNT(*) AS n FROM lesson_progress WHERE lesson_id = 'share-welcome'"), 0);
+  assert.equal(await n(`SELECT COUNT(*) AS n FROM orders WHERE id = '${o2.id}'`), 1, "別的場次的報名不受影響");
+  assert.equal(await n("SELECT COUNT(*) AS n FROM courses WHERE id = 'share'"), 1);
+
+  // 沒人報名的場次照舊可直接刪除
+  assert.equal((await call("DELETE", `/admin/runs/${dec.id}`, { token: admin })).status, 409, "12 月已有報名仍需 YES");
+  c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "空場次" } })).data;
+  const empty = c.runs.find((r) => r.title === "空場次")!;
+  assert.equal((await call("DELETE", `/admin/runs/${empty.id}`, { token: admin })).status, 200);
 });

@@ -10,6 +10,7 @@ export type {
   ClientPlatform,
   CourseComment,
   CourseDeleteImpact,
+  RunDeleteImpact,
   CourseDetail,
   CourseRun,
   Duty,

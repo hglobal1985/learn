@@ -234,3 +234,6 @@ export type Attachment = { id: string; name: string; kind: "file" | "link"; type
 
 /** 刪除課程前的影響統計（有報名紀錄時，畫面要求輸入 YES 才能刪除）。 */
 export type CourseDeleteImpact = { title: string; registrations: number; pending: number; opened: number; students: number; comments: number; paidTwd: number };
+
+/** 刪除場次前的影響統計。lessons＝屬於這個場次的專屬章節數（會一併刪除）。 */
+export type RunDeleteImpact = { title: string; courseTitle: string; registrations: number; pending: number; opened: number; students: number; lessons: number; paidTwd: number };

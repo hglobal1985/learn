@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { api, type CourseDetail, type CourseRun } from "@/api/client";
+import { api, type CourseDetail, type CourseRun, type RunDeleteImpact } from "@/api/client";
 import { dateTime, ntd, parseLocal, toLocal } from "@/features/format";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, Field, NoticeBox, Pill, Section } from "@/ui";
@@ -15,6 +15,41 @@ export function RunsEditor({ course, onChanged }: { course: CourseDetail; onChan
   const [form, setForm] = useState<Form>(blank);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // 已有人報名的場次：先顯示影響，管理員必須手動輸入大寫 YES 才能刪除。
+  const [danger, setDanger] = useState<{ id: string; impact: RunDeleteImpact } | null>(null);
+  const [yes, setYes] = useState("");
+  const askDelete = async (r: CourseRun) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const impact = await api<RunDeleteImpact>("GET", `/admin/runs/${r.id}/delete-impact`);
+      if (impact.registrations > 0) {
+        setDanger({ id: r.id, impact });
+        setYes("");
+      } else {
+        await api("DELETE", `/admin/runs/${r.id}`);
+        onChanged();
+      }
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const confirmDelete = async () => {
+    if (!danger || yes !== "YES") return;
+    setBusy(true);
+    try {
+      await api("DELETE", `/admin/runs/${danger.id}`, { confirm: yes });
+      setDanger(null);
+      setYes("");
+      onChanged();
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const set = (k: keyof Form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -58,9 +93,22 @@ export function RunsEditor({ course, onChanged }: { course: CourseDetail; onChan
             <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
               <Button variant="secondary" label="編輯" onPress={() => (setForm(fromRun(r)), setEditing(r.id))} />
               <Button variant="secondary" label={r.status === "closed" ? "重新開放報名" : "關閉報名"} disabled={busy} onPress={() => run(() => api("PATCH", `/admin/runs/${r.id}`, { status: r.status === "closed" ? "open" : "closed" }))} />
-              <Button variant="danger" label="刪除" disabled={busy} onPress={() => run(() => api("DELETE", `/admin/runs/${r.id}`))} />
+              <Button variant="danger" label="刪除" disabled={busy} onPress={() => askDelete(r)} />
             </View>
           )}
+          {danger?.id === r.id ? (
+            <>
+              <NoticeBox
+                tone="danger"
+                text={`警告：場次「${danger.impact.title}」已有 ${danger.impact.registrations} 筆報名紀錄（待審核 ${danger.impact.pending}、已開通 ${danger.impact.opened}，${danger.impact.students} 位學員，已確認收款合計 ${ntd(danger.impact.paidTwd)}）。刪除後，這些報名紀錄、繳費審核紀錄、學習進度，以及只屬於這個場次的 ${danger.impact.lessons} 堂章節（含附件、音檔）都會一併刪除，無法復原。建議先到「報名審核」匯出對帳報表（CSV）。`}
+              />
+              <Field label="確定要刪除請輸入大寫 YES" value={yes} onChange={setYes} placeholder="YES" />
+              <View style={{ flexDirection: "row", gap: space.sm, flexWrap: "wrap" }}>
+                <Button variant="danger" label="確定刪除" disabled={yes !== "YES" || busy} loading={busy} onPress={confirmDelete} />
+                <Button variant="ghost" label="取消" disabled={busy} onPress={() => (setDanger(null), setYes(""))} />
+              </View>
+            </>
+          ) : null}
         </Card>
       ))}
       {editing ? (

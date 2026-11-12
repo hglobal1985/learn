@@ -173,7 +173,7 @@ test("音檔：分段上傳到 R2、只有開通學員拿得到簽名網址、�
   assert.equal(part.status, 206);
   assert.equal(part.headers.get("content-range"), "bytes 2-4/10");
   assert.deepEqual([...new Uint8Array(await part.arrayBuffer())], [2, 3, 4]);
-  assert.equal((await raw("GET", p.url.replace(/s=./, "s=X"))).status, 403);
+  assert.equal((await raw("GET", p.url.replace(/s=(.)/, (_m, ch) => `s=${ch === "X" ? "Y" : "X"}`))).status, 403);
   assert.equal((await raw("GET", p.url.replace(/e=\d+/, "e=1"))).status, 403, "過期");
 
   // 換回影片來源時刪除舊音檔
@@ -205,7 +205,7 @@ test("附件教材：只有管理員能上傳、已開通學員才拿得到下�
   assert.equal(file.headers.get("content-type"), "application/pdf");
   assert.match(file.headers.get("content-disposition") ?? "", /^attachment; filename\*=UTF-8''/);
   assert.deepEqual([...new Uint8Array(await file.arrayBuffer())], [1, 2, 3, 4]);
-  assert.equal((await raw("GET", list[0].url.replace(/s=./, "s=X"))).status, 403, "竄改簽名");
+  assert.equal((await raw("GET", list[0].url.replace(/s=(.)/, (_m, ch) => `s=${ch === "X" ? "Y" : "X"}`))).status, 403, "竄改簽名");
   assert.equal((await raw("GET", list[0].url.replace(/e=\d+/, "e=1"))).status, 403, "過期");
   assert.equal((await raw("GET", `/api/v2/media/file?k=audio/x&e=9999999999&s=x`)).status, 403, "不是附件鍵");
 
