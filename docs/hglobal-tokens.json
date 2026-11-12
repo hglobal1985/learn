@@ -1,0 +1,21 @@
+{
+  "$schema_note": "寰宇生態系固定配色（Design Tokens）。來源：寰宇 logo（深綠、橄欖、橘、黃、鮭粉）。所有 App 一律使用這份色值，不可自行新增或改色。版本 1.0（2026-11-13）。",
+  "version": "1.0",
+  "logoPalette": { "green": "#0c603c", "olive": "#486c48", "orange": "#cc6c0c", "yellow": "#f2dc27", "salmon": "#f0a884" },
+  "gradients": { "topBar": "linear-gradient(90deg, #cc6c0c, #f2dc27 55%, #f0a884)" },
+  "light": {
+    "bg": "#f8f6ef", "card": "#ffffff", "fg": "#1d2a22", "muted": "#5d6b62", "line": "#e2dfd2",
+    "green": "#0c603c", "greenDark": "#094a2e", "greenSoft": "#e7f1ea", "olive": "#486c48",
+    "orange": "#cc6c0c", "orangeSoft": "#fdf0e3", "warn": "#a86408",
+    "danger": "#b3261e", "dangerSoft": "#fbeae8", "ok": "#1b7a43",
+    "onGreen": "#ffffff", "borderWarn": "#e6c48c", "borderBad": "#e8b4af", "credit": "#cfd2c9"
+  },
+  "dark": {
+    "bg": "#121515", "card": "#1c2020", "fg": "#eeefeb", "muted": "#a6adab", "line": "#343b38",
+    "green": "#cee49f", "greenDark": "#e6f3c4", "greenSoft": "#2c3622", "olive": "#8fae78",
+    "orange": "#f0a050", "orangeSoft": "#3a2e17", "warn": "#f2c063",
+    "danger": "#f2b8b5", "dangerSoft": "#3c1e1c", "ok": "#9bd39e",
+    "onGreen": "#172016", "borderWarn": "#6b5424", "borderBad": "#7a3b37", "credit": "#3d4441"
+  },
+  "appIcon": { "background": "#0c603c → #094a2e（深綠漸層圓角方形）", "rule": "每個 App 的圖示以主綠為底、奶油色主體圖形、搭配金黃／橘／鮭粉點綴；圖示網址提供給中央登記（icon_url）。" }
+}

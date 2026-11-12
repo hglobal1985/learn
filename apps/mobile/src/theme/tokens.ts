@@ -5,23 +5,24 @@
 export type ColorScheme = "light" | "dark";
 
 const palettes = {
+  // 色值一律取自《寰宇生態系配色規範》（docs/hglobal-color-standard.md，與中央會員視覺規範 1.0／1.5 相同）；不要自行新增色碼。
   light: {
-    background: "#F6F5F0",
+    background: "#F8F6EF",
     surface: "#FFFFFF",
-    surfaceMuted: "#EEEDE6",
-    border: "#DEDCD2",
-    text: "#1B201C",
-    textMuted: "#5E6660",
+    surfaceMuted: "#F0EEE3",
+    border: "#E2DFD2",
+    text: "#1D2A22",
+    textMuted: "#5D6B62",
     textOnAccent: "#FFFFFF",
-    accent: "#2F5D3A",
-    accentSoft: "#E1EBD3",
-    accentText: "#2F5D3A",
-    warning: "#9A5B00",
-    warningSoft: "#FBEBCC",
+    accent: "#0C603C",
+    accentSoft: "#E7F1EA",
+    accentText: "#0C603C",
+    warning: "#A86408",
+    warningSoft: "#FDF0E3",
     danger: "#B3261E",
-    dangerSoft: "#F9DEDC",
-    success: "#2E7D32",
-    successSoft: "#DCEFDB",
+    dangerSoft: "#FBEAE8",
+    success: "#1B7A43",
+    successSoft: "#E7F1EA",
     tabBar: "#FFFFFF",
   },
   dark: {

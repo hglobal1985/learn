@@ -203,3 +203,4 @@
 - **首頁標題**：移除逐字跳動，改為「反光」——文字顏色沿 logo 色系流動，並週期性（4.2 秒）掃過一道由左到右的亮光（淺色模式亮金、深色模式白光，含光暈），logo 同步呼吸；沒有位移。
 - **（2026-11-13 業主決定）封測階段不建立 staging**：行動大學直接本機測試＋正式部署；正式上架 App Store／Google Play 後，才改成「每次修改先 staging 再 production」。中央串接新標準（webhook、聯絡查詢）因此改為：本機以模擬中央測試，業主在中央後台建立 production 金鑰後再接真實事件。
 - **（更正）App 專屬圖示＝學士帽**：不再使用寰宇 logo。設計：深綠漸層圓角方形底、奶油色學士帽（橘色帽身）、金黃流蘇、一圈金→橘→鮭粉的環繞軌道弧線（呼應寰宇 logo 的環），配色取自寰宇 logo 與網站主色。由 `apps/mobile/scripts/make-icon.py`（Pillow）產生並覆蓋 `assets/`（icon、adaptive-icon、favicon、首頁標題旁的 `logo.png`）與 `public/`（網頁圖示、遮罩圖示）；要改設計只需改這支腳本重跑。Android 自適應圖示背景 #14663F。圖示網址不變：`https://learn.hglobal1985.com/icon-512.png`。
+- **（2026-11-13 業主決定）全生態系統一固定配色**：行動大學不再有配色例外，`tokens.ts` 淺色改用與中央相同色值（深色本來就相同）；規範寫在 `docs/hglobal-color-standard.md` 與 `docs/hglobal-tokens.json`，已請中央採用為平台標準（所有現在與未來的 App 一致）。課程封面主題色與報名課程的底圖不受限（不屬於介面色）。

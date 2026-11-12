@@ -4,8 +4,8 @@ import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
 
 /** 寰宇 logo 的色系：深綠 → 橄欖 → 橘 → 金黃 → 鮭粉 → 回到深綠。淺色模式用較深的色階、深色模式用較亮的色階。 */
-const LIGHT = ["#14663f", "#486c48", "#cc6c0c", "#e09a10", "#e0734a", "#14663f"];
-const DARK = ["#5fcf94", "#9bc79b", "#f0a050", "#f2dc27", "#f4a884", "#5fcf94"];
+const LIGHT = ["#0c603c", "#486c48", "#cc6c0c", "#a86408", "#486c48", "#0c603c"]; // 規範色：主綠、橄欖、橘、警示橘褐
+const DARK = ["#cee49f", "#8fae78", "#f0a050", "#f2c063", "#8fae78", "#cee49f"]; // 規範深色模式色階
 const TEXT = "寰宇行動大學";
 const STEPS = 48; // 動畫取樣點數（越多越平順）
 
@@ -39,7 +39,7 @@ export function BrandTitle() {
   }, [t]);
   const palette = scheme === "dark" ? DARK : LIGHT;
   // 反光色：深色模式用白光；淺色模式背景是米白，白光會看不見，改用亮金色。
-  const shine = useMemo(() => (scheme === "dark" ? [255, 255, 255] : [255, 205, 40]), [scheme]);
+  const shine = useMemo(() => (scheme === "dark" ? [255, 255, 255] : [242, 220, 39]), [scheme]);
   const n = TEXT.length;
   const input = useMemo(() => Array.from({ length: STEPS + 1 }, (_, s) => s / STEPS), []);
   const letters = useMemo(

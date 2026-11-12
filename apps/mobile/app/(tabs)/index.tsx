@@ -19,7 +19,7 @@ import { AppText, BrandTitle, Button, ErrorView, LoadingView, Ticker } from "@/u
 let promptedFor: string | null = null;
 
 export default function HomeScreen() {
-  const { c } = useTheme();
+  const { c, scheme } = useTheme();
   const insets = useSafeAreaInsets();
   const { member } = useSession();
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -77,8 +77,8 @@ export default function HomeScreen() {
                 {member.name}
               </AppText>
               {member.rankLabel ? (
-                <View style={styles.rank}>
-                  <AppText variant="callout" style={{ color: "#cc6c0c", fontWeight: "700", lineHeight: 20 }}>
+                <View style={[styles.rank, scheme === "dark" && { borderColor: "#6b5424", backgroundColor: "#3a2e17" }]}>
+                  <AppText variant="callout" style={{ color: scheme === "dark" ? "#f0a050" : "#cc6c0c", fontWeight: "700", lineHeight: 20 }}>
                     {member.rankLabel}
                   </AppText>
                 </View>

@@ -25,8 +25,8 @@ function confirm(title: string, message: string, ok: string): Promise<boolean> {
  */
 function SiteFooter() {
   const { scheme } = useTheme();
-  const link = scheme === "dark" ? "#9AA39D" : "#5d6b62";
-  const credit = scheme === "dark" ? "#4A524D" : "#cfd2c9";
+  const link = scheme === "dark" ? "#a6adab" : "#5d6b62";
+  const credit = scheme === "dark" ? "#3d4441" : "#cfd2c9";
   return (
     <View style={styles.foot}>
       <Pressable accessibilityRole="link" onPress={() => Linking.openURL("https://learn.hglobal1985.com/privacy")}>
