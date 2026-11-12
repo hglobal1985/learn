@@ -116,7 +116,7 @@
 - **等業主**：啟用 R2（音檔、附件教材）；選定寄信服務（Email 通知）。
 
 ## 2026-11-12（四）：R2、自己審核、Email 通知
-- **R2 已綁定**：bucket `learn`、綁定 `MEDIA`（已部署）。**仍待業主設定 Secret `MEDIA_URL_SECRET`**，音檔才能上傳／播放。
+- **R2 已綁定**：bucket `learn`、綁定 `MEDIA`（已部署）。`MEDIA_URL_SECRET` 業主已設定，音檔上傳與播放已由業主實測 OK（2026-11-12）。
 - **管理員（超級管理員、總部秘書）可審核自己的報名**；會長、窗口、審核員仍不行（`reviewOrder`、`canReview`）。
 - **寄信網域**：Cloudflare Email Service 子網域 `learn.hglobal1985.com` 已開通（SPF／DKIM／DMARC／退信 MX 都在 `cf-bounce.learn…`、`_dmarc.learn…` 底下，不動網站本身與主網域的 service@ 轉寄、Gmail 寄信，因為主網域會被加上 `p=reject`）。2026-11-12 由 `mail.hglobal1985.com` 改為此網域；業主確認新網域收信正常後，已刪除舊的 `mail.hglobal1985.com` 寄信子網域。寄件人 `noreply@learn.hglobal1985.com`，Worker 綁定 `EMAIL`、變數 `EMAIL_FROM`，不需任何金鑰。
 - **Email 通知設計**：
@@ -128,3 +128,9 @@
 - **業主已實測（2026-11-12）**：真實帳號填信箱後，會員中心的聯絡信箱有同步改；另一個帳號報名付費課程後，有收到通知信。尚未驗證：信是否進垃圾信匣、各種通知（審核結果、留言、會長通知）的信件內容。沒登入過新版的人還沒有信箱副本，暫時收不到 Email。
 
 - **待中央確認（2026-11-12）**：行動大學保存的個人資料副本（聯絡信箱、顯示名稱、報名時的中心名稱）尚未取得會員中心端對《隱私同意文字》的書面確認，也還沒有「會員在會員中心刪帳號時通知行動大學刪副本」的機制；業主將轉請中央會員 AI 評估。
+
+## 2026-11-12（五）：附件教材
+- 管理員在「課程設定 → 章節」每堂可上傳多個附件（PDF、Word、PowerPoint、Excel、CSV、文字、ZIP、PNG、JPG；單檔 50MB、每章 20 個）；學員在上課頁「附件教材」下載。
+- 檔案放 R2（鍵 `files/<章節>/<uuid>.<副檔名>`），清單在 D1 `lesson_attachments`（migration `0008`）。下載用 1 小時有效的簽名網址（`GET /api/v2/media/file`，簽章用 `MEDIA_URL_SECRET`），只有已開通該場／該課的學員與管理員拿得到；一律以附件下載、`nosniff`。刪除附件、章節、課程時一併刪 R2 檔。
+- API：`GET /courses/:cid/lessons/:lid/attachments`、`GET／PUT /admin/lessons/:id/attachments?name=`、`DELETE /admin/attachments/:id`。
+- 後端測試 42 項；已部署。**待業主實測**：上傳附件、用已開通帳號下載、未開通帳號看不到。

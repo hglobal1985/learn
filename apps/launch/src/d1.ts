@@ -22,6 +22,7 @@ export interface R2Bucket {
   head(key: string): Promise<R2Object | null>;
   get(key: string, opts?: { range?: { offset: number; length: number } }): Promise<(R2Object & { body: ReadableStream }) | null>;
   delete(key: string): Promise<void>;
+  put(key: string, value: ArrayBuffer, opts?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
   createMultipartUpload(key: string, opts?: { httpMetadata?: { contentType?: string } }): Promise<{ uploadId: string }>;
   resumeMultipartUpload(
     key: string,

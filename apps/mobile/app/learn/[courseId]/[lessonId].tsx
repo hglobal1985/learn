@@ -2,6 +2,7 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type Playback } from "@/api/client";
+import { AttachmentList } from "@/features/attachments";
 import { LessonPlayer } from "@/features/player/lesson-player";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -57,6 +58,7 @@ export default function LessonScreen() {
         </AppText>
         <AppText variant="title">{lesson.title}</AppText>
       </View>
+      <AttachmentList courseId={c.id} lessonId={lesson.id} />
       {segmentDone && !lesson.completed ? <NoticeBox tone="success" text="這一堂播放完畢，按「完成」記錄進度。" /> : null}
       <View style={styles.row}>
         {lesson.completed ? (

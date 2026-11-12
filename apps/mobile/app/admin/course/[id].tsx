@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type CourseRun, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
+import { AttachmentManager } from "@/features/attachments";
 import { RunsEditor } from "@/features/admin/runs-editor";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -327,6 +328,7 @@ function LessonEditor({
           本堂長度：{formatDuration(length)}
         </AppText>
       ) : null}
+      <AttachmentManager lessonId={lesson.id} />
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
       <View style={styles.row}>
         <Button label="儲存" icon="save-outline" loading={busy === "save"} disabled={!!busy} onPress={save} />

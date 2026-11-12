@@ -24,6 +24,9 @@ function fakeR2(): R2Bucket & { objects: Map<string, { data: Uint8Array; type?: 
     async delete(key) {
       objects.delete(key);
     },
+    async put(key, value, opts) {
+      objects.set(key, { data: new Uint8Array(value), type: opts?.httpMetadata?.contentType });
+    },
     async createMultipartUpload(key, opts) {
       const id = `u${uploads.size + 1}`;
       uploads.set(id, { key, type: opts?.httpMetadata?.contentType, parts: new Map() });
@@ -176,4 +179,41 @@ test("音檔：分段上傳到 R2、只有開通學員拿得到簽名網址、�
   // 換回影片來源時刪除舊音檔
   await call("PATCH", "/admin/lessons/start-review", { token: admin, body: { mediaType: "demo" } });
   assert.equal(r2.objects.size, 0);
+});
+
+test("附件教材：只有管理員能上傳、已開通學員才拿得到下載網址、限制檔案類型、刪除章節時清掉檔案", async () => {
+  const r2 = fakeR2();
+  const { call, raw, login } = setup({ MEDIA: r2, MEDIA_URL_SECRET: "test-secret" });
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  const put = (token: string, name: string, bytes: number[]) => call<{ id: string; name: string; size: number }>("PUT", `/admin/lessons/start-review/attachments?name=${encodeURIComponent(name)}`, { token, bytes: new Uint8Array(bytes) });
+  assert.equal((await put(student, "講義.pdf", [1])).status, 403, "學員不能上傳");
+  assert.equal((await put(admin, "壞.exe", [1])).status, 400, "不支援的類型");
+  assert.equal((await put(admin, "空.pdf", [])).status, 400, "空檔案");
+  const up = await put(admin, "第4堂 講義.pdf", [1, 2, 3, 4]);
+  assert.equal(up.status, 200);
+  assert.equal(up.data.size, 4);
+  assert.equal(r2.objects.size, 1);
+
+  const path = "/courses/start/lessons/start-review/attachments";
+  assert.equal((await call("GET", path, { token: student })).status, 403, "未報名");
+  await call("POST", "/orders", { token: student, body: { courseIds: ["start"] } });
+  const list = (await call<{ id: string; name: string; url: string }[]>("GET", path, { token: student })).data;
+  assert.equal(list.length, 1);
+  assert.equal(list[0].name, "第4堂 講義.pdf");
+  const file = await raw("GET", list[0].url);
+  assert.equal(file.status, 200);
+  assert.equal(file.headers.get("content-type"), "application/pdf");
+  assert.match(file.headers.get("content-disposition") ?? "", /^attachment; filename\*=UTF-8''/);
+  assert.deepEqual([...new Uint8Array(await file.arrayBuffer())], [1, 2, 3, 4]);
+  assert.equal((await raw("GET", list[0].url.replace(/s=./, "s=X"))).status, 403, "竄改簽名");
+  assert.equal((await raw("GET", list[0].url.replace(/e=\d+/, "e=1"))).status, 403, "過期");
+  assert.equal((await raw("GET", `/api/v2/media/file?k=audio/x&e=9999999999&s=x`)).status, 403, "不是附件鍵");
+
+  // 刪除附件 → 檔案一併刪除；刪章節也會清掉
+  assert.equal((await call("DELETE", `/admin/attachments/${list[0].id}`, { token: admin })).status, 200);
+  assert.equal(r2.objects.size, 0);
+  assert.equal((await put(admin, "第二份.zip", [9])).status, 200);
+  assert.equal(r2.objects.size, 1);
+  assert.equal((await call("DELETE", "/admin/lessons/start-review", { token: admin })).status, 200);
+  assert.equal(r2.objects.size, 0, "刪章節時一併刪檔");
 });

@@ -204,3 +204,6 @@ export type NotificationSettings = {
   emailReady: boolean;
   source: "central" | "local";
 };
+
+/** 章節附件教材。url 為 1 小時內有效的簽名下載網址（只給已開通學員與管理員）。 */
+export type Attachment = { id: string; name: string; size: number; url?: string };

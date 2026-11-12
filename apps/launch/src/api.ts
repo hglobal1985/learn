@@ -12,6 +12,7 @@ import {
   type CourseDetail,
   type CourseSummary,
   type Member,
+  type Attachment,
   type Notice,
   type NotificationSettings,
   type Order,
@@ -20,7 +21,7 @@ import {
 import { flushEmails } from "./email.ts";
 import { centerKey, centerList, contactEmail, displayName, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
-import { audioUrl, verifyAudioUrl } from "./media.ts";
+import { audioUrl, fileUrl, verifyAudioUrl, verifyFileUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
 const SESSION_DAYS = 30;
@@ -354,6 +355,30 @@ async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promi
     ? await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? AND run_id = ?").bind(s.sub, courseId, runId).first()
     : await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
   return !!row;
+}
+
+const ATTACH_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv",
+  txt: "text/plain",
+  zip: "application/zip",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+};
+const ATTACH_MAX = 50 * 1024 * 1024;
+const ATTACH_PER_LESSON = 20;
+
+/** 刪除章節／課程時一併清掉附件檔（資料列由 ON DELETE CASCADE 處理，須在刪資料前先取出鍵）。 */
+async function attachmentKeys(db: D1Database, where: "lesson_id" | "course_id", id: string): Promise<string[]> {
+  const { results } = await db.prepare(`SELECT r2_key FROM lesson_attachments WHERE ${where} = ?`).bind(id).all<{ r2_key: string }>();
+  return results.map((r) => r.r2_key);
 }
 
 async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
@@ -1490,9 +1515,11 @@ const routes: [string, RegExp, Handler][] = [
       const admin = requireAdmin(ctx);
       const lesson = await ctx.db.prepare("SELECT course_id, media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ course_id: string; media_type: string; media_ref: string | null }>();
       if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      const files = await attachmentKeys(ctx.db, "lesson_id", id);
       await ctx.db.batch([ctx.db.prepare("DELETE FROM lessons WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.delete", "lesson", id)]);
       await renumber(ctx.db, lesson.course_id);
       if (lesson.media_type === "audio" && lesson.media_ref) await ctx.env.MEDIA?.delete(lesson.media_ref).catch(() => undefined);
+      for (const k of files) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
       return { ok: true };
     },
   ],
@@ -1568,6 +1595,89 @@ const routes: [string, RegExp, Handler][] = [
   ],
   [
     "GET",
+    /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/attachments$/,
+    async (ctx, [courseId, lessonId]) => {
+      const lesson = await lessonOf(ctx, courseId, lessonId);
+      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
+      const { results } = await ctx.db.prepare("SELECT id, name, size, r2_key FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at").bind(lessonId).all<{ id: string; name: string; size: number; r2_key: string }>();
+      const out: Attachment[] = [];
+      for (const r of results) out.push({ id: r.id, name: r.name, size: r.size, url: (await fileUrl(ctx.env, r.r2_key)) ?? undefined });
+      return out;
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/lessons\/([\w-]+)\/attachments$/,
+    async (ctx, [id]) => {
+      requireAdmin(ctx);
+      const { results } = await ctx.db.prepare("SELECT id, name, size FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at").bind(id).all<Attachment>();
+      return results;
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/lessons\/([\w-]+)\/attachments$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "檔案儲存空間尚未啟用");
+      const lesson = await ctx.db.prepare("SELECT course_id FROM lessons WHERE id = ?").bind(id).first<{ course_id: string }>();
+      if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      const name = (ctx.url.searchParams.get("name") ?? "").replace(/[\\/\u0000-\u001f]/g, "").trim().slice(0, 120);
+      const ext = (/\.([a-z0-9]{1,5})$/i.exec(name)?.[1] ?? "").toLowerCase();
+      const type = ATTACH_TYPES[ext];
+      if (!name || !type) fail(400, "invalid_file", "不支援這種檔案；可上傳 PDF、Word、PowerPoint、Excel、CSV、文字、ZIP、PNG、JPG");
+      const declared = Number(ctx.req.headers.get("content-length") ?? 0);
+      if (declared > ATTACH_MAX) fail(413, "too_large", "附件大小需在 50MB 以內");
+      const count = await ctx.db.prepare("SELECT COUNT(*) AS n FROM lesson_attachments WHERE lesson_id = ?").bind(id).first<{ n: number }>();
+      if ((count?.n ?? 0) >= ATTACH_PER_LESSON) fail(409, "too_many", `每個章節最多 ${ATTACH_PER_LESSON} 個附件`);
+      const data = await ctx.req.arrayBuffer();
+      if (!data.byteLength) fail(400, "empty_file", "檔案是空的");
+      if (data.byteLength > ATTACH_MAX) fail(413, "too_large", "附件大小需在 50MB 以內");
+      const key = `files/${id}/${crypto.randomUUID()}.${ext}`;
+      await bucket.put(key, data, { httpMetadata: { contentType: type } });
+      const attId = crypto.randomUUID();
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO lesson_attachments (id, lesson_id, course_id, name, r2_key, size, content_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(attId, id, lesson.course_id, name, key, data.byteLength, type, admin.sub),
+        audit(ctx.db, admin.sub, "lesson.attachment_add", "lesson", id, attId),
+      ]);
+      return { id: attId, name, size: data.byteLength } satisfies Attachment;
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/attachments\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const row = await ctx.db.prepare("SELECT r2_key, lesson_id FROM lesson_attachments WHERE id = ?").bind(id).first<{ r2_key: string; lesson_id: string }>();
+      if (!row) return fail(404, "not_found", "找不到這個附件");
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM lesson_attachments WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.attachment_delete", "lesson", row.lesson_id, id)]);
+      await ctx.env.MEDIA?.delete(row.r2_key).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/media\/file$/,
+    async (ctx) => {
+      // 簽名網址即授權（瀏覽器下載無法帶 Authorization 標頭）；檔名取自資料表，一律以附件下載。
+      const key = await verifyFileUrl(ctx.env, ctx.url);
+      const bucket = ctx.env.MEDIA;
+      if (!key || !bucket) return new Response("Forbidden", { status: 403 });
+      const meta = await ctx.db.prepare("SELECT name, content_type FROM lesson_attachments WHERE r2_key = ?").bind(key).first<{ name: string; content_type: string }>();
+      const obj = meta ? await bucket.get(key) : null;
+      if (!meta || !obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, {
+        headers: {
+          "content-type": meta.content_type,
+          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(meta.name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`,
+          "x-content-type-options": "nosniff",
+          "cache-control": "private, max-age=600",
+        },
+      });
+    },
+  ],
+  [
+    "GET",
     /^\/media\/audio$/,
     async (ctx) => {
       // 以短效簽名網址授權（播放器無法帶 Authorization 標頭），支援 Range 以便拖曳進度。
@@ -1628,8 +1738,10 @@ const routes: [string, RegExp, Handler][] = [
         .first<{ n: number }>();
       if ((used?.n ?? 0) > 0) fail(409, "in_use", "這門課程已有學員報名，不能刪除；請改用「下架」");
       const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE course_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
+      const files = await attachmentKeys(ctx.db, "course_id", id);
       const [res] = await ctx.db.batch([ctx.db.prepare("DELETE FROM courses WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "course.delete", "course", id)]);
       if (res.meta?.changes === 0) fail(404, "not_found", "找不到這門課程");
+      for (const k of files) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
       for (const a of audio.results) await ctx.env.MEDIA?.delete(a.media_ref).catch(() => undefined);
       return { ok: true };
     },
