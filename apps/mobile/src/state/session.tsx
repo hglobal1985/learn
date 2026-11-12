@@ -141,14 +141,15 @@ export function useSession(): Session {
 }
 
 /** 讀取 API 資料：登入狀態改變、資料被異動、或畫面回到前景時自動重新抓取。 */
-export function useApi<T>(path: string | null): { data: T | undefined; error: string | null; loading: boolean; reload: () => void } {
+/** early：公開資料（公告等）不必等登入狀態載入完成，頁面一開就先抓。 */
+export function useApi<T>(path: string | null, opts: { early?: boolean } = {}): { data: T | undefined; error: string | null; loading: boolean; reload: () => void } {
   const { version, member, ready } = useSession();
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const seq = useRef(0);
   const load = useCallback(() => {
-    if (!ready || !path) return;
+    if ((!ready && !opts.early) || !path) return;
     const id = ++seq.current;
     setLoading(true);
     api<T>("GET", path)
@@ -159,7 +160,7 @@ export function useApi<T>(path: string | null): { data: T | undefined; error: st
       })
       .catch((e: Error) => id === seq.current && setError(e.message))
       .finally(() => id === seq.current && setLoading(false));
-  }, [path, ready]);
+  }, [path, ready, opts.early]);
   // member?.sub 與 version 變動時重新抓取。
   useEffect(load, [load, version, member?.sub]);
   const focused = useRef(false);

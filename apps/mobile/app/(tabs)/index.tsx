@@ -43,7 +43,7 @@ export default function HomeScreen() {
         .catch(() => undefined);
     }, []),
   );
-  const notices = useApi<Announcement[]>("/announcements");
+  const notices = useApi<Announcement[]>("/announcements", { early: true });
   const courses = data ?? [];
   const mine = courses
     .filter((x) => x.enrollment === "opened")

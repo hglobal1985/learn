@@ -119,10 +119,10 @@ async function loadSession(env: Env, req: Request): Promise<Session | null> {
   if (jwt && looksLikeJwt(jwt)) {
     const sub = await verifyAccessToken(jwt);
     if (!sub) return null;
-    const [prof, rv, opts, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), rankValue(sub, jwt), rankOptions(jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
+    const [prof, superAdmin, mc] = await Promise.all([profileSummary(sub, jwt), isAdmin(sub, jwt, env.LEARN_ADMIN_SUBS), memberContext(sub, jwt)]);
     // 管理員（可管理課程、審核全部報名）＝超級管理員、總部秘書，或 LEARN_ADMIN_SUBS 指定的會員。
     const admin = superAdmin || mc.roles.includes("super_admin") || mc.roles.includes("secretary");
-    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, rankValue: rv, rankLabel: rv === undefined ? undefined : rv && rv !== "none" && rv !== "無" ? (opts.get(rv) ?? undefined) : "安麗寶寶", role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
+    return { kind: "central", sub, name: prof.name, avatarUrl: prof.avatarUrl, role: admin ? "admin" : "student", token: jwt, roles: mc.roles, hglobal: mc.hglobal, center: mc.center };
   }
   if (!demoEnabled(env)) return null;
   const m = /^Bearer ([A-Za-z0-9_-]{20,})$/.exec(auth);
@@ -1305,10 +1305,22 @@ const routes: [string, RegExp, Handler][] = [
       // 被指派為窗口的人登入時，補上／更新名單上的姓名。
       if (results.length) await ctx.db.prepare("UPDATE review_group_members SET member_name = ? WHERE member_sub = ? AND member_name <> ?").bind(s.name, s.sub, s.name).run();
       const labels: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
-      await syncContact(ctx, s).catch(() => undefined);
-      const member = memberOf(s, await ranks(ctx.db), { duties: results.map((r) => labels[r.duty]) });
-      // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
-      if (s.kind === "central") member.profileMissing = await profileGaps(s.sub, s.token, await contactEmail(s.sub, s.token)).catch(() => []);
+      // 向會員中心的幾個查詢彼此獨立，同時送出（以前是一個接一個，首頁會慢）。
+      const central = s.kind === "central" ? s : null;
+      const [, rankMap, rv, opts, missing] = await Promise.all([
+        syncContact(ctx, s).catch(() => undefined),
+        ranks(ctx.db),
+        central ? rankValue(central.sub, central.token).catch(() => undefined) : undefined,
+        central ? rankOptions(central.token).catch(() => new Map<string, string>()) : undefined,
+        central ? profileGaps(central.sub, central.token, null).catch(() => []) : undefined,
+      ]);
+      const member = memberOf(s, rankMap, { duties: results.map((r) => labels[r.duty]) });
+      if (central) {
+        // 獎銜：值為空或「無／none」顯示「安麗寶寶」；其餘用中央選項的名稱，查不到退回本地階梯名稱。
+        if (rv !== undefined) member.rankLabel = rv && rv !== "none" && rv !== "無" ? (opts?.get(rv) ?? rankLabelOf(rv, rankMap)) : "安麗寶寶";
+        // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
+        member.profileMissing = missing ?? [];
+      }
       return { member };
     },
   ],
@@ -2324,6 +2336,10 @@ export async function handleApi(req: Request, env: Env, exec?: { waitUntil(p: Pr
   return res;
 }
 
+/** 不需要登入身分的公開路徑：不必為它們向會員中心查詢（首頁的公告、金句、設定每次都會打）。 */
+const NO_SESSION = /^\/api\/v2\/(announcements|quotes\/random|config|media\/(pub|img|file|audio))(\?|$)/;
+
 async function context(req: Request, env: Env, url: URL): Promise<Ctx> {
-  return { env, db: env.DB, req, url, platform: platformOf(req), session: await loadSession(env, req) };
+  const session = NO_SESSION.test(url.pathname) ? null : await loadSession(env, req);
+  return { env, db: env.DB, req, url, platform: platformOf(req), session };
 }

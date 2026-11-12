@@ -115,16 +115,24 @@ export async function profileSummary(sub: string, token: string): Promise<{ name
 }
 
 /** 會員在會員中心的獎銜（只放記憶體快取供首頁顯示，不寫入資料庫；業主 2026-11-12 授權讀取）。查不到回 undefined。 */
-export async function rankValue(sub: string, token: string): Promise<string | null | undefined> {
-  return cached(`rank:${sub}`, 300_000, async () => {
+type AmwayMe = { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> };
+/** GET /v1/me/amway 只打一次（獎銜顯示與資料補填提醒共用；放記憶體 2 分鐘）。 */
+async function amwayMe(sub: string, token: string): Promise<AmwayMe | undefined> {
+  return cached(`amway:${sub}`, 120_000, async () => {
     const res = await callCentral(token, "/v1/me/amway");
     if (!res?.ok) return undefined;
-    const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown }> } | null;
+    return ((await res.json().catch(() => null)) as AmwayMe | null) ?? undefined;
+  });
+}
+
+export async function rankValue(sub: string, token: string): Promise<string | null | undefined> {
+  return (async () => {
+    const b = await amwayMe(sub, token);
     if (!b) return undefined;
     const v = b.fields?.rank?.value;
     const s = typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : null;
     return s && s.trim() ? s.trim() : null;
-  });
+  })();
 }
 
 /** 會員本人在會員中心的「真實姓名」（legal_name）。每次即時讀取、不快取；查不到或空白回 ""。 */
@@ -142,9 +150,8 @@ export async function profileGaps(sub: string, token: string, email: string | nu
     const gaps: string[] = [];
     // Email 不列入提醒：會員用 Google 登入，信箱由會員中心預設帶入 Google 信箱（見交接文件）。
     void email;
-    const res = await callCentral(token, "/v1/me/amway");
-    if (res?.ok) {
-      const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> } | null;
+    {
+      const b = await amwayMe(sub, token);
       if (b?.enabled) {
         // 只檢查核心三欄（培訓系統、地區教育中心、獎銜）；推薦人與各上手因人而異（可能沒有），不列入提醒。
         const core = ["education_system", "education_center", "rank"];
