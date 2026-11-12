@@ -71,7 +71,7 @@ def out(img, size, path, bg=(255, 255, 255), flat=True, ratio=1.0):
 
 here = os.path.dirname(os.path.abspath(__file__)); root = os.path.dirname(here)
 icon = build_mark(bg=True)
-icon.resize((1024, 1024), Image.LANCZOS).convert("RGBA").save(f"{root}/assets/logo.png", optimize=True)   # 首頁標題旁的標誌
+# 注意：assets/logo.png 是首頁標題旁的「寰宇 logo」（業主指定保留），這支腳本不覆蓋它。
 for size, name in [(512, "icon-512.png"), (192, "icon-192.png"), (180, "apple-touch-icon.png"), (32, "favicon-32.png")]:
     out(icon, size, f"{root}/public/{name}", flat=True, bg=(246, 245, 240) if False else (255, 255, 255)) if False else icon.resize((size, size), Image.LANCZOS).save(f"{root}/public/{name}", optimize=True)
 out(icon, 512, f"{root}/public/icon-maskable-512.png", bg=(20, 102, 63), flat=True, ratio=0.74)       # 遮罩圖示：滿版綠底，主體縮在安全區
