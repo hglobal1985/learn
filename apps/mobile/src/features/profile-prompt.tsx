@@ -159,7 +159,7 @@ export function ProfilePrompt({ onClose }: { onClose: () => void }) {
               <Btn label="儲存" icon="save-outline" onPress={save} disabled={busy || !changed.length} />
             </View>
             <View style={{ flex: 1 }}>
-              <Btn label="暫時不要" icon="close" onPress={onClose} />
+              <Btn label="關閉" icon="close" onPress={onClose} />
             </View>
           </View>
           {msg ? (
