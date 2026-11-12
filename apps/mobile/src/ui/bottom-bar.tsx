@@ -10,10 +10,10 @@ import { AppText } from "./text";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 const tabs: { href: Href; title: string; icon: IconName; active: IconName; match: (p: string) => boolean }[] = [
   { href: "/", title: "首頁", icon: "home-outline", active: "home", match: (p) => p === "/" },
-  { href: "/courses", title: "課程", icon: "library-outline", active: "library", match: (p) => p === "/courses" || p.startsWith("/course/") },
-  { href: "/learning", title: "我的課程", icon: "play-circle-outline", active: "play-circle", match: (p) => p === "/learning" || p.startsWith("/learn/") },
+  { href: "/courses", title: "全部課程", icon: "library-outline", active: "library", match: (p) => p === "/courses" || p.startsWith("/course/") },
+  { href: "/learning", title: "已報名", icon: "play-circle-outline", active: "play-circle", match: (p) => p === "/learning" || p.startsWith("/learn/") },
   { href: "/notices", title: "通知", icon: "notifications-outline", active: "notifications", match: (p) => p === "/notices" },
-  { href: "/me", title: "我的", icon: "person-circle-outline", active: "person-circle", match: (p) => p === "/me" || p.startsWith("/orders") || p.startsWith("/admin") || p.startsWith("/settings") },
+  { href: "/me", title: "設定", icon: "person-circle-outline", active: "person-circle", match: (p) => p === "/me" || p.startsWith("/orders") || p.startsWith("/admin") || p.startsWith("/settings") },
 ];
 
 /**

@@ -13,7 +13,7 @@ export default function LearningScreen() {
   const finished = mine.filter((c) => c.lessonCount > 0 && c.completedLessons >= c.lessonCount);
   if (!member)
     return (
-      <Screen title="我的課程">
+      <Screen title="已報名">
         <EmptyState
           icon="person-circle-outline"
           title="尚未登入"
@@ -23,7 +23,7 @@ export default function LearningScreen() {
       </Screen>
     );
   return (
-    <Screen title="我的課程" subtitle={data ? `已開通 ${mine.length} 門` : undefined}>
+    <Screen title="已報名" subtitle={data ? `已開通 ${mine.length} 門` : undefined}>
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
       {pending.length ? <NoticeBox tone="warning" text={`${pending.length} 門課程等待管理員確認，開通後會通知你。`} /> : null}

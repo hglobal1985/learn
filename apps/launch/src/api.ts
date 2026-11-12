@@ -14,6 +14,7 @@ import {
   type Member,
   type Attachment,
   type AttachmentType,
+  type Announcement,
   type CourseDeleteImpact,
   type CoverBackground,
   type RunDeleteImpact,
@@ -412,6 +413,7 @@ async function runDeleteImpact(db: D1Database, id: string): Promise<RunDeleteImp
 
 /** 公開圖片（封面、EDM）的網址；版本號讓更新後瀏覽器改抓新圖。 */
 const pubUrl = (key: string, v: number) => `/api/v2/media/pub?k=${encodeURIComponent(key)}&v=${v}`;
+const cleanAnnouncement = (v: unknown) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 120) : "");
 const ART_TYPES = new Set(["president", "sound"]);
 
 /** 有課程編輯權限（可使用封面底圖圖庫）：超級管理員、總部秘書，以及各中心的會長、音控。 */
@@ -1515,7 +1517,7 @@ const routes: [string, RegExp, Handler][] = [
       const s = await requireGroupManager(ctx, id);
       const body = await readJson<{ memberSub?: unknown; duty?: unknown; center?: unknown; remove?: unknown }>(ctx.req);
       const sub = typeof body.memberSub === "string" ? body.memberSub.trim() : "";
-      if (!/^[\w-]{3,128}$/.test(sub)) fail(400, "invalid_member", "請貼上正確的會員 ID（對方在「我的」頁可以看到）");
+      if (!/^[\w-]{3,128}$/.test(sub)) fail(400, "invalid_member", "請貼上正確的會員 ID（對方在「設定」頁可以看到）");
       if (body.duty !== "register" && body.duty !== "collect" && body.duty !== "review") fail(400, "invalid_duty", "請選擇職責");
       const label = text(body.center, 100) ?? "";
       const key = label ? centerKey(label) : "";
@@ -1807,6 +1809,92 @@ const routes: [string, RegExp, Handler][] = [
           : ctx.db.prepare("UPDATE lesson_attachments SET name = ? WHERE id = ?").bind(title, id),
         audit(ctx.db, admin.sub, "lesson.attachment_edit", "lesson", row.lesson_id, id),
       ]);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/announcements$/,
+    async (ctx) => {
+      // 首頁跑馬燈：公開（未登入也看得到），只回啟用中的公告。
+      const { results } = await ctx.db.prepare("SELECT id, body FROM announcements WHERE enabled = 1 ORDER BY position, created_at").all<{ id: string; body: string }>();
+      return results.map((r): Announcement => ({ id: r.id, text: r.body, enabled: true }));
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/announcements$/,
+    async (ctx) => {
+      requireAdmin(ctx);
+      const { results } = await ctx.db.prepare("SELECT id, body, enabled FROM announcements ORDER BY position, created_at").all<{ id: string; body: string; enabled: number }>();
+      return results.map((r): Announcement => ({ id: r.id, text: r.body, enabled: r.enabled === 1 }));
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/announcements$/,
+    async (ctx) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ text?: unknown }>(ctx.req);
+      const text = cleanAnnouncement(body.text);
+      if (!text) return fail(400, "text_required", "請輸入公告內容（120 字以內）");
+      const n = await ctx.db.prepare("SELECT COUNT(*) AS n, COALESCE(MAX(position), 0) AS m FROM announcements").first<{ n: number; m: number }>();
+      if ((n?.n ?? 0) >= 30) return fail(409, "too_many", "最多 30 則公告，請先刪除不用的");
+      const id = crypto.randomUUID();
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO announcements (id, body, position, created_by) VALUES (?, ?, ?, ?)").bind(id, text, (n?.m ?? 0) + 1, admin.sub),
+        audit(ctx.db, admin.sub, "announcement.add", "announcement", id),
+      ]);
+      return { id, text, enabled: true } satisfies Announcement;
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/announcements\/order$/,
+    async (ctx) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ ids?: unknown }>(ctx.req);
+      const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string") : [];
+      if (!ids.length || ids.length > 30) return fail(400, "invalid_request", "排序參數不正確");
+      await ctx.db.batch([...ids.map((id, i) => ctx.db.prepare("UPDATE announcements SET position = ? WHERE id = ?").bind(i + 1, id)), audit(ctx.db, admin.sub, "announcement.reorder", "announcement", "all")]);
+      return { ok: true };
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/announcements\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ text?: unknown; enabled?: unknown }>(ctx.req);
+      const sets: string[] = [];
+      const args: unknown[] = [];
+      if (body.text !== undefined) {
+        const text = cleanAnnouncement(body.text);
+        if (!text) return fail(400, "text_required", "請輸入公告內容（120 字以內）");
+        sets.push("body = ?");
+        args.push(text);
+      }
+      if (body.enabled !== undefined) {
+        if (typeof body.enabled !== "boolean") return fail(400, "invalid_request", "參數不正確");
+        sets.push("enabled = ?");
+        args.push(body.enabled ? 1 : 0);
+      }
+      if (!sets.length) return fail(400, "invalid_request", "沒有要修改的內容");
+      const [res] = await ctx.db.batch([
+        ctx.db.prepare(`UPDATE announcements SET ${sets.join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`).bind(...args, id),
+        audit(ctx.db, admin.sub, "announcement.edit", "announcement", id),
+      ]);
+      if (res.meta?.changes === 0) return fail(404, "not_found", "找不到這則公告");
+      return { ok: true };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/announcements\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const [res] = await ctx.db.batch([ctx.db.prepare("DELETE FROM announcements WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "announcement.delete", "announcement", id)]);
+      if (res.meta?.changes === 0) return fail(404, "not_found", "找不到這則公告");
       return { ok: true };
     },
   ],

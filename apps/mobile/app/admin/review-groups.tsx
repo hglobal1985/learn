@@ -131,7 +131,7 @@ function GroupCard({ group, centers, run, busy }: { group: ReviewGroup; centers:
           </AppText>
           <Chips label="負責的中心" options={[{ key: ALL, label: "全部中心" }, ...centers.map((x) => ({ key: x, label: x }))]} value={center} onChange={setCenter} />
           <Chips label="職責" options={duties} value={duty} onChange={setDuty} />
-          <Field label="會員 ID" value={sub} onChange={setSub} placeholder="對方在「我的」頁看到的會員 ID" />
+          <Field label="會員 ID" value={sub} onChange={setSub} placeholder="對方在「設定」頁看到的會員 ID" />
           <View style={styles.row}>
             <Button
               label="加入"

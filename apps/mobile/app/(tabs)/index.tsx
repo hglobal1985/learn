@@ -1,48 +1,89 @@
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
-import type { CourseSummary } from "@/api/client";
-import { CourseCard } from "@/features/courses/course-card";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { Announcement, CourseSummary } from "@/api/client";
+import { HomeRail } from "@/features/courses/home-rail";
 import { useApi, useSession } from "@/state/session";
-import { space } from "@/theme/tokens";
-import { AppText, Button, Card, ErrorView, LoadingView, SandboxBanner, Screen, Section } from "@/ui";
+import { useTheme } from "@/theme/theme";
+import { maxContentWidth, space } from "@/theme/tokens";
+import { AppText, Button, ErrorView, LoadingView, Ticker } from "@/ui";
 
+/**
+ * 首頁：固定一頁、不上下捲動。上方是跑馬燈公告，下方左右兩個區塊（繼續學習、推薦課程），
+ * 各自可以原地左右滑動瀏覽課程封面（16:9）。推薦課程只顯示符合會員獎銜、尚未報名的課程。
+ */
 export default function HomeScreen() {
+  const { c } = useTheme();
+  const insets = useSafeAreaInsets();
   const { member } = useSession();
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
+  const notices = useApi<Announcement[]>("/announcements");
   const courses = data ?? [];
-  const mine = courses.filter((c) => c.enrollment === "opened");
-  const next = mine.find((c) => c.completedLessons < c.lessonCount) ?? mine[0];
-  const featured = courses.filter((c) => c.enrollment !== "opened").slice(0, 3);
+  const mine = courses
+    .filter((x) => x.enrollment === "opened")
+    .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
+  const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
+  const login = <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} />;
   return (
-    <Screen title="寰宇行動大學" subtitle={member ? `${member.name}，歡迎回來` : "隨時隨地，持續成長"}>
-      <SandboxBanner text="內部測試版：課程內容與影片目前為示範資料。" />
-      {!member ? (
-        <Card>
-          <AppText variant="headline">登入後即可報名課程</AppText>
-          <AppText variant="callout" tone="muted">
-            使用 Google 帳號登入，課程資格會依會員中心的資料自動判斷。
+    <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
+      <View style={styles.inner}>
+        <View>
+          <AppText variant="title" accessibilityRole="header">
+            寰宇行動大學
           </AppText>
-          <View style={styles.actions}>
-            <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} />
+          <AppText variant="callout" tone="muted">
+            {member ? `${member.name}，歡迎回來` : "隨時隨地，持續成長"}
+          </AppText>
+        </View>
+        <Ticker items={(notices.data ?? []).map((n) => n.text)} />
+        {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
+        {loading && !data ? <LoadingView /> : null}
+        {data ? (
+          <View style={styles.middle}>
+          <View style={styles.rails}>
+            <HomeRail
+              title="繼續學習"
+              courses={mine}
+              seeAll="已報名"
+              onSeeAll={() => router.navigate("/learning")}
+              progress
+              empty={
+                member ? (
+                  <AppText variant="caption" tone="muted">
+                    還沒有已報名的課程，到「全部課程」看看。
+                  </AppText>
+                ) : (
+                  <>
+                    <AppText variant="caption" tone="muted">
+                      登入後顯示你已報名的課程。
+                    </AppText>
+                    {login}
+                  </>
+                )
+              }
+            />
+            <HomeRail
+              title="推薦課程"
+              courses={recommended}
+              seeAll="全部課程"
+              onSeeAll={() => router.navigate("/courses")}
+              empty={
+                <AppText variant="caption" tone="muted">
+                  {member ? "目前沒有符合你獎銜、尚未報名的課程。" : "登入後顯示符合你獎銜的課程。"}
+                </AppText>
+              }
+            />
           </View>
-        </Card>
-      ) : null}
-      {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
-      {loading && !data ? <LoadingView /> : null}
-      {next ? (
-        <Section title="繼續學習" action={<Button variant="ghost" label="全部" onPress={() => router.navigate("/learning")} />}>
-          <CourseCard course={next} />
-        </Section>
-      ) : null}
-      {featured.length ? (
-        <Section title="推薦課程" action={<Button variant="ghost" label="看全部" onPress={() => router.navigate("/courses")} />}>
-          {featured.map((course) => (
-            <CourseCard key={course.id} course={course} />
-          ))}
-        </Section>
-      ) : null}
-    </Screen>
+          </View>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({ actions: { flexDirection: "row", marginTop: space.sm } });
+const styles = StyleSheet.create({
+  page: { flex: 1, alignItems: "center", paddingHorizontal: space.md, overflow: "hidden" },
+  inner: { width: "100%", maxWidth: maxContentWidth, gap: space.md, flex: 1 },
+  rails: { flexDirection: "row", gap: space.md, alignItems: "flex-start" },
+  middle: { flex: 1, justifyContent: "center", paddingBottom: space.xl },
+});

@@ -243,3 +243,6 @@ export type RunDeleteImpact = { title: string; courseTitle: string; registration
 
 /** 封面底圖圖庫的一張圖。uploaderName／uploaderCenter 只在管理人員開啟圖庫時提供。 */
 export type CoverBackground = { id: string; url: string; uploaderName: string; uploaderCenter: string; builtin: boolean; hidden: boolean; inUse: boolean };
+
+/** 首頁跑馬燈公告（只有超級管理員與總部秘書可管理）。 */
+export type Announcement = { id: string; text: string; enabled: boolean };

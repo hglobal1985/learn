@@ -5,6 +5,7 @@ export { DUTY_LABELS, HQ_UNIT, REVIEW_REASONS } from "../../../launch/src/contra
 import { centralToken, refresh as refreshCentral } from "./central";
 
 export type {
+  Announcement,
   AppConfig,
   Attachment,
   ClientPlatform,

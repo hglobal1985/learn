@@ -40,8 +40,8 @@ export async function flushEmails(env: Env): Promise<number> {
     for (const email of to) {
       try {
         const link = `${SITE}${n.link.startsWith("/") ? n.link : `/${n.link}`}`;
-        const text = `${n.body ? `${n.body}\n\n` : ""}查看詳情：${link}\n\n——\n寰宇行動大學。不想收到 Email：登入後到「我的 → 通知設定」關閉。`;
-        const html = `<div style="font-family:sans-serif;line-height:1.6"><h3>${esc(n.title)}</h3><p>${esc(n.body).replace(/\n/g, "<br>")}</p><p><a href="${esc(link)}">查看詳情</a></p><hr><p style="color:#888;font-size:12px">寰宇行動大學。不想收到 Email：登入後到「我的 → 通知設定」關閉。</p></div>`;
+        const text = `${n.body ? `${n.body}\n\n` : ""}查看詳情：${link}\n\n——\n寰宇行動大學。不想收到 Email：登入後到「設定 → 通知設定」關閉。`;
+        const html = `<div style="font-family:sans-serif;line-height:1.6"><h3>${esc(n.title)}</h3><p>${esc(n.body).replace(/\n/g, "<br>")}</p><p><a href="${esc(link)}">查看詳情</a></p><hr><p style="color:#888;font-size:12px">寰宇行動大學。不想收到 Email：登入後到「設定 → 通知設定」關閉。</p></div>`;
         await m.mailer.send({ from: { email: m.from, name: "寰宇行動大學" }, to: email, subject: n.title, text, html });
         sent++;
       } catch (e) {

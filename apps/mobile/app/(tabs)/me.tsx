@@ -23,7 +23,7 @@ const openAccountCenter = () => (Platform.OS === "web" ? Linking.openURL(ACCOUNT
 
 /**
  * 頁尾：與寰宇中央會員網站的頁尾相同（淡色小字：左邊「隱私權政策」連結、右邊設計者署名）。
- * 只放在「我的」頁面最下方，其他頁面不顯示。尺寸與淺色模式的顏色照中央會員（14px、#5d6b62、署名 #cfd2c9）；深色模式用等比例的淡化色。
+ * 只放在「設定」頁面最下方，其他頁面不顯示。尺寸與淺色模式的顏色照中央會員（14px、#5d6b62、署名 #cfd2c9）；深色模式用等比例的淡化色。
  */
 function SiteFooter() {
   const { scheme } = useTheme();
@@ -74,7 +74,7 @@ export default function MeScreen() {
   };
 
   return (
-    <Screen title="我的">
+    <Screen title="設定">
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {!ready ? <LoadingView /> : null}
       {member ? (
@@ -141,6 +141,7 @@ export default function MeScreen() {
       {member?.reviewer || member?.role === "admin" || member?.titles.includes("音控") ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
+            {member.role === "admin" ? <ListRow icon="megaphone-outline" title="跑馬燈公告" subtitle="首頁公告：自動輪播、排序、停用" onPress={() => router.push("/admin/announcements")} /> : null}
             {isWeb && member.reviewer ? <ListRow icon="receipt-outline" title="報名審核" subtitle="確認繳費後開通、匯出對帳報表" onPress={() => router.push("/admin/orders")} /> : null}
             {isWeb && (member.role === "admin" || member.titles.includes("會長") || member.titles.includes("音控")) ? (
               <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />

@@ -372,3 +372,31 @@ test("EDM 與封面：公開網址、底圖圖庫（內建＋自訂、只有編�
   assert.equal([...r2.objects.keys()].some((k) => k.startsWith(`edm/${created}/`)), false);
   void env;
 });
+
+test("跑馬燈公告：公開只看啟用中的、管理員（超級管理員／秘書）才能新增修改排序刪除", async () => {
+  const { call, login } = setup();
+  const [admin, student, pres] = await Promise.all(["demo-admin", "demo-student", "demo-president"].map(login));
+  type A = { id: string; text: string; enabled: boolean };
+  assert.deepEqual((await call<A[]>("GET", "/announcements")).data, [], "沒有公告時是空的（未登入也能讀）");
+  assert.equal((await call("POST", "/admin/announcements", { token: student, body: { text: "x" } })).status, 403);
+  assert.equal((await call("POST", "/admin/announcements", { token: pres, body: { text: "x" } })).status, 403, "會長目前不能管理");
+  assert.equal((await call("POST", "/admin/announcements", { token: admin, body: { text: "   " } })).status, 400);
+  const a = (await call<A>("POST", "/admin/announcements", { token: admin, body: { text: "第一則" } })).data;
+  const b = (await call<A>("POST", "/admin/announcements", { token: admin, body: { text: "第二則".repeat(60) } })).data;
+  assert.equal(b.text.length, 120, "超過 120 字會截斷");
+  const c = (await call<A>("POST", "/admin/announcements", { token: admin, body: { text: "第三則" } })).data;
+  assert.deepEqual((await call<A[]>("GET", "/announcements")).data.map((x) => x.id), [a.id, b.id, c.id]);
+
+  await call("PATCH", `/admin/announcements/${b.id}`, { token: admin, body: { enabled: false } });
+  assert.deepEqual((await call<A[]>("GET", "/announcements")).data.map((x) => x.id), [a.id, c.id], "停用的不顯示");
+  assert.equal((await call<A[]>("GET", "/admin/announcements", { token: admin })).data.length, 3, "管理員看得到全部");
+  assert.equal((await call("GET", "/admin/announcements", { token: student })).status, 403);
+
+  await call("POST", "/admin/announcements/order", { token: admin, body: { ids: [c.id, b.id, a.id] } });
+  assert.deepEqual((await call<A[]>("GET", "/announcements")).data.map((x) => x.text), ["第三則", "第一則"]);
+  await call("PATCH", `/admin/announcements/${a.id}`, { token: admin, body: { text: "改過的第一則" } });
+  assert.equal((await call<A[]>("GET", "/announcements")).data.at(-1)!.text, "改過的第一則");
+  assert.equal((await call("DELETE", `/admin/announcements/${c.id}`, { token: admin })).status, 200);
+  assert.equal((await call("DELETE", `/admin/announcements/${c.id}`, { token: admin })).status, 404);
+  assert.equal((await call("PATCH", `/admin/announcements/${a.id}`, { token: admin, body: {} })).status, 400);
+});

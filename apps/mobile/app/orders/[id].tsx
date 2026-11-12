@@ -22,7 +22,7 @@ function OrderDetail() {
       {data.status === "opened" ? <NoticeBox tone="success" text="課程已開通，可以開始上課了。" /> : null}
       {data.status === "rejected" ? <NoticeBox tone="danger" text={data.revoked ? "這筆報名的開通已被撤銷。" : "這筆報名已退回，處理後可以到課程頁重新報名。"} /> : null}
       <OrderCard order={data} />
-      {data.status === "opened" ? <Button label="前往我的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
+      {data.status === "opened" ? <Button label="前往已報名課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
       {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
       <OrderTimeline order={data} />
     </Screen>

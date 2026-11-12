@@ -20,7 +20,7 @@ export default function CoursesScreen() {
   const list = courses.filter((x) => (category === all || x.category === category) && (unit === all || x.guidanceUnit === unit || x.hostUnit === unit));
   return (
     <Screen
-      title="課程"
+      title="全部課程"
       subtitle={data ? `共 ${courses.length} 門課程` : undefined}
     >
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
