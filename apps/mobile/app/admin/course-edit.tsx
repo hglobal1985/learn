@@ -2,6 +2,7 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, HQ_UNIT, type CourseDeleteImpact, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
+import { CoverManager } from "@/features/admin/cover-manager";
 import { ntd, parseLocal, toLocal } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -30,6 +31,9 @@ export default function CourseEditScreen() {
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
+  // 已有人報名的刪除確認（Hook 必須放在所有提前 return 之前）
+  const [impact, setImpact] = useState<CourseDeleteImpact | null>(null);
+  const [yes, setYes] = useState("");
 
   useEffect(() => {
     const d = course.data;
@@ -79,8 +83,6 @@ export default function CourseEditScreen() {
     }
   };
   // 已有人報名：先顯示影響，管理員必須手動輸入 YES 才能刪除。
-  const [impact, setImpact] = useState<CourseDeleteImpact | null>(null);
-  const [yes, setYes] = useState("");
   const remove = async () => {
     if (!id) return;
     setBusy("delete");
@@ -240,6 +242,8 @@ export default function CourseEditScreen() {
           ))}
         </View>
       </Section>
+
+      {id && course.data ? <CoverManager course={course.data} onChanged={course.reload} /> : null}
 
       <View style={{ gap: space.sm }}>
         <Button label={id ? "儲存" : "建立課程（先不上架）"} icon="save-outline" loading={busy === "save"} disabled={!!busy} onPress={() => save()} fullWidth />

@@ -10,7 +10,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
-      <CourseCover theme={course.theme} label={course.category} />
+      <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
       <AppText variant="headline">{course.title}</AppText>
       <AppText variant="callout" tone="muted" numberOfLines={2}>
         {course.subtitle}

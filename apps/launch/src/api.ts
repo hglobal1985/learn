@@ -15,6 +15,7 @@ import {
   type Attachment,
   type AttachmentType,
   type CourseDeleteImpact,
+  type CoverBackground,
   type RunDeleteImpact,
   type Notice,
   type NotificationSettings,
@@ -25,7 +26,7 @@ import { flushEmails } from "./email.ts";
 import { centerKey, centerList, contactEmail, displayName, saveContactEmail, validEmail, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
-import { audioUrl, fileUrl, verifyAudioUrl, verifyFileUrl } from "./media.ts";
+import { audioUrl, fileUrl, imgUrl, sniffImage, verifyAudioUrl, verifyFileUrl, verifyImgUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
 const SESSION_DAYS = 30;
@@ -192,12 +193,16 @@ type CourseRow = {
   free_until: string | null;
   review_group_id: string | null;
   allow_president: number;
+  edm_key: string | null;
+  cover_key: string | null;
+  cover_bg_id: string | null;
+  art_version: number;
   run_count: number;
   lesson_count: number;
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -253,6 +258,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     freeUntil: freeNow ? row.free_until : null,
     minRank,
     theme: row.theme,
+    coverUrl: row.cover_key ? pubUrl(row.cover_key, row.art_version) : null,
+    edmUrl: row.edm_key ? pubUrl(row.edm_key, row.art_version) : null,
     status: row.status,
     guidanceUnit: row.guidance_unit,
     hostUnit: row.host_unit,
@@ -347,7 +354,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
-    ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, freeUntil: row.free_until, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
+    ...(admin ? { admin: { coverBgId: row.cover_bg_id, hostCenterKey: row.host_center_key, freeFrom: row.free_from, freeUntil: row.free_until, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
   };
 }
 
@@ -401,6 +408,23 @@ async function runDeleteImpact(db: D1Database, id: string): Promise<RunDeleteImp
     db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE run_id = ?").bind(id).first<{ n: number }>(),
   ]);
   return { title: run.title, courseTitle: run.course_title, registrations: r?.registrations ?? 0, pending: r?.pending ?? 0, opened: r?.opened ?? 0, students: students?.n ?? 0, lessons: lessons?.n ?? 0, paidTwd: r?.paid ?? 0 };
+}
+
+/** 公開圖片（封面、EDM）的網址；版本號讓更新後瀏覽器改抓新圖。 */
+const pubUrl = (key: string, v: number) => `/api/v2/media/pub?k=${encodeURIComponent(key)}&v=${v}`;
+const ART_TYPES = new Set(["president", "sound"]);
+
+/** 有課程編輯權限（可使用封面底圖圖庫）：超級管理員、總部秘書，以及各中心的會長、音控。 */
+function canUseGallery(s: Session): boolean {
+  return s.role === "admin" || (!!s.center && s.roles.some((r) => ART_TYPES.has(r)));
+}
+
+/** 編輯某門課的 EDM／封面：管理員（超級管理員、總部秘書）不限；其他有權限者只能編輯主辦單位是自己中心的課程。 */
+async function requireCourseArt(ctx: Ctx, s: Session, courseId: string): Promise<void> {
+  const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
+  if (!c) return fail(404, "not_found", "找不到這門課程");
+  if (s.role === "admin") return;
+  if (!s.center || !s.roles.some((r) => ART_TYPES.has(r)) || c.host_center_key !== s.center.key) fail(403, "forbidden", "只能編輯主辦單位是自己中心的課程");
 }
 
 const ATTACH_TYPES: Record<string, string> = {
@@ -1788,6 +1812,147 @@ const routes: [string, RegExp, Handler][] = [
   ],
   [
     "GET",
+    /^\/media\/pub$/,
+    async (ctx) => {
+      // 課程封面與 EDM 是公開圖片（課程列表本來就要顯示；EDM 開放下載）。只服務資料庫裡仍在使用的檔案。
+      const key = ctx.url.searchParams.get("k") ?? "";
+      const bucket = ctx.env.MEDIA;
+      if (!bucket || !/^(edm|cover)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
+      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ?").bind(key, key).first();
+      const obj = used ? await bucket.get(key) : null;
+      if (!obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, {
+        headers: { "content-type": obj.httpMetadata?.contentType ?? "image/jpeg", "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" },
+      });
+    },
+  ],
+  [
+    "GET",
+    /^\/media\/img$/,
+    async (ctx) => {
+      // 底圖圖庫：簽名網址即授權（只有課程編輯人員拿得到）。
+      const key = await verifyImgUrl(ctx.env, ctx.url);
+      const obj = key && ctx.env.MEDIA ? await ctx.env.MEDIA.get(key) : null;
+      if (!key) return new Response("Forbidden", { status: 403 });
+      if (!obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, { headers: { "content-type": obj.httpMetadata?.contentType ?? "image/jpeg", "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff" } });
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/cover-backgrounds$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (!canUseGallery(s)) fail(403, "forbidden", "需要課程編輯權限");
+      const { results } = await ctx.db
+        .prepare("SELECT b.id, b.r2_key, b.uploader_name, b.uploader_center, b.builtin, b.hidden, EXISTS (SELECT 1 FROM courses c WHERE c.cover_bg_id = b.id) AS in_use FROM cover_backgrounds b ORDER BY b.builtin DESC, b.created_at DESC")
+        .all<{ id: string; r2_key: string; uploader_name: string; uploader_center: string; builtin: number; hidden: number; in_use: number }>();
+      const out: CoverBackground[] = [];
+      for (const r of results) {
+        if (r.hidden && s.role !== "admin") continue;
+        out.push({ id: r.id, url: (await imgUrl(ctx.env, r.r2_key)) ?? "", uploaderName: r.uploader_name, uploaderCenter: r.uploader_center, builtin: r.builtin === 1, hidden: r.hidden === 1, inUse: r.in_use === 1 });
+      }
+      return out;
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/cover-backgrounds$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (!canUseGallery(s)) fail(403, "forbidden", "需要課程編輯權限");
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "圖片儲存空間尚未啟用");
+      const data = new Uint8Array(await ctx.req.arrayBuffer());
+      if (!data.byteLength || data.byteLength > 3 * 1024 * 1024) fail(413, "invalid_size", "底圖大小需在 3MB 以內（上傳時會自動壓縮）");
+      const img = sniffImage(data) ?? fail(400, "invalid_image", "請上傳 JPG、PNG 或 WebP 圖片");
+      const id = crypto.randomUUID();
+      const key = `bg/${id}.${img.ext}`;
+      await bucket.put(key, data.buffer as ArrayBuffer, { httpMetadata: { contentType: img.type } });
+      await ctx.db.batch([
+        ctx.db.prepare("INSERT INTO cover_backgrounds (id, r2_key, uploader_sub, uploader_name, uploader_center) VALUES (?, ?, ?, ?, ?)").bind(id, key, s.sub, s.name, s.center?.label ?? ""),
+        audit(ctx.db, s.sub, "cover_bg.upload", "cover_bg", id),
+      ]);
+      return { id, url: (await imgUrl(ctx.env, key)) ?? "", uploaderName: s.name, uploaderCenter: s.center?.label ?? "", builtin: false, hidden: false, inUse: false } satisfies CoverBackground;
+    },
+  ],
+  [
+    "PATCH",
+    /^\/admin\/cover-backgrounds\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const body = await readJson<{ hidden?: unknown }>(ctx.req);
+      if (typeof body.hidden !== "boolean") fail(400, "invalid_request", "參數不正確");
+      const r = await ctx.db.prepare("UPDATE cover_backgrounds SET hidden = ? WHERE id = ?").bind(body.hidden ? 1 : 0, id).run();
+      if (r.meta?.changes === 0) fail(404, "not_found", "找不到這張底圖");
+      await audit(ctx.db, admin.sub, body.hidden ? "cover_bg.hide" : "cover_bg.show", "cover_bg", id).run();
+      return { ok: true };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/cover-backgrounds\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      const admin = requireAdmin(ctx);
+      const row = await ctx.db.prepare("SELECT r2_key, builtin FROM cover_backgrounds WHERE id = ?").bind(id).first<{ r2_key: string; builtin: number }>();
+      if (!row) return fail(404, "not_found", "找不到這張底圖");
+      if (row.builtin) fail(409, "builtin", "內建底圖不能刪除，只能隱藏");
+      if (await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE cover_bg_id = ?").bind(id).first()) fail(409, "in_use", "這張底圖正被課程封面使用，不能刪除，只能隱藏");
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM cover_backgrounds WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "cover_bg.delete", "cover_bg", id)]);
+      await ctx.env.MEDIA?.delete(row.r2_key).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/courses\/([\w-]+)\/(edm|cover)$/,
+    async (ctx, [id, part]) => {
+      const s = requireMember(ctx);
+      await requireCourseArt(ctx, s, id);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "圖片儲存空間尚未啟用");
+      const data = new Uint8Array(await ctx.req.arrayBuffer());
+      const max = part === "edm" ? 8 * 1024 * 1024 : 3 * 1024 * 1024;
+      if (!data.byteLength || data.byteLength > max) fail(413, "invalid_size", `圖片大小需在 ${max / 1024 / 1024}MB 以內（上傳時會自動壓縮）`);
+      const img = sniffImage(data) ?? fail(400, "invalid_image", "請上傳 JPG、PNG 或 WebP 圖片");
+      let bgId: string | null = null;
+      if (part === "cover") {
+        const q = ctx.url.searchParams.get("bg");
+        if (q) {
+          if (!(await ctx.db.prepare("SELECT 1 AS ok FROM cover_backgrounds WHERE id = ?").bind(q).first())) fail(400, "invalid_bg", "找不到這張底圖");
+          bgId = q;
+        }
+      }
+      const col = part === "edm" ? "edm_key" : "cover_key";
+      const old = await ctx.db.prepare(`SELECT ${col} AS k FROM courses WHERE id = ?`).bind(id).first<{ k: string | null }>();
+      const key = `${part}/${id}/${crypto.randomUUID()}.${img.ext}`;
+      await bucket.put(key, data.buffer as ArrayBuffer, { httpMetadata: { contentType: img.type } });
+      await ctx.db.batch([
+        part === "edm"
+          ? ctx.db.prepare("UPDATE courses SET edm_key = ?, art_version = art_version + 1 WHERE id = ?").bind(key, id)
+          : ctx.db.prepare("UPDATE courses SET cover_key = ?, cover_bg_id = ?, art_version = art_version + 1 WHERE id = ?").bind(key, bgId, id),
+        audit(ctx.db, s.sub, `course.${part}_upload`, "course", id, key),
+      ]);
+      if (old?.k) await bucket.delete(old.k).catch(() => undefined);
+      return { ok: true, url: pubUrl(key, 0) };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/courses\/([\w-]+)\/(edm|cover)$/,
+    async (ctx, [id, part]) => {
+      const s = requireMember(ctx);
+      await requireCourseArt(ctx, s, id);
+      const col = part === "edm" ? "edm_key" : "cover_key";
+      const old = await ctx.db.prepare(`SELECT ${col} AS k FROM courses WHERE id = ?`).bind(id).first<{ k: string | null }>();
+      await ctx.db.batch([
+        part === "edm" ? ctx.db.prepare("UPDATE courses SET edm_key = NULL, art_version = art_version + 1 WHERE id = ?").bind(id) : ctx.db.prepare("UPDATE courses SET cover_key = NULL, cover_bg_id = NULL, art_version = art_version + 1 WHERE id = ?").bind(id),
+        audit(ctx.db, s.sub, `course.${part}_remove`, "course", id),
+      ]);
+      if (old?.k) await ctx.env.MEDIA?.delete(old.k).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
     /^\/media\/file$/,
     async (ctx) => {
       // 簽名網址即授權（瀏覽器下載無法帶 Authorization 標頭）；檔名取自資料表，一律以附件下載。
@@ -1877,6 +2042,7 @@ const routes: [string, RegExp, Handler][] = [
       if (impact.registrations > 0 && body.confirm !== "YES") fail(409, "confirm_required", `這門課程已有 ${impact.registrations} 筆報名紀錄；刪除需輸入 YES 確認`);
       const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE course_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
       const files = await attachmentKeys(ctx.db, "course_id", id);
+      const art = await ctx.db.prepare("SELECT edm_key, cover_key FROM courses WHERE id = ?").bind(id).first<{ edm_key: string | null; cover_key: string | null }>();
       // 只含這門課的報名紀錄整筆刪除；同時報名多門課的紀錄只移除這門課並扣掉金額。
       const onlyThis = "id IN (SELECT order_id FROM order_items WHERE course_id = ?1) AND NOT EXISTS (SELECT 1 FROM order_items x WHERE x.order_id = orders.id AND x.course_id <> ?1)";
       const [, , , , , , res] = await ctx.db.batch([
@@ -1889,7 +2055,7 @@ const routes: [string, RegExp, Handler][] = [
         ctx.db.prepare("DELETE FROM courses WHERE id = ?").bind(id),
       ]);
       if (res.meta?.changes === 0) fail(404, "not_found", "找不到這門課程");
-      for (const k of files) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
+      for (const k of [...files, art?.edm_key, art?.cover_key]) if (k) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
       for (const a of audio.results) await ctx.env.MEDIA?.delete(a.media_ref).catch(() => undefined);
       return { ok: true };
     },

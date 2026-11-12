@@ -52,6 +52,9 @@ export type CourseSummary = {
   hasRuns: boolean;
   enrollment: EnrollmentState;
   completedLessons: number;
+  /** 課程封面圖（16:9）與海報 EDM（直式）的公開網址；沒有上傳時為 null，畫面改用色塊封面。 */
+  coverUrl: string | null;
+  edmUrl: string | null;
 };
 
 export type MediaType = "demo" | "youtube" | "mux" | "audio";
@@ -90,7 +93,7 @@ export type CourseDetail = CourseSummary & {
   lessons: Lesson[];
   runs: CourseRun[];
   /** 只有管理員會拿到。 */
-  admin?: { hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
+  admin?: { coverBgId: string | null; hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
 };
 
 export type OrderStatus = "pending" | "opened" | "rejected";
@@ -237,3 +240,6 @@ export type CourseDeleteImpact = { title: string; registrations: number; pending
 
 /** 刪除場次前的影響統計。lessons＝屬於這個場次的專屬章節數（會一併刪除）。 */
 export type RunDeleteImpact = { title: string; courseTitle: string; registrations: number; pending: number; opened: number; students: number; lessons: number; paidTwd: number };
+
+/** 封面底圖圖庫的一張圖。uploaderName／uploaderCenter 只在管理人員開啟圖庫時提供。 */
+export type CoverBackground = { id: string; url: string; uploaderName: string; uploaderCenter: string; builtin: boolean; hidden: boolean; inUse: boolean };

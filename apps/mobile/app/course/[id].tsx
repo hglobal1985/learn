@@ -7,6 +7,7 @@ import { CoursePriceTag, UnitTags } from "@/features/courses/course-card";
 import { dateTime, ntd } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
+import { EdmView } from "@/features/courses/edm-view";
 import { AppText, Button, Card, CourseCover, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
 const isWeb = Platform.OS === "web";
@@ -64,7 +65,7 @@ export default function CourseDetailScreen() {
   return (
     <Screen header={false}>
       <Stack.Screen options={{ title: course.title }} />
-      <CourseCover theme={course.theme} label={course.category} height={160} />
+      <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
       <View style={{ gap: space.sm }}>
         <AppText variant="display">{course.title}</AppText>
         <AppText tone="muted">{course.subtitle}</AppText>
@@ -79,6 +80,11 @@ export default function CourseDetailScreen() {
         </AppText>
         {course.description ? <AppText>{course.description}</AppText> : null}
       </View>
+      {course.edmUrl ? (
+        <Section title="課程海報（EDM）">
+          <EdmView url={course.edmUrl} />
+        </Section>
+      ) : null}
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {nextLesson && (course.enrollment === "opened" || admin) ? (
         <Button label={course.completedLessons ? "繼續上課" : "開始上課"} icon="play" onPress={() => router.push(`/learn/${course.id}/${nextLesson.id}`)} fullWidth />
