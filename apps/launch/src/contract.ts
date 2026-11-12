@@ -269,6 +269,8 @@ export type Announcement = { id: string; text: string; enabled: boolean };
 /** 「完善資料」視窗的內容：真實姓名、Email，以及勾選 Amway 會員時的系統、中心、獎銜。 */
 export type ProfileForm = {
   legalName: string;
+  /** 暱稱（中央會員的 display_name）。 */
+  nickname: string;
   email: string;
   enabled: boolean;
   hglobal: boolean;

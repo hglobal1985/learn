@@ -10,6 +10,7 @@ import { AppText, Icon, type IconName } from "@/ui";
 type FieldView = { value: string; pending: string | null; status: string };
 type View_ = {
   legalName: string;
+  nickname: string;
   email: string;
   enabled: boolean;
   hglobal: boolean;
@@ -17,7 +18,7 @@ type View_ = {
   rankOptions: { value: string; label: string }[];
 };
 
-const FIELD_H = 48;
+const FIELD_H = 44;
 
 /** 單行輸入框（樣式與 Field 相同，但不含上方標籤，方便跟「無」勾選框排在同一列）。 */
 function Input({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -53,8 +54,8 @@ function TextRow({ label, value, onChange, pool, pending, allowNone }: { label: 
     }, 250);
   };
   return (
-    <View style={{ gap: 4 }}>
-      <AppText variant="callout" tone="muted" numberOfLines={1}>
+    <View style={{ gap: 2 }}>
+      <AppText variant="caption" tone="muted" numberOfLines={1}>
         {label}
         {pending ? `（審核中：${pending}）` : ""}
       </AppText>
@@ -110,7 +111,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   const { invalidate } = useSession();
   const [data, setData] = useState<View_ | null>(first ?? null);
   const [error, setError] = useState<string | null>(null);
-  const [vals, setVals] = useState({ legal_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
+  const [vals, setVals] = useState({ legal_name: "", display_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -118,21 +119,21 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
     api<View_>("GET", "/me/central-profile")
       .then((d) => {
         setData(d);
-        setVals({ legal_name: d.legalName, contact_email: d.email, education_system: d.fields.education_system.value, education_center: d.fields.education_center.value, rank: d.fields.rank.value });
+        setVals({ legal_name: d.legalName, display_name: d.nickname, contact_email: d.email, education_system: d.fields.education_system.value, education_center: d.fields.education_center.value, rank: d.fields.rank.value });
         setError(null);
       })
       .catch((e: Error) => setError(e.message));
   }, []);
   useEffect(() => {
     // 開啟時如果首頁已經把資料帶來了，就直接用（不用再等一次網路）；否則才向伺服器要。
-    if (first) setVals({ legal_name: first.legalName, contact_email: first.email, education_system: first.fields.education_system.value, education_center: first.fields.education_center.value, rank: first.fields.rank.value });
+    if (first) setVals({ legal_name: first.legalName, display_name: first.nickname, contact_email: first.email, education_system: first.fields.education_system.value, education_center: first.fields.education_center.value, rank: first.fields.rank.value });
     else load();
   }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
   const canRank = !!vals.education_system.trim() && !!vals.education_center.trim();
   const rankNone = vals.rank === "none";
   const rankLabel = (v: string) => data?.rankOptions.find((o) => o.value === v)?.label ?? v;
-  const initial = data ? { legal_name: data.legalName, contact_email: data.email, education_system: data.fields.education_system.value, education_center: data.fields.education_center.value, rank: data.fields.rank.value } : null;
-  const changed = initial ? (Object.keys(vals) as (keyof typeof vals)[]).filter((k) => (data!.enabled || k === "legal_name" || k === "contact_email") && !(k === "contact_email" && initial.contact_email) && vals[k].trim() !== initial[k].trim()) : [];
+  const initial = data ? { legal_name: data.legalName, display_name: data.nickname, contact_email: data.email, education_system: data.fields.education_system.value, education_center: data.fields.education_center.value, rank: data.fields.rank.value } : null;
+  const changed = initial ? (Object.keys(vals) as (keyof typeof vals)[]).filter((k) => (data!.enabled || k === "legal_name" || k === "display_name" || k === "contact_email") && vals[k].trim() !== initial[k].trim()) : [];
   const save = async () => {
     setBusy(true);
     setMsg(null);
@@ -154,9 +155,9 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
   return (
     <Modal transparent animationType="fade" visible onRequestClose={onClose} accessibilityViewIsModal>
       <View style={styles.backdrop}>
-        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(260, width * 0.73), maxWidth: 442, maxHeight: height * 0.92 }]}>
-          <AppText variant="title" numberOfLines={1} adjustsFontSizeToFit>
-            先完善資料才能開通權限
+        <View style={[styles.box, { backgroundColor: c.surface, borderColor: c.border, width: Math.max(260, width * 0.73), maxWidth: 442, maxHeight: height * 0.88 }]}>
+          <AppText variant="title" numberOfLines={1} adjustsFontSizeToFit style={{ flexShrink: 0 }}>
+            資料需完整 才可瀏覽課程
           </AppText>
           <View style={styles.actions}>
             <View style={{ flex: 1 }}>
@@ -179,27 +180,21 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
           {!data && !error ? <AppText tone="muted">讀取中…</AppText> : null}
           {data ? (
             <>
-              <TextRow label="真實姓名（報名課程對帳用）" value={vals.legal_name} onChange={(v) => setVals((s) => ({ ...s, legal_name: v }))} />
-              <View style={{ gap: 4 }}>
-                <AppText variant="callout" tone="muted" numberOfLines={1}>
-                  Email{data.email ? "" : "（尚未填寫）"}
-                </AppText>
-                {data.email ? (
-                  <View style={[styles.input, { borderColor: c.border, backgroundColor: c.surfaceMuted, justifyContent: "center" }]}>
-                    <AppText tone="muted" numberOfLines={1}>
-                      {data.email}
-                    </AppText>
-                  </View>
-                ) : (
-                  <Input value={vals.contact_email} onChange={(v) => setVals((s) => ({ ...s, contact_email: v }))} />
-                )}
+              <View style={styles.line}>
+                <View style={{ flex: 1 }}>
+                  <TextRow label="真實姓名" value={vals.legal_name} onChange={(v) => setVals((s) => ({ ...s, legal_name: v }))} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <TextRow label="暱稱" value={vals.display_name} onChange={(v) => setVals((s) => ({ ...s, display_name: v }))} />
+                </View>
               </View>
+              <TextRow label="Email" value={vals.contact_email} onChange={(v) => setVals((s) => ({ ...s, contact_email: v }))} />
               {data.enabled ? (
                 <>
                   <TextRow label="系統" allowNone value={vals.education_system} onChange={(v) => setVals((s) => ({ ...s, education_system: v }))} pool="education_system" pending={data.fields.education_system.pending} />
                   <TextRow label="中心" allowNone value={vals.education_center} onChange={(v) => setVals((s) => ({ ...s, education_center: v }))} pool={data.hglobal ? "education_center" : undefined} pending={data.fields.education_center.pending} />
-                  <View style={{ gap: 4, zIndex: 5 }}>
-                    <AppText variant="callout" tone="muted" numberOfLines={1}>
+                  <View style={{ gap: 2, zIndex: 5 }}>
+                    <AppText variant="caption" tone="muted" numberOfLines={1}>
                       獎銜{data.fields.rank.pending ? `（審核中：${rankLabel(data.fields.rank.pending)}）` : ""}
                     </AppText>
                     <View style={styles.line}>
@@ -259,15 +254,15 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
-  box: { borderRadius: radius.md, borderWidth: 1, padding: space.lg, gap: space.md },
+  box: { borderRadius: radius.md, borderWidth: 1, padding: space.md, gap: space.sm },
   actions: { flexDirection: "row", gap: space.sm, width: "100%" },
-  btn: { minHeight: 48, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: space.sm },
+  btn: { minHeight: 44, borderRadius: radius.md, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: space.sm },
   line: { flexDirection: "row", alignItems: "center", gap: space.sm },
   input: { minHeight: FIELD_H, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md, fontSize: 16 },
-  none: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 44, minWidth: 64 },
+  none: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 40, minWidth: 60 },
   chips: { flexDirection: "row", gap: space.xs, paddingVertical: 2 },
   chip: { minHeight: 36, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, borderColor: "#e2dfd2", justifyContent: "center" },
   dropdown: { position: "absolute", top: FIELD_H + 4, left: 0, right: 0, maxHeight: 220, borderWidth: 1, borderRadius: radius.md, zIndex: 20 },
   opt: { minHeight: 44, paddingHorizontal: space.md, justifyContent: "center" },
-  more: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 44 },
+  more: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 36 },
 });

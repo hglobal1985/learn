@@ -324,7 +324,7 @@ export async function rankOptionList(token: string): Promise<RankOption[]> {
 }
 
 export type AmwayFieldView = { value: string; pending: string | null; status: string };
-export type CentralProfileView = { legalName: string; email: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
+export type CentralProfileView = { legalName: string; nickname: string; email: string; enabled: boolean; hglobal: boolean; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
 const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");
 
 /** 資料補填視窗要顯示的欄位（即時讀取、不快取、不保存）：真實姓名、培訓系統、地區教育中心、獎銜。 */
@@ -334,12 +334,13 @@ export async function centralProfileView(sub: string, token: string): Promise<Ce
   if (!p || !a) return null;
   const f = (k: string): AmwayFieldView => ({ value: textOf(a.fields?.[k]?.value), pending: a.fields?.[k]?.pending_value != null ? textOf(a.fields[k].pending_value) : null, status: a.fields?.[k]?.status ?? "not_required" });
   const em = p.fields?.contact_email?.value;
-  return { legalName: typeof p.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
+  const nn = p.fields?.display_name?.value;
+  return { legalName: typeof p.fields?.legal_name?.value === "string" ? p.fields.legal_name.value : "", nickname: typeof nn === "string" ? nn : "", email: typeof em === "string" ? em.trim() : "", enabled: a.enabled === true, hglobal: a.hglobal === true, fields: { education_system: f("education_system"), education_center: f("education_center"), rank: f("rank") }, rankOptions: opts };
 }
 
 /** 把一個欄位寫回會員中心（用會員本人的 token）。失敗時回中央的錯誤訊息。 */
-export async function centralWriteField(token: string, key: "legal_name" | "education_system" | "education_center" | "rank", value: string | null): Promise<{ ok: true; status: string | null } | { ok: false; status: number; message: string }> {
-  const path = key === "legal_name" ? "/v1/me/profile/fields/legal_name" : `/v1/me/amway/fields/${key}`;
+export async function centralWriteField(token: string, key: "legal_name" | "display_name" | "education_system" | "education_center" | "rank", value: string | null): Promise<{ ok: true; status: string | null } | { ok: false; status: number; message: string }> {
+  const path = key === "legal_name" || key === "display_name" ? `/v1/me/profile/fields/${key}` : `/v1/me/amway/fields/${key}`;
   const res = await callCentral(token, path, { method: "PUT", body: JSON.stringify({ value }) });
   if (!res) return { ok: false, status: 502, message: "會員中心暫時無法連線，請稍後再試" };
   const b = (await res.json().catch(() => null)) as { status?: string; error?: { message?: string } } | null;
