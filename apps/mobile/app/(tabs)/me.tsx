@@ -1,10 +1,11 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { Alert, Linking, Platform, StyleSheet, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ACCOUNT_URL } from "@/api/central";
 import type { AppConfig, Member } from "@/api/client";
 import { useApi, useSession } from "@/state/session";
+import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, ListRow, LoadingView, NoticeBox, Pill, SandboxBanner, Screen, Section } from "@/ui";
 
@@ -19,6 +20,24 @@ function confirm(title: string, message: string, ok: string): Promise<boolean> {
 }
 
 const openAccountCenter = () => (Platform.OS === "web" ? Linking.openURL(ACCOUNT_URL) : WebBrowser.openBrowserAsync(ACCOUNT_URL));
+
+/**
+ * 頁尾：與寰宇中央會員網站的頁尾相同（淡色小字：左邊「隱私權政策」連結、右邊設計者署名）。
+ * 只放在「我的」頁面最下方，其他頁面不顯示。尺寸與淺色模式的顏色照中央會員（14px、#5d6b62、署名 #cfd2c9）；深色模式用等比例的淡化色。
+ */
+function SiteFooter() {
+  const { scheme } = useTheme();
+  const link = scheme === "dark" ? "#9AA39D" : "#5d6b62";
+  const credit = scheme === "dark" ? "#4A524D" : "#cfd2c9";
+  return (
+    <View style={styles.foot}>
+      <Pressable accessibilityRole="link" onPress={() => Linking.openURL("https://learn.hglobal1985.com/privacy")}>
+        <Text style={[styles.footText, { color: link, textDecorationLine: "underline" }]}>隱私權政策</Text>
+      </Pressable>
+      <Text style={[styles.footText, styles.credit, { color: credit }]}>系統設計 杜杜龍</Text>
+    </View>
+  );
+}
 
 export default function MeScreen() {
   const { member, ready, signInGoogle, signInDemo, signOut, deleteAccount } = useSession();
@@ -152,15 +171,9 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
-      <Section title="其他">
-        <Card style={{ paddingVertical: 0 }}>
-          <ListRow icon="shield-outline" title="隱私權政策" onPress={() => Linking.openURL("https://learn.hglobal1985.com/privacy")} />
-          <ListRow icon="help-circle-outline" title="客服與說明" onPress={() => Linking.openURL("https://learn.hglobal1985.com/support")} />
-          <ListRow icon="mail-outline" title="聯絡客服" subtitle="service@hglobal1985.com" onPress={() => Linking.openURL("mailto:service@hglobal1985.com")} />
-        </Card>
-      </Section>
+      <SiteFooter />
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs } });
+const styles = StyleSheet.create({ foot: { flexDirection: "row", alignItems: "center", gap: 16, paddingTop: 4, paddingBottom: 40 }, footText: { fontSize: 14, lineHeight: 23 }, credit: { flex: 1, textAlign: "right" }, row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, marginTop: space.xs } });
