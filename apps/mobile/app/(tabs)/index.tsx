@@ -106,12 +106,12 @@ export default function HomeScreen() {
               progress
               empty={
                 member ? (
-                  <AppText variant="caption" tone="muted">
+                  <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
                     還沒有已報名的課程，到「全部課程」看看。
                   </AppText>
                 ) : (
                   <>
-                    <AppText variant="caption" tone="muted">
+                    <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
                       登入後顯示你已報名的課程。
                     </AppText>
                     {login}
@@ -126,7 +126,7 @@ export default function HomeScreen() {
               courses={recommended}
               note="只顯示符合獎銜資格的課程"
               empty={
-                <AppText variant="caption" tone="muted">
+                <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
                   {member ? "目前沒有符合你獎銜、尚未報名的課程。" : "登入後顯示符合你獎銜的課程。"}
                 </AppText>
               }

@@ -34,10 +34,18 @@ function Slide({ course, w, h }: { course: CourseSummary; w: number; h: number }
   return course.edmUrl ? (
     <TopFillImage uri={resolveUrl(course.edmUrl)} w={w} h={h} />
   ) : (
-    <View style={{ width: w, height: h, borderRadius: radius.md, backgroundColor: bg, padding: space.md, justifyContent: "center" }}>
-      <AppText variant="headline" numberOfLines={8} style={{ color: fg, fontWeight: "700", textAlign: "center" }}>
+    <View style={{ width: w, height: h, borderRadius: radius.md, backgroundColor: bg, padding: space.md, justifyContent: "center", alignItems: "center", gap: space.md, overflow: "hidden" }}>
+      <View style={{ position: "absolute", right: -w * 0.25, top: -w * 0.25, width: w * 0.8, height: w * 0.8, borderRadius: w * 0.4, borderWidth: w * 0.1, borderColor: fg, opacity: 0.18 }} />
+      <View style={{ position: "absolute", left: -w * 0.3, bottom: -w * 0.3, width: w * 0.7, height: w * 0.7, borderRadius: w * 0.35, backgroundColor: fg, opacity: 0.1 }} />
+      <Icon name="school-outline" size={30} color={fg} />
+      <AppText variant="headline" numberOfLines={6} style={{ color: fg, fontWeight: "800", textAlign: "center" }}>
         {course.title}
       </AppText>
+      {course.category ? (
+        <AppText variant="caption" style={{ color: fg, opacity: 0.8, letterSpacing: 1 }}>
+          {course.category}
+        </AppText>
+      ) : null}
     </View>
   );
 }
@@ -61,11 +69,9 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
           {title}
         </AppText>
       </View>
-      {note ? (
-        <AppText variant="caption" tone="muted" numberOfLines={3} style={styles.note}>
-          {note}
-        </AppText>
-      ) : null}
+      <AppText variant="caption" tone="muted" numberOfLines={3} style={styles.note}>
+        {note ?? " "}
+      </AppText>
       <View style={styles.stage} onLayout={(e) => setBox({ w: Math.floor(e.nativeEvent.layout.width), h: Math.floor(e.nativeEvent.layout.height) })}>
         {box.w > 0 && box.h > 0 ? (
           courses.length ? (
@@ -77,17 +83,19 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               ))}
             </ScrollView>
           ) : (
-            <View style={{ width: box.w, height: box.h, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, padding: space.sm, justifyContent: "center", gap: space.xs }}>{empty}</View>
+            <View style={{ width: box.w, height: box.h, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderStyle: "dashed", padding: space.sm, justifyContent: "center", alignItems: "center", gap: space.sm }}>
+              <Icon name={icon} size={34} color={c.textMuted} />
+              {empty}
+            </View>
           )
         ) : null}
       </View>
-      {courses.length > 1 ? (
-        <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          {courses.map((course, i) => (
-            <View key={course.id} style={[styles.dot, { backgroundColor: i === page ? c.accent : c.border }]} />
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        {courses.length > 1
+          ? courses.map((course, i) => <View key={course.id} style={[styles.dot, { backgroundColor: i === page ? c.accent : c.border }]} />)
+          : null}
+      </View>
+      {!cur ? <View style={styles.info} /> : null}
       {cur ? (
         <Pressable onPress={() => router.push(`/course/${cur.id}`)} accessibilityRole="link" style={styles.info}>
           <AppText variant="callout" numberOfLines={2} style={{ fontWeight: "700" }}>
@@ -103,7 +111,9 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               日期：{cur.eventStart ? eventDays(cur.eventStart, cur.eventEnd) : cur.nextRunAt!.slice(0, 10)}
             </AppText>
           ) : null}
-          <CoursePriceTag course={cur} />
+          <View style={{ alignSelf: "center" }}>
+            <CoursePriceTag course={cur} />
+          </View>
           {progress && cur.lessonCount ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
               已完成 {cur.completedLessons}/{cur.lessonCount} 堂
@@ -120,7 +130,7 @@ const styles = StyleSheet.create({
   pill: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs, minHeight: 36, paddingHorizontal: space.sm, borderRadius: radius.pill },
   note: { textAlign: "center", minHeight: 32 },
   stage: { flex: 1, minHeight: 120 },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 5 },
+  dots: { flexDirection: "row", justifyContent: "center", gap: 5, height: 6 },
   dot: { width: 6, height: 6, borderRadius: 3 },
-  info: { gap: 2, alignItems: "center" },
+  info: { gap: 2, alignItems: "center", minHeight: 112 },
 });
