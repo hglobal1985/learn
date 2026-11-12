@@ -140,13 +140,17 @@ export async function legalNameOf(token: string): Promise<string> {
 export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[]> {
   return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async () => {
     const gaps: string[] = [];
-    if (!(await legalNameOf(token))) gaps.push("真實姓名");
     if (email === null) gaps.push("Email");
     const res = await callCentral(token, "/v1/me/amway");
     if (res?.ok) {
       const b = (await res.json().catch(() => null)) as { enabled?: boolean; fields?: Record<string, { value?: unknown; pending_value?: unknown }> } | null;
       if (b?.enabled) {
-        const empty = Object.values(b.fields ?? {}).some((f) => (f.value == null || f.value === "") && (f.pending_value == null || f.pending_value === ""));
+        // 只檢查核心三欄（培訓系統、地區教育中心、獎銜）；推薦人與各上手因人而異（可能沒有），不列入提醒。
+        const core = ["education_system", "education_center", "rank"];
+        const empty = core.some((k) => {
+          const f = b.fields?.[k];
+          return !f || ((f.value == null || f.value === "") && (f.pending_value == null || f.pending_value === ""));
+        });
         if (empty) gaps.push("Amway 會員資料");
       }
     }

@@ -650,7 +650,6 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
     // 付費課程：對帳需要真實姓名，報名當下讀取會員中心的 legal_name 存成快照（免費課程不存）。
     if (!isFree && legal === null) legal = s.kind === "central" ? await legalNameOf(s.token) : s.name;
-    if (!isFree && !legal) fail(409, "legal_name_required", "付費課程需要真實姓名（對帳用）。請點首頁的姓名進入會員中心，填寫「真實姓名」後再報名。");
     const id = orderId(now);
     const title = run ? `${c.title}｜${run.title}` : c.title;
     created.push(id);
