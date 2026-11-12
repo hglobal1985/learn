@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, type HostInstance, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { api } from "@/api/client";
 import { openAccountCenter } from "@/features/account-link";
 import { useSession } from "@/state/session";
@@ -118,12 +118,25 @@ function Btn({ label, icon, onPress, disabled, loading }: { label: string; icon:
  */
 export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void; initial?: View_ | null }) {
   const { c } = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, height: winHeight } = useWindowDimensions();
   const { invalidate } = useSession();
   const [data, setData] = useState<View_ | null>(first ?? null);
   const [error, setError] = useState<string | null>(null);
   const [vals, setVals] = useState({ legal_name: "", display_name: "", contact_email: "", education_system: "", education_center: "", rank: "" });
   const [rankOpen, setRankOpen] = useState(false);
+  // 獎銜下拉選單：依螢幕剩餘空間自動往下或往上展開，高度也隨剩餘空間調整（不會貼到螢幕邊緣）。
+  const rankBox = useRef<HostInstance>(null);
+  const [drop, setDrop] = useState({ up: false, max: 220 });
+  const toggleRank = () => {
+    if (rankOpen) return setRankOpen(false);
+    rankBox.current?.measureInWindow((_x, y, _w, h) => {
+      const below = winHeight - (y + h) - 24;
+      const above = y - 24;
+      const up = below < 220 && above > below;
+      setDrop({ up, max: Math.max(120, Math.min(280, up ? above : below)) });
+      setRankOpen(true);
+    });
+  };
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const apply = useCallback((d: View_) => {
@@ -207,9 +220,9 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                   <View style={{ gap: 2, zIndex: 5 }}>
                     <Label text="獎銜" pending={data.fields.rank.pending !== null} />
                     <View style={styles.line}>
-                      <View style={{ flex: 1 }}>
+                      <View ref={rankBox} collapsable={false} style={{ flex: 1 }}>
                         <Pressable
-                          onPress={() => canRank && !rankNone && setRankOpen(!rankOpen)}
+                          onPress={() => canRank && !rankNone && toggleRank()}
                           accessibilityRole="button"
                           accessibilityState={{ disabled: !canRank }}
                           style={[styles.input, { borderColor: c.border, backgroundColor: canRank && !rankNone ? c.surface : c.surfaceMuted, flexDirection: "row", alignItems: "center", gap: space.sm }]}
@@ -220,7 +233,7 @@ export function ProfilePrompt({ onClose, initial: first }: { onClose: () => void
                           <Icon name={rankOpen ? "chevron-up" : "chevron-down"} size={20} color={c.textMuted} />
                         </Pressable>
                         {rankOpen ? (
-                          <ScrollView style={[styles.dropdown, { borderColor: c.border, backgroundColor: c.surface }]} nestedScrollEnabled>
+                          <ScrollView style={[styles.dropdown, drop.up ? { bottom: FIELD_H + 4 } : { top: FIELD_H + 4 }, { maxHeight: drop.max, borderColor: c.border, backgroundColor: c.surface }]} nestedScrollEnabled>
                             {data.rankOptions
                               .filter((o) => o.value !== "none")
                               .map((o) => (
@@ -272,7 +285,7 @@ const styles = StyleSheet.create({
   none: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 40, minWidth: 60 },
   chips: { flexDirection: "row", gap: space.xs, paddingVertical: 2 },
   chip: { minHeight: 36, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, borderColor: "#e2dfd2", justifyContent: "center" },
-  dropdown: { position: "absolute", top: FIELD_H + 4, left: 0, right: 0, maxHeight: 220, borderWidth: 1, borderRadius: radius.md, zIndex: 20 },
+  dropdown: { position: "absolute", left: 0, right: 0, borderWidth: 1, borderRadius: radius.md, zIndex: 20 },
   opt: { minHeight: 44, paddingHorizontal: space.md, justifyContent: "center" },
   more: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 36 },
 });
