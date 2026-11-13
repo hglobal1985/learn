@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { loadLastLesson, type LastLesson } from "@/lib/last-lesson";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
+import { cleanUnit } from "@/features/format";
 import { CourseCard } from "@/features/courses/course-card";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -44,7 +45,7 @@ export default function LearningScreen() {
       {enrolled.length ? (
         <View style={styles.filters}>
           <Select label="費用" value={kind} options={[{ key: "", label: "全部（免費與付費）" }, { key: "free", label: "免費" }, { key: "paid", label: "付費" }]} onChange={setKind} />
-          <Select label="主辦單位" value={unit} options={[{ key: "", label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} onChange={setUnit} />
+          <Select label="主辦單位" value={unit} options={[{ key: "", label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} />
         </View>
       ) : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}

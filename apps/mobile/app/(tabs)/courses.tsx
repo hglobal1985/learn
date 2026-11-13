@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
+import { cleanUnit } from "@/features/format";
 import { CourseCard } from "@/features/courses/course-card";
 import { collapseSeries, sortCourses } from "@/features/courses/sort";
 import { useApi, useSession } from "@/state/session";
@@ -25,7 +26,7 @@ export default function CoursesScreen() {
     <Screen title="全部課程" subtitle={data ? `共 ${entries.length} 門課程` : undefined}>
       <View style={styles.filters}>
         <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
-        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} onChange={setUnit} /> : null}
+        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
       </View>
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}

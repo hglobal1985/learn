@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
-import { eventDays, plainDate } from "@/features/format";
+import { eventDays, plainDate, unitLine } from "@/features/format";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
@@ -28,9 +28,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
       <View style={styles.titleRow}>
-        <AppText variant="headline" style={{ flex: 1 }}>
-          {displayName(course)}
-        </AppText>
+        <View style={{ flex: 1 }} />
         {course.eventStart ? (
           <AppText variant="callout" tone="muted" style={styles.date}>
             {eventDays(course.eventStart, course.eventEnd)}
@@ -83,13 +81,13 @@ export function CoursePriceTag({ course }: { course: CourseSummary }) {
   return <Pill label="學員專屬" />;
 }
 
-/** 指導單位、主辦單位兩個標籤。 */
+/** 指導與主辦：一個標籤，格式「寰宇總部指導、台中主辦」。 */
 export function UnitTags({ course }: { course: CourseSummary }) {
-  if (!course.guidanceUnit && !course.hostUnit) return null;
+  const line = unitLine(course);
+  if (!line) return null;
   return (
     <View style={styles.meta}>
-      {course.guidanceUnit ? <Pill label={`指導：${course.guidanceUnit}`} tone="accent" /> : null}
-      {course.hostUnit ? <Pill label={`主辦：${course.hostUnit}`} /> : null}
+      <Pill label={line} tone="accent" />
     </View>
   );
 }

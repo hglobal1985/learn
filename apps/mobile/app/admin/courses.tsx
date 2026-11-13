@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { api, type CourseSummary, type Rank } from "@/api/client";
+import { cleanUnit } from "@/features/format";
 import { CourseCard } from "@/features/courses/course-card";
 import { collapseSeries, sortCourses } from "@/features/courses/sort";
 import { canManageCourses } from "@/lib/roles";
@@ -121,7 +122,7 @@ export default function AdminCoursesScreen() {
       <Button label="新增課程" icon="add-circle-outline" onPress={() => router.push("/admin/course-edit")} fullWidth />
       <View style={styles.filters}>
         <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
-        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} onChange={setUnit} /> : null}
+        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
       </View>
       <AppText variant="caption" tone="muted">
         共 {entries.length} 門課程（同系列已合併）。點「還有 N 個梯次」選擇要管理哪一梯；下方按鈕用來編輯、上下架、管理章節，點課程卡可以預覽課程頁。
