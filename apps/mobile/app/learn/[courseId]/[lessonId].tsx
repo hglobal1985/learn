@@ -68,7 +68,13 @@ export default function LessonScreen() {
   // 沒有「完成」按鈕了：這一堂播放到結尾，自動記錄完成。（Hook 必須放在所有提前 return 之前）
   const autoDone = useRef<string | null>(null);
   const curLesson = c?.lessons.find((l) => l.id === lessonId);
-  const finished = legacyYoutube ? legacyDone : !!track && player.track?.key === track.key && player.segmentEnded;
+  // 播放超過 95% 就算完成（有設定起訖時間的章節，以那一段為準）；播到結尾也算。
+  const here = !!track && player.track?.key === track.key;
+  const segStart = curLesson?.start ?? 0;
+  const segEnd = curLesson?.end ?? player.duration;
+  const segLen = segEnd - segStart;
+  const watched = here && segLen > 0 && (player.position - segStart) / segLen >= 0.95;
+  const finished = legacyYoutube ? legacyDone : here && (player.segmentEnded || watched);
   useEffect(() => {
     if (!c || !curLesson || !member || !finished || curLesson.completed || autoDone.current === curLesson.id) return;
     autoDone.current = curLesson.id;
