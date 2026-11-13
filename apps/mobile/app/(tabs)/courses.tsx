@@ -18,8 +18,8 @@ export default function CoursesScreen() {
   const { config } = useUiConfig();
   const courses = useMemo(() => sortCourses(data ?? [], member, config.sortGroups), [data, member, config.sortGroups]);
   const categories = useMemo(() => [...new Set(courses.flatMap((x) => x.category.split("、")).filter(Boolean))], [courses]);
-  const units = useMemo(() => [...new Set(courses.flatMap((x) => [x.guidanceUnit, x.hostUnit]).filter(Boolean))], [courses]);
-  const list = courses.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit === unit));
+  const units = useMemo(() => [...new Set(courses.flatMap((x) => [x.guidanceUnit, ...x.hostUnit.split("、")]).filter(Boolean))], [courses]);
+  const list = courses.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit.split("、").includes(unit)));
   const entries = useMemo(() => collapseSeries(list, courses), [list, courses]);
   return (
     <Screen title="全部課程" subtitle={data ? `共 ${entries.length} 門課程` : undefined}>

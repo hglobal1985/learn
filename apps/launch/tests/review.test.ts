@@ -234,3 +234,13 @@ test("分類可複選：存成「、」分隔，關鍵字改名與刪除會處�
   assert.equal((await call<{ category: string }>("GET", "/courses/share", { token: admin })).data.category, "達標班");
   assert.equal((await call<{ category: string }>("GET", "/courses/lead", { token: admin })).data.category, "講座");
 });
+
+test("主辦單位可複選：存成「、」分隔，權限以第一個中心為準", async () => {
+  const { call, login } = setup();
+  const admin = await login("demo-admin");
+  const r = await call<{ hostUnit: string }>("PATCH", "/admin/courses/share", { token: admin, body: { hostUnit: ["寰宇總部", "台北中心", "台中中心", "台北中心"] } });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.hostUnit, "寰宇總部、台北中心、台中中心");
+  const one = await call<{ hostUnit: string }>("PATCH", "/admin/courses/share", { token: admin, body: { hostUnit: "寰宇總部" } });
+  assert.equal(one.data.hostUnit, "寰宇總部");
+});

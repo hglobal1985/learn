@@ -309,7 +309,31 @@ export default function CourseEditScreen() {
             主辦單位（會公開顯示）
           </AppText>
           {isAdmin ? (
-            <Chips label="主辦單位" options={[{ key: "", label: "不顯示" }, { key: HQ_UNIT, label: HQ_UNIT }, ...(centers.data ?? []).map((x) => ({ key: x, label: x }))]} value={form.hostUnit} onChange={set("hostUnit")} />
+            <>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+              {[HQ_UNIT, ...(centers.data ?? [])].map((x) => {
+                const cur = form.hostUnit.split(/[、,，]+/).map((v) => v.trim()).filter(Boolean);
+                const on = cur.includes(x);
+                return (
+                  <Pressable
+                    key={x}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    onPress={() => setForm((f) => ({ ...f, hostUnit: (on ? cur.filter((v) => v !== x) : [...cur, x]).join("、") }))}
+                    style={[styles.catChip, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : c.surface }]}
+                  >
+                    <Ionicons name={on ? "checkbox" : "square-outline"} size={20} color={on ? c.accent : c.textMuted} />
+                    <AppText variant="callout" style={{ color: on ? c.accentText : c.text, fontWeight: on ? "700" : "400" }}>
+                      {x}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <AppText variant="caption" tone="muted">
+              可複選。不勾＝不顯示；報名審核與管理權限以勾選的第一個中心為準。
+            </AppText>
+            </>
           ) : (
             <NoticeBox text={`主辦單位固定為「${member?.center ?? ""}」；你只能管理自己中心主辦的課程。`} />
           )}

@@ -1072,11 +1072,20 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (centerOnly && guidance === HQ_UNIT) fail(403, "forbidden", `指導單位「${HQ_UNIT}」只有總部管理員可以設定`);
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
   else if (centerOnly && creating && who.center) sets.push(["guidance_unit", who.center.label]);
-  const host = text(body.hostUnit, 100);
+  // 主辦單位可以複選（總部管理員）：存成「、」分隔文字；權限與審核仍以第一個中心（非寰宇總部）為準。
+  const hostList = Array.isArray(body.hostUnit)
+    ? splitCats(body.hostUnit.filter((x): x is string => typeof x === "string").join(CAT_SEP))
+    : typeof body.hostUnit === "string"
+      ? splitCats(body.hostUnit)
+      : undefined;
+  const host = hostList === undefined ? undefined : joinCats(hostList).slice(0, 300);
   if (centerOnly) {
     const center = who.center ?? fail(403, "forbidden", "需要有所屬中心才能管理課程");
     if (creating || host !== undefined) sets.push(["host_unit", center.label], ["host_center_key", center.key]);
-  } else if (host !== undefined) sets.push(["host_unit", host], ["host_center_key", host && host !== HQ_UNIT ? centerKey(host) : null]);
+  } else if (host !== undefined) {
+    const firstCenter = hostList?.find((x) => x !== HQ_UNIT);
+    sets.push(["host_unit", host], ["host_center_key", firstCenter ? centerKey(firstCenter) : null]);
+  }
   if (body.eventStart !== undefined || body.eventEnd !== undefined) {
     const day = (v: unknown) => (v === null || v === "" || v === undefined ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : fail(400, "invalid_date", "活動日期格式請用 2026-12-01"));
     const start = day(body.eventStart);

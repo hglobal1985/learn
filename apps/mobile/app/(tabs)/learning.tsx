@@ -21,8 +21,8 @@ export default function LearningScreen() {
   const [kind, setKind] = useState("");
   const [unit, setUnit] = useState("");
   const enrolled = useMemo(() => (data ?? []).filter((c) => c.enrollment === "opened" || c.enrollment === "pending"), [data]);
-  const units = useMemo(() => [...new Set(enrolled.map((c) => c.hostUnit).filter(Boolean))], [enrolled]);
-  const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (unit === "" || c.hostUnit === unit));
+  const units = useMemo(() => [...new Set(enrolled.flatMap((c) => c.hostUnit.split("、")).filter(Boolean))], [enrolled]);
+  const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (unit === "" || c.hostUnit.split("、").includes(unit)));
   const mine = shown.filter((c) => c.enrollment === "opened");
   const pending = shown.filter((c) => c.enrollment === "pending");
   const inProgress = mine.filter((c) => c.completedLessons < c.lessonCount);
