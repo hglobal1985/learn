@@ -162,7 +162,7 @@ export default function StatsScreen() {
   return (
     <Screen header={false}>
       <Source title="① Mux 影片統計" from="資料來自 Mux（影片服務）" path="/admin/stats/mux" advancedTitle="進階統計（裝置、瀏覽器、國家、播放錯誤、直播）" />
-      <Source title="② Cloudflare 網站流量" from="資料來自 Cloudflare（網站主機）" path="/admin/stats/cloudflare" />
+      <Source title="② Cloudflare 網站流量" from="資料來自 Cloudflare（網站主機）" path="/admin/stats/cloudflare" advancedTitle="進階統計（來源網站、狀態碼、請求方式、快取、機房…）" />
       <Source title="③ App 資料庫統計" from="資料來自本 App 自己的資料庫（D1）" path="/admin/stats/app" />
 
       {isSuper ? (

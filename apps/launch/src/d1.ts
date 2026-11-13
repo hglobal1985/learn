@@ -44,6 +44,8 @@ export interface Env {
   /** Cloudflare 分析讀取權杖（Secret，權限：Account Analytics 讀取）與帳號代碼：統計分析頁「網站流量」用。 */
   CF_API_TOKEN?: string;
   CF_ACCOUNT_ID?: string;
+  /** learn.hglobal1985.com 所在網域（hglobal1985.com）的區域代碼：網站流量統計用。 */
+  CF_ZONE_ID?: string;
   /** 額外的 App 管理員（逗號分隔的中央會員 ID）；中央超級管理員不必列。 */
   LEARN_ADMIN_SUBS?: string;
   /** R2 bucket「learn」：章節音檔。 */
