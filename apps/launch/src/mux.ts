@@ -128,9 +128,12 @@ type RawAsset = {
 
 export class MuxApiError extends Error {
   code: "mux_api_not_configured" | "mux_api_unauthorized" | "mux_api_unavailable";
-  constructor(code: MuxApiError["code"]) {
+  /** Mux 回的 HTTP 狀態與簡短說明（除錯用，不含金鑰）。 */
+  detail: string;
+  constructor(code: MuxApiError["code"], detail = "") {
     super(code);
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -177,10 +180,19 @@ export async function muxGetJson(env: Env, path: string): Promise<unknown> {
   let res: Response;
   try {
     res = await muxFetch(`https://api.mux.com${path}`, { headers: { authorization: `Basic ${btoa(`${id}:${secret}`)}` }, signal: AbortSignal.timeout(12000) });
-  } catch {
-    throw new MuxApiError("mux_api_unavailable");
+  } catch (e) {
+    throw new MuxApiError("mux_api_unavailable", `連線失敗：${e instanceof Error ? e.name : "未知"}`);
   }
-  if (res.status === 401 || res.status === 403) throw new MuxApiError("mux_api_unauthorized");
-  if (!res.ok) throw new MuxApiError("mux_api_unavailable");
+  if (res.status === 401 || res.status === 403) throw new MuxApiError("mux_api_unauthorized", `HTTP ${res.status}`);
+  if (!res.ok) {
+    let msg = "";
+    try {
+      const j = (await res.json()) as { error?: { messages?: string[]; type?: string } };
+      msg = (j.error?.messages?.[0] ?? j.error?.type ?? "").slice(0, 120);
+    } catch {
+      /* 讀不到說明就算了 */
+    }
+    throw new MuxApiError("mux_api_unavailable", `HTTP ${res.status}${msg ? `：${msg}` : ""}`);
+  }
   return res.json();
 }

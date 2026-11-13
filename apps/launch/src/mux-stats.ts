@@ -21,7 +21,7 @@ function whyFailed(e: unknown, data = false): string {
   if (e instanceof MuxApiError) {
     if (e.code === "mux_api_not_configured") return "尚未設定 Mux API 存取權杖（MUX_TOKEN_ID／MUX_TOKEN_SECRET）";
     if (e.code === "mux_api_unauthorized") return data ? "這組 Mux 存取權杖沒有「Mux Data」讀取權限；請到 Mux 後台 Settings → API Access Tokens 建立含 Mux Data「Read」的權杖" : "這組 Mux 存取權杖沒有讀取權限";
-    return "Mux 暫時無法連線，請稍後再試";
+    return `Mux 暫時無法連線，請稍後再試${e.detail ? `（${e.detail}）` : ""}`;
   }
   return "讀取失敗";
 }
