@@ -72,27 +72,14 @@ export default function MeScreen() {
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {!ready ? <LoadingView /> : null}
       {member ? (
-        <>
         <View style={styles.headWho}>
           <MemberHeader member={member} />
-        </View>
-        <Card>
-          <View style={styles.row}>
+          <View style={[styles.row, { justifyContent: "center" }]}>
             {member.titles.length ? member.titles.map((t) => <Pill key={t} label={t} />) : <Pill label={member.role === "admin" ? "管理員" : "學員"} />}
             {member.center ? <Pill label={member.center} tone="accent" /> : null}
             {member.demo ? <Pill label="測試帳號" tone="warning" /> : null}
           </View>
-          <View style={styles.row}>
-            <Button
-              variant="secondary"
-              label={member.demo ? "登出" : "登出所有 App"}
-              icon="log-out-outline"
-              loading={busy === "logout"}
-              onPress={() => run("logout", signOut)}
-            />
-          </View>
-        </Card>
-        </>
+        </View>
       ) : ready ? (
         <Section title="登入">
           <Card>
@@ -177,6 +164,17 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
+      {member ? (
+        <Button
+          variant="secondary"
+          label={member.demo ? "登出" : "登出所有 App"}
+          icon="log-out-outline"
+          loading={busy === "logout"}
+          onPress={() => run("logout", signOut)}
+          fullWidth
+        />
+      ) : null}
+
       <SiteFooter />
       {member && !member.demo ? (
         <AppText variant="caption" tone="muted" selectable style={{ textAlign: "center" }}>
@@ -187,4 +185,4 @@ export default function MeScreen() {
   );
 }
 
-const styles = StyleSheet.create({ foot: { flexDirection: "row", alignItems: "center", gap: 16, paddingTop: 4, paddingBottom: 40 }, footText: { fontSize: 14, lineHeight: 23 }, credit: { flex: 1, textAlign: "right" }, row: { flexDirection: "row", flexWrap: "wrap", gap: space.xs + 2, marginTop: space.xs }, headWho: { alignItems: "center" } });
+const styles = StyleSheet.create({ foot: { flexDirection: "row", alignItems: "center", gap: 16, paddingTop: 4, paddingBottom: 40 }, footText: { fontSize: 14, lineHeight: 23 }, credit: { flex: 1, textAlign: "right" }, row: { flexDirection: "row", flexWrap: "wrap", gap: space.xs + 2, marginTop: space.xs }, headWho: { alignItems: "center", gap: space.xs } });

@@ -406,3 +406,4 @@
 - 2026-11-14 補：iPhone Safari 專用浮動小視窗寫法（webkitSetPresentationMode，`iosPipOk`）；按鈕下方加「小視窗」文字、啟用中圖示變綠（`engine.isPip()`）。網頁已上線；App 端 PiP 需重新打包（尚未打包）。未實機驗證。
 - 2026-11-14 附件圖示：Canva、PDF 改官方圖形（simple-icons CC0），Word／PowerPoint／Excel 因圖庫無官方圖形，用官方品牌色＋字母方塊（OFFICE_BADGES）；壓縮檔仍通用圖示。
 - 2026-11-14 設定頁最上方改用與首頁相同的會員抬頭（大頭照＋姓名＋獎銜，共用 features/member-header.tsx）；卡片內的標籤不再重複獎銜，標籤間距與內距縮小（字體不變）以盡量排成一列（Pill 左右內距 sm）。未實機驗證。
+- 2026-11-14 設定頁：移除姓名下方的卡片框，身分／中心標籤置中放在姓名下方；登出按鈕移到頁面底部（帳號區塊之後、頁尾之前）。未實機驗證。
