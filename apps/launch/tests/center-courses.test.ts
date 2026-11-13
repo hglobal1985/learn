@@ -37,11 +37,10 @@ test("各中心自行上架：會長只能管理主辦單位是自己中心的�
   assert.equal(made.data.status, "draft");
   // 不能自稱總部指導
   assert.equal((await call("PATCH", `/admin/courses/${id}`, { token: pres, body: { guidanceUnit: "寰宇總部" } })).status, 403);
-  // 可以編輯、加章節、加場次、上架
+  // 可以編輯、加章節、上架
   assert.equal((await call("PATCH", `/admin/courses/${id}`, { token: pres, body: { title: "台北讀書會（改）", status: "published" } })).status, 200);
   const withLesson = await call<CourseDetail>("POST", `/admin/courses/${id}/lessons`, { token: pres, body: { title: "第二堂" } });
   assert.equal(withLesson.status, 200);
-  assert.equal((await call("POST", `/admin/courses/${id}/runs`, { token: pres, body: { title: "12 月班" } })).status, 200);
   // 不能用 Mux
   const lessonId = withLesson.data.lessons[0]!.id;
   assert.equal((await call("PATCH", `/admin/lessons/${lessonId}`, { token: pres, body: { mediaType: "mux", mediaRef: "abc" } })).status, 403);

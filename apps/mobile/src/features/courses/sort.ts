@@ -2,8 +2,8 @@ import type { CourseSummary, Member, SortGroup } from "@/api/client";
 import { todayStr } from "@/ui/date-select";
 import { classify } from "./ribbons";
 
-/** 課程排序用的日期：活動日期；沒有就用最近一場的開課日（台灣時間的日期）。 */
-export const startOf = (c: CourseSummary): string | null => c.eventStart ?? (c.nextRunAt ? new Date(Date.parse(c.nextRunAt) + 8 * 3600_000).toISOString().slice(0, 10) : null);
+/** 課程排序用的日期：活動日期（沒有就是 null）。 */
+export const startOf = (c: CourseSummary): string | null => c.eventStart;
 
 /**
  * 「全部課程」排序：先依分組優先順序（由超級管理員在「課程排序與條件」設定），

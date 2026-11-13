@@ -328,3 +328,4 @@
 - 業主決定（2026-11-14）：YouTube 影片縮放／覆蓋層功能**先保留**，上架時若被退件再改（風險：YouTube API 政策禁止修改播放器／蓋在播放器上，見對話記錄）。舊 Mux 金鑰 HGlobal Learn Video Read 已撤銷。
 - EDM 放大檢視按鈕改 64px（業主指定）。
 - EDM 放大檢視：按鈕 50px；提示文字與下載／分享同一排（左提示、右按鈕），太擠自動換行。
+- **移除「場次」功能**（業主 2026-11-14）：刪除場次編輯器（runs-editor）、場次 API（/admin/courses/:id/runs、/admin/runs/*）、報名選場次、章節綁場次、「報名已截止」緞帶、「分場次報名」標籤、nextRunAt／hasRuns／registrationOpen 欄位；報名與開通改為只以課程為單位。正式站 course_runs 沒有任何資料。資料庫的 course_runs 資料表與 lessons／order_items／enrollments 的 run_id 欄位**刻意保留不刪**（D1 難以改 PK／外鍵，刪表會讓 lessons.run_id 的外鍵出錯；欄位預設空字串，程式已完全不用）。

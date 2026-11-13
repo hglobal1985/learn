@@ -28,7 +28,7 @@ export function OrderCard({ order, onPress, showMember }: { order: Order; onPres
         </AppText>
       ) : null}
       {order.items.map((i) => (
-        <View key={`${i.courseId}:${i.runId}`} style={styles.head}>
+        <View key={i.courseId} style={styles.head}>
           <AppText style={{ flex: 1 }}>{i.title}</AppText>
           <AppText tone="muted">{i.priceTwd ? ntd(i.priceTwd) : "免費"}</AppText>
         </View>

@@ -1,10 +1,9 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { api, type CourseDetail, type CourseRun, type Lesson, type MediaType } from "@/api/client";
+import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
 import { AttachmentManager } from "@/features/attachments";
-import { RunsEditor } from "@/features/admin/runs-editor";
 import { confirmAsk } from "@/features/confirm";
 import { detectYoutubeSeconds } from "@/features/admin/youtube-duration";
 import { canManageCourses } from "@/lib/roles";
@@ -105,15 +104,13 @@ export default function LessonManagerScreen() {
         <Button variant="secondary" label="課程資料" icon="create-outline" onPress={() => router.push({ pathname: "/admin/course-edit", params: { id } })} />
         <Pill label={course.data.status === "published" ? "上架中" : "未上架"} tone={course.data.status === "published" ? "success" : "danger"} />
       </View>
-      <RunsEditor course={course.data} onChanged={invalidate} />
       <NoticeBox text="同一支影片可以切成多堂：每堂選同一支影片，再填各自的「開始／結束」時間，學員點選章節就會跳到該段，播到結束時間自動停止。" />
       {msg ? <NoticeBox tone="danger" text={msg} /> : null}
       {lessons.map((l, i) => (
         <LessonEditor
-          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.runId}:${l.eventDate}`}
+          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.eventDate}`}
           lesson={l}
           allowMux={member?.role === "admin"}
-          runs={course.data!.runs}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
           onDown={i < lessons.length - 1 ? () => move(i, i + 1) : undefined}
@@ -177,7 +174,6 @@ function TimeInput({ label, value, onChange }: { label: string; value: Hms; onCh
 
 function LessonEditor({
   lesson,
-  runs,
   onSaved,
   onUp,
   onDown,
@@ -187,7 +183,6 @@ function LessonEditor({
 }: {
   allowMux: boolean;
   lesson: Lesson;
-  runs: CourseRun[];
   onSaved: () => void;
   onUp?: () => void;
   onDown?: () => void;
@@ -200,7 +195,6 @@ function LessonEditor({
   const [ref, setRef] = useState(lesson.media?.type === "youtube" ? lesson.media.ref ?? "" : "");
   const [start, setStart] = useState(toHms(lesson.start));
   const [end, setEnd] = useState(toHms(lesson.end));
-  const [runId, setRunId] = useState(lesson.runId ?? "");
   const [eventDate, setEventDate] = useState(lesson.eventDate ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -217,7 +211,7 @@ function LessonEditor({
     setBusy("save");
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { title, startSeconds: s, endSeconds: e, runId: runId || null, eventDate: eventDate || null };
+      const body: Record<string, unknown> = { title, startSeconds: s, endSeconds: e, eventDate: eventDate || null };
       if (kind === "demo" || kind === "youtube") body.mediaType = kind;
       if (kind === "youtube") body.mediaRef = ref;
       await api("PATCH", `/admin/lessons/${lesson.id}`, body);
@@ -338,14 +332,6 @@ function LessonEditor({
         </View>
       ) : null}
 
-      {runs.length ? (
-        <>
-          <AppText variant="callout" tone="muted">
-            屬於哪一場（只有報名該場的學員可看）
-          </AppText>
-          <Chips label="場次" options={[{ key: "", label: "整個系列共用" }, ...runs.map((r) => ({ key: r.id, label: r.title }))]} value={runId} onChange={setRunId} />
-        </>
-      ) : null}
       <AppText variant="callout" tone="muted">
         時間軸區間（選填；空白＝從頭播到結束）
       </AppText>

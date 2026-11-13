@@ -155,9 +155,9 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               主辦：{cur.hostUnit.split(/[、,，;；\n]+/).filter(Boolean).join("、")}
             </AppText>
           ) : null}
-          {cur.eventStart || cur.nextRunAt ? (
+          {cur.eventStart ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
-              日期：{cur.eventStart ? eventDays(cur.eventStart, cur.eventEnd) : cur.nextRunAt!.slice(0, 10)}
+              日期：{eventDays(cur.eventStart, cur.eventEnd)}
             </AppText>
           ) : null}
           {cur.location && !cur.locationNone ? (

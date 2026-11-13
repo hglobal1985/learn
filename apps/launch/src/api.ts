@@ -20,7 +20,6 @@ import {
   type AttachmentType,
   type Announcement,
   type CourseDeleteImpact,
-  type RunDeleteImpact,
   type Notice,
   type NotificationSettings,
   type Order,
@@ -294,7 +293,6 @@ type CourseRow = {
   free_until: string | null;
   review_group_id: string | null;
   allow_president: number;
-  next_run_at: string | null;
   event_start: string | null;
   event_end: string | null;
   is_public: number;
@@ -302,46 +300,30 @@ type CourseRow = {
   hide_home: number;
   location: string;
   location_none: number;
-  open_runs: number;
   cover_key: string | null;
   edm_view_y: number;
   edm_key: string | null;
   art_version: number;
-  run_count: number;
   lesson_count: number;
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.location, c.location_none, (SELECT COUNT(*) FROM course_runs r2 WHERE r2.course_id = c.id AND r2.status = 'open' AND (r2.register_until IS NULL OR r2.register_until > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS open_runs, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
-  (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
-
-type RunRow = {
-  id: string;
-  course_id: string;
-  title: string;
-  starts_at: string | null;
-  location: string;
-  register_until: string | null;
-  capacity: number | null;
-  price_twd: number | null;
-  status: "open" | "closed";
-};
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
   const empty = { enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>() };
   if (!sub) return empty;
   const [e, p, d] = await db.batch([
-    db.prepare("SELECT course_id, run_id FROM enrollments WHERE member_sub = ?").bind(sub),
-    db.prepare("SELECT i.course_id, i.run_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
+    db.prepare("SELECT course_id FROM enrollments WHERE member_sub = ?").bind(sub),
+    db.prepare("SELECT i.course_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
     db.prepare("SELECT course_id, COUNT(*) AS n FROM lesson_progress WHERE member_sub = ? GROUP BY course_id").bind(sub),
   ]);
-  // 鍵值：課程 ID（任何一場）與「課程 ID|場次 ID」。
-  const keys = (rows: unknown[]) => new Set((rows as { course_id: string; run_id: string }[]).flatMap((r) => [r.course_id, `${r.course_id}|${r.run_id}`]));
+  const keys = (rows: unknown[]) => new Set((rows as { course_id: string }[]).map((r) => r.course_id));
   const pendingOrder = new Map<string, string>();
-  for (const r of p.results as { course_id: string; run_id: string; order_id: string }[]) for (const k of [r.course_id, `${r.course_id}|${r.run_id}`]) pendingOrder.set(k, r.order_id);
+  for (const r of p.results as { course_id: string; order_id: string }[]) pendingOrder.set(r.course_id, r.order_id);
   return { enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
@@ -376,7 +358,6 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     status: row.status,
     guidanceUnit: row.guidance_unit,
     hostUnit: row.host_unit,
-    nextRunAt: row.next_run_at,
     eventStart: row.event_start,
     eventEnd: row.event_end,
     isPublic: row.is_public === 1,
@@ -385,8 +366,6 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hideFromHome: row.hide_home === 1,
     location: row.location,
     locationNone: row.location_none === 1,
-    registrationOpen: row.run_count === 0 || row.open_runs > 0,
-    hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
     eligible: eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row),
@@ -409,20 +388,6 @@ async function listCourses(ctx: Ctx, all: boolean, manager?: Session): Promise<C
   return results.map((r) => summarize(r, ctx, rankMap, state, eligibility));
 }
 
-async function runUsage(db: D1Database, courseId: string): Promise<Map<string, number>> {
-  const { results } = await db
-    .prepare(
-      "SELECT i.run_id, COUNT(*) AS n FROM order_items i JOIN orders o ON o.id = i.order_id WHERE i.course_id = ? AND i.run_id <> '' AND o.status IN ('pending', 'opened') GROUP BY i.run_id",
-    )
-    .bind(courseId)
-    .all<{ run_id: string; n: number }>();
-  return new Map(results.map((r) => [r.run_id, r.n]));
-}
-
-function runOpen(r: RunRow, used: number, now = iso()): boolean {
-  return r.status === "open" && (!r.register_until || now < r.register_until) && (r.capacity == null || used < r.capacity);
-}
-
 /** 課程介紹頁：需登入（未登入只能看課程清單）。 */
 /** 管理員，或主辦單位是自己中心的會長、音控：可看草稿、預覽、看到管理欄位。 */
 const managesCourse = (s: Session, hostCenterKey: string | null) => s.role === "admin" || (!!s.center && !!hostCenterKey && hostCenterKey === s.center.key && s.roles.some((r) => ART_TYPES.has(r)));
@@ -433,16 +398,14 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   // 未登入的訪客：只有「完全公開」且已上架的課程可以看；其他一律要求登入。
   if (!s && (!row || row.status !== "published" || row.is_public !== 1)) return fail(401, "unauthenticated", "請先登入");
   if (!row || (s && row.status !== "published" && !managesCourse(s, row.host_center_key))) return fail(404, "not_found", "找不到這門課程");
-  const [rankMap, state, lessons, done, runs, usage] = await Promise.all([
+  const [rankMap, state, lessons, done] = await Promise.all([
     ranks(ctx.db),
     memberCourseState(ctx.db, s?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, run_id, event_date FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null; run_id: string | null }>(),
+      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
     s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
-    ctx.db.prepare("SELECT * FROM course_runs WHERE course_id = ? ORDER BY COALESCE(starts_at, created_at) DESC").bind(id).all<RunRow>(),
-    runUsage(ctx.db, id),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
@@ -451,26 +414,6 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   return {
     ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code])),
     description: row.description ?? "",
-    runs: runs.results.map((r) => {
-      const price = freeNow ? 0 : (r.price_twd ?? row.price_twd);
-      const used = usage.get(r.id) ?? 0;
-      const key = `${id}|${r.id}`;
-      return {
-        id: r.id,
-        title: r.title,
-        startsAt: r.starts_at,
-        location: r.location,
-        registerUntil: r.register_until,
-        capacity: r.capacity,
-        remaining: r.capacity == null ? null : Math.max(0, r.capacity - used),
-        priceTwd: web ? price : null,
-        free: price === 0 && row.price_tba !== 1,
-        status: r.status,
-        open: runOpen(r, used) && row.price_tba !== 1,
-        enrollment: state.enrolled.has(key) ? "opened" : state.pending.has(key) ? "pending" : null,
-        pendingOrderId: state.pendingOrder.get(key) ?? null,
-      };
-    }),
     lessons: lessons.results.map((l) => ({
       id: l.id,
       position: l.position,
@@ -480,12 +423,11 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       kind: l.media_type === "audio" ? ("audio" as const) : ("video" as const),
       start: l.start_seconds,
       end: l.end_seconds,
-      runId: l.run_id,
       eventDate: l.event_date,
       // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
       ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
-      // 完全公開的課程：任何人（含訪客與會員）都可以看沒有綁場次的章節，不需要報名。
-      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id) || (row.is_public === 1 && !l.run_id)),
+      // 完全公開的課程：任何人（含訪客與會員）都可以看章節，不需要報名。
+      locked: !admin && !(state.enrolled.has(id) || row.is_public === 1),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
@@ -493,23 +435,21 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   };
 }
 
-/** 能否觀看：管理員可預覽；章節屬於某場次時需報名該場，否則報名該課程任一場即可。 */
-async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promise<boolean> {
+/** 能否觀看：管理員可預覽；其他人需已報名並開通該課程（完全公開的課程不用報名）。 */
+async function canWatch(ctx: Ctx, courseId: string): Promise<boolean> {
   const s = ctx.session;
   if (!s) {
-    // 訪客：只有完全公開、已上架的課程裡「沒有綁場次」的章節可以看。
+    // 訪客：只有完全公開、已上架的課程可以看。
     const pub = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first();
-    return !!pub && !runId;
+    return !!pub;
   }
   if (s.role === "admin") return true;
-  if (!runId && (await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first())) return true; // 完全公開的課程，會員也不必報名
+  if ((await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first())) return true; // 完全公開的課程，會員也不必報名
   if (s.center && s.roles.some((r) => ART_TYPES.has(r))) {
     const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
     if (c && managesCourse(s, c.host_center_key)) return true;
   }
-  const row = runId
-    ? await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? AND run_id = ?").bind(s.sub, courseId, runId).first()
-    : await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
+  const row = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
   return !!row;
 }
 
@@ -532,27 +472,6 @@ async function courseDeleteImpact(db: D1Database, id: string): Promise<CourseDel
     db.prepare("SELECT COUNT(*) AS n FROM course_comments WHERE course_id = ?").bind(id).first<{ n: number }>(),
   ]);
   return { title: c.title, registrations: r?.registrations ?? 0, pending: r?.pending ?? 0, opened: r?.opened ?? 0, students: students?.n ?? 0, comments: comments?.n ?? 0, paidTwd: r?.paid ?? 0 };
-}
-
-/** 刪除場次前的影響統計（有報名紀錄時，畫面要求輸入 YES）。 */
-async function runDeleteImpact(db: D1Database, id: string): Promise<RunDeleteImpact> {
-  const run = await db.prepare("SELECT r.title, c.title AS course_title FROM course_runs r JOIN courses c ON c.id = r.course_id WHERE r.id = ?").bind(id).first<{ title: string; course_title: string }>();
-  if (!run) return fail(404, "not_found", "找不到這個場次");
-  const r = await db
-    .prepare(
-      `SELECT COUNT(DISTINCT i.order_id) AS registrations,
-              COUNT(DISTINCT CASE WHEN o.status = 'pending' THEN o.id END) AS pending,
-              COUNT(DISTINCT CASE WHEN o.status = 'opened' THEN o.id END) AS opened,
-              COALESCE(SUM(CASE WHEN o.status = 'opened' THEN i.price_twd ELSE 0 END), 0) AS paid
-       FROM order_items i JOIN orders o ON o.id = i.order_id WHERE i.run_id = ?`,
-    )
-    .bind(id)
-    .first<{ registrations: number; pending: number; opened: number; paid: number }>();
-  const [students, lessons] = await Promise.all([
-    db.prepare("SELECT COUNT(DISTINCT member_sub) AS n FROM enrollments WHERE run_id = ?").bind(id).first<{ n: number }>(),
-    db.prepare("SELECT COUNT(*) AS n FROM lessons WHERE run_id = ?").bind(id).first<{ n: number }>(),
-  ]);
-  return { title: run.title, courseTitle: run.course_title, registrations: r?.registrations ?? 0, pending: r?.pending ?? 0, opened: r?.opened ?? 0, students: students?.n ?? 0, lessons: lessons?.n ?? 0, paidTwd: r?.paid ?? 0 };
 }
 
 /** 公開圖片（封面、EDM）的網址；版本號讓更新後瀏覽器改抓新圖。 */
@@ -583,7 +502,6 @@ async function managerVia(ctx: Ctx, sql: string, id: string, what: string): Prom
   return requireCourseManager(ctx, row.course_id);
 }
 const requireLessonManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM lessons WHERE id = ?", id, "章節");
-const requireRunManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM course_runs WHERE id = ?", id, "場次");
 const requireAttachmentManager = (ctx: Ctx, id: string) => managerVia(ctx, "SELECT course_id FROM lesson_attachments WHERE id = ?", id, "附件");
 /** 可以新增課程的人：管理員，或有中心的會長、音控。 */
 function requireCourseCreator(ctx: Ctx): Session {
@@ -626,9 +544,9 @@ async function attachmentKeys(db: D1Database, where: "lesson_id" | "course_id", 
 
 async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
   const lesson = await ctx.db
-    .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds, l.run_id FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
+    .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
     .bind(lessonId, courseId)
-    .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; run_id: string | null }>();
+    .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
   return lesson ?? fail(404, "not_found", "找不到這個章節");
 }
 
@@ -658,9 +576,9 @@ const ORDER_SELECT = "SELECT o.id, o.member_sub, o.status, o.total_twd, o.reject
 async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]> {
   if (!rows.length) return [];
   const { results } = await db
-    .prepare(`SELECT order_id, course_id, run_id, title_snapshot, price_twd FROM order_items WHERE order_id IN (${rows.map(() => "?").join(",")})`)
+    .prepare(`SELECT order_id, course_id, title_snapshot, price_twd FROM order_items WHERE order_id IN (${rows.map(() => "?").join(",")})`)
     .bind(...rows.map((r) => r.id))
-    .all<{ order_id: string; course_id: string; run_id: string; title_snapshot: string; price_twd: number }>();
+    .all<{ order_id: string; course_id: string; title_snapshot: string; price_twd: number }>();
   return rows.map((r) => ({
     id: r.id,
     status: r.status,
@@ -678,7 +596,7 @@ async function hydrateOrders(db: D1Database, rows: OrderRow[]): Promise<Order[]>
     memberSub: r.member_sub,
     centerLabel: r.center_label,
     hglobal: r.hglobal === 1,
-    items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, runId: i.run_id || null, title: i.title_snapshot, priceTwd: i.price_twd })),
+    items: results.filter((i) => i.order_id === r.id).map((i) => ({ courseId: i.course_id, title: i.title_snapshot, priceTwd: i.price_twd })),
   }));
 }
 
@@ -746,7 +664,7 @@ async function reviewerNotices(ctx: Ctx, o: { id: string; centerKey: string | nu
   return out;
 }
 
-type RegItem = { courseId: string; runId: string };
+type RegItem = { courseId: string };
 /** 會員自己取消報名：審核中的報名、或免費自動開通的報名都可以反悔取消；已繳費（含 VIP 免繳費）開通的要聯絡窗口。 */
 async function cancelOrder(ctx: Ctx, orderId: string): Promise<{ ok: true }> {
   const s = requireMember(ctx);
@@ -766,20 +684,19 @@ async function cancelOrder(ctx: Ctx, orderId: string): Promise<{ ok: true }> {
 async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unknown }): Promise<Order[]> {
   const s = requireMember(ctx);
   const raw: RegItem[] = [
-    ...(Array.isArray(body.courseIds) ? body.courseIds.filter((x): x is string => typeof x === "string").map((courseId) => ({ courseId, runId: "" })) : []),
-    ...(Array.isArray(body.items) ? (body.items as { courseId?: unknown; runId?: unknown }[]).filter((x) => typeof x?.courseId === "string").map((x) => ({ courseId: x.courseId as string, runId: typeof x.runId === "string" ? x.runId : "" })) : []),
+    ...(Array.isArray(body.courseIds) ? body.courseIds.filter((x): x is string => typeof x === "string").map((courseId) => ({ courseId })) : []),
+    ...(Array.isArray(body.items) ? (body.items as { courseId?: unknown }[]).filter((x) => typeof x?.courseId === "string").map((x) => ({ courseId: x.courseId as string })) : []),
   ];
-  const items = [...new Map(raw.map((i) => [`${i.courseId}|${i.runId}`, i])).values()];
+  const items = [...new Map(raw.map((i) => [i.courseId, i])).values()];
   let legal: string | null = null;
   if (!items.length || items.length > 20) fail(400, "invalid_courses", "請選擇要報名的課程");
   const ids = [...new Set(items.map((i) => i.courseId))];
   const marks = ids.map(() => "?").join(",");
-  const [{ results: courses }, { results: runs }, rankMap, state] = await Promise.all([
+  const [{ results: courses }, rankMap, state] = await Promise.all([
     ctx.db
       .prepare(`SELECT id, title, price_twd, price_tba, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
       .bind(...ids)
       .all<{ id: string; title: string; price_twd: number; price_tba: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
-    ctx.db.prepare(`SELECT * FROM course_runs WHERE course_id IN (${marks})`).bind(...ids).all<RunRow>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
   ]);
@@ -794,22 +711,15 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
   const actor = { sub: s.sub, name: s.name, title: "學員" };
   for (const item of items) {
     const c = courses.find((x) => x.id === item.courseId)!;
-    const courseRuns = runs.filter((r) => r.course_id === c.id);
-    let run: RunRow | undefined;
-    if (courseRuns.length) {
-      run = courseRuns.find((r) => r.id === item.runId) ?? fail(400, "run_required", "請選擇要報名的場次");
-      const used = (await runUsage(ctx.db, c.id)).get(run.id) ?? 0;
-      if (!runOpen(run, used)) fail(409, "run_closed", "這個場次已截止或額滿");
-    } else if (item.runId) fail(400, "invalid_run", "場次不存在");
-    const key = `${c.id}|${run?.id ?? ""}`;
+    const key = c.id;
     if (state.enrolled.has(key) || state.pending.has(key)) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
-    const price = inFreeWindow(c, iso(now)) ? 0 : (run?.price_twd ?? c.price_twd);
+    const price = inFreeWindow(c, iso(now)) ? 0 : c.price_twd;
     const isFree = price === 0;
     if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
     // 付費課程：對帳需要真實姓名，報名當下讀取會員中心的 legal_name 存成快照（免費課程不存）。
     if (!isFree && legal === null) legal = s.kind === "central" ? await legalNameOf(s.token) : s.name;
     const id = orderId(now);
-    const title = run ? `${c.title}｜${run.title}` : c.title;
+    const title = c.title;
     created.push(id);
     statements.push(
       ctx.db
@@ -817,14 +727,14 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
           "INSERT INTO orders (id, member_sub, member_name_snapshot, status, total_twd, created_at, center_key, center_label, hglobal, paid_twd, pay_method, paid_at, legal_name, pay_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(id, s.sub, s.name, isFree ? "opened" : "pending", price, iso(now), s.center?.key ?? null, s.center?.label ?? "", s.hglobal ? 1 : 0, isFree ? 0 : null, isFree ? "free" : null, isFree ? iso(now) : null, isFree ? "" : (legal ?? ""), isFree ? "" : payRef()),
-      ctx.db.prepare("INSERT INTO order_items (order_id, course_id, run_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?, ?)").bind(id, c.id, run?.id ?? "", title, price),
+      ctx.db.prepare("INSERT INTO order_items (order_id, course_id, title_snapshot, price_twd) VALUES (?, ?, ?, ?)").bind(id, c.id, title, price),
       event(ctx.db, id, actor, "submit"),
       audit(ctx.db, s.sub, isFree ? "order.register_free" : "order.register", "order", id, title),
     );
     if (isFree) {
       // 免費課程立即開通；PRIMARY KEY 保證同一會員同一場只會開通一次（重複請求整批失敗）。
       statements.push(
-        ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, run_id, source_order_id) VALUES (?, ?, ?, ?)").bind(s.sub, c.id, run?.id ?? "", id),
+        ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, source_order_id) VALUES (?, ?, ?)").bind(s.sub, c.id, id),
         notify(ctx.db, { sub: s.sub }, "課程已開通", title, "/learning"),
       );
     } else {
@@ -951,7 +861,7 @@ async function reviewOrder(ctx: Ctx, id: string, body: Record<string, unknown>):
         .prepare(`UPDATE orders SET status = 'opened', deferred = 0, reject_reason = NULL, reviewed_by_sub = ?, reviewed_at = ?, paid_twd = ?, pay_method = ?, paid_at = ? WHERE id = ? AND ${guard}`)
         .bind(s.sub, now, paid, method, now, id),
       ctx.db
-        .prepare("INSERT OR IGNORE INTO enrollments (member_sub, course_id, run_id, source_order_id) SELECT o.member_sub, i.course_id, i.run_id, o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.id = ? AND o.status = 'opened'")
+        .prepare("INSERT OR IGNORE INTO enrollments (member_sub, course_id, source_order_id) SELECT o.member_sub, i.course_id, o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.id = ? AND o.status = 'opened'")
         .bind(id),
       notify(ctx.db, { sub: order.member_sub }, action === "vip" ? "報名審核通過（VIP 免繳費），課程已開通" : "繳費確認完成，課程已開通", `審核人員：${by}${message ? `\n留言：${message}` : ""}`, `/orders/${id}`),
     );
@@ -1013,7 +923,6 @@ async function reviewList(ctx: Ctx): Promise<{ rows: OrderRow[]; scope: ReviewSc
   else if (status === "deferred") add("o.status = 'pending' AND o.deferred = 1");
   else if (status === "opened" || status === "rejected") add("o.status = ?", status);
   if (q.get("courseId")) add("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.course_id = ?)", q.get("courseId"));
-  if (q.get("runId")) add("EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id AND i.run_id = ?)", q.get("runId"));
   if (q.get("center")) add("o.center_key = ?", centerKey(q.get("center")!));
   if (q.get("hglobal") === "0") add("o.hglobal = 0");
   const term = (q.get("q") ?? "").trim().slice(0, 50);
@@ -1042,7 +951,7 @@ async function reviewCsv(ctx: Ctx): Promise<Response> {
   const statusLabel = (o: Order) => (o.revoked ? "已撤銷" : o.status === "opened" ? "已開通" : o.status === "rejected" ? "已退回" : o.deferred ? "延後再審" : "待審核");
   const method: Record<string, string> = { cash: "現金", transfer: "轉帳", vip: "VIP 免繳費", online: "線上", free: "免費" };
   const lines = [
-    ["報名編號", "付款代碼", "會員 ID", "報名時間", "課程／場次", "姓名", "真實姓名（對帳）", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
+    ["報名編號", "付款代碼", "會員 ID", "報名時間", "課程", "姓名", "真實姓名（對帳）", "中心", "寰宇系統", "狀態", "應繳", "實收", "繳費方式", "審核人員", "審核時間", "原因"],
     ...orders.map((o) => [o.id, o.payRef ?? "", o.memberSub ?? "", o.createdAt, o.items.map((i) => i.title).join("、"), o.memberName, o.legalName ?? "", o.centerLabel, o.hglobal ? "是" : "否", statusLabel(o), o.totalTwd, o.paidTwd ?? "", o.payMethod ? method[o.payMethod] : "", reviewers.get(o.id) ?? "", o.reviewedAt ?? "", o.rejectReason ?? ""]),
   ];
   await audit(ctx.db, ctx.session!.sub, "order.export", "report", "csv", String(orders.length)).run();
@@ -1255,15 +1164,6 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   if (finalStart != null && finalEnd != null && finalEnd <= finalStart) fail(400, "invalid_range", "結束時間必須晚於開始時間");
   if (start !== undefined) sets.push(["start_seconds", start]);
   if (end !== undefined) sets.push(["end_seconds", end]);
-  if ((body as { runId?: unknown }).runId !== undefined) {
-    const runId = (body as { runId?: unknown }).runId;
-    if (runId === null || runId === "") sets.push(["run_id", null]);
-    else {
-      const ok = await ctx.db.prepare("SELECT 1 AS ok FROM course_runs r JOIN lessons l ON l.course_id = r.course_id WHERE r.id = ? AND l.id = ?").bind(String(runId), id).first();
-      if (!ok) fail(400, "invalid_run", "場次不存在");
-      sets.push(["run_id", runId]);
-    }
-  }
   const minutes = body.minutes === undefined ? undefined : Number(body.minutes);
   if (minutes !== undefined && (!Number.isInteger(minutes) || minutes < 0 || minutes > 1000)) fail(400, "invalid_minutes", "影片長度不正確");
   // 有設定區間時，章節長度＝區間長度（分鐘，無條件進位）。
@@ -1279,7 +1179,7 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   return { ok: true, mediaType: row?.media_type, mediaRef: row?.media_ref };
 }
 
-// ---------- 審核群組、場次、通知範圍 ----------
+// ---------- 審核群組、通知範圍 ----------
 
 /** 這位登入者看得到的通知：自己的、（管理員）寄給總部的、（會長）寄給自己中心會長的。 */
 function noticeScope(s: Session): { sql: string; args: unknown[] } {
@@ -1335,29 +1235,6 @@ const isoOrNull = (v: unknown): string | null | undefined => {
   if (Number.isNaN(d.getTime())) fail(400, "invalid_date", "日期格式不正確");
   return d.toISOString();
 };
-
-function runFields(body: Record<string, unknown>, creating: boolean): [string, unknown][] {
-  const sets: [string, unknown][] = [];
-  const title = text(body.title, 80);
-  if (title !== undefined || creating) sets.push(["title", title || fail(400, "title_required", "請輸入場次名稱")]);
-  const loc = text(body.location, 120);
-  if (loc !== undefined) sets.push(["location", loc]);
-  for (const [k, col] of [["startsAt", "starts_at"], ["registerUntil", "register_until"]] as const) {
-    const v = isoOrNull(body[k]);
-    if (v !== undefined) sets.push([col, v]);
-  }
-  for (const [k, col, max] of [["capacity", "capacity", 100000], ["priceTwd", "price_twd", 10_000_000]] as const) {
-    if (body[k] === undefined) continue;
-    if (body[k] === null || body[k] === "") sets.push([col, null]);
-    else {
-      const n = Number(body[k]);
-      if (!Number.isInteger(n) || n < (col === "capacity" ? 1 : 0) || n > max) fail(400, "invalid_number", col === "capacity" ? "名額請輸入正整數" : "費用請輸入 0 以上的整數");
-      sets.push([col, n]);
-    }
-  }
-  if (body.status !== undefined) sets.push(["status", body.status === "closed" ? "closed" : "open"]);
-  return sets;
-}
 
 // ---------- 課程留言板 ----------
 
@@ -1556,7 +1433,7 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [courseId, lessonId]) => {
       const s = requireMember(ctx);
       const target = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId, target.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       await ctx.db
         .prepare("INSERT OR IGNORE INTO lesson_progress (member_sub, lesson_id, course_id) VALUES (?, ?, ?)")
         .bind(s.sub, lessonId, courseId)
@@ -1571,7 +1448,7 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/playback$/,
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(ctx.session ? 403 : 401, ctx.session ? "not_enrolled" : "unauthenticated", ctx.session ? "請先報名並通過審核" : "請先登入");
+      if (!(await canWatch(ctx, courseId))) fail(ctx.session ? 403 : 401, ctx.session ? "not_enrolled" : "unauthenticated", ctx.session ? "請先報名並通過審核" : "請先登入");
       const seg = { start: lesson.start_seconds, end: lesson.end_seconds };
       if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref, ...seg };
       if (lesson.media_type === "mux" && lesson.media_ref) {
@@ -1678,13 +1555,11 @@ const routes: [string, RegExp, Handler][] = [
     "POST",
     /^\/courses\/([\w-]+)\/cancel-registration$/,
     async (ctx, [courseId]) => {
-      // 從課程頁取消：找出自己這門課（或這一場）可取消的報名。
+      // 從課程頁取消：找出自己這門課可取消的報名。
       const s = requireMember(ctx);
-      const body = await readJson<{ runId?: unknown }>(ctx.req);
-      const runId = typeof body.runId === "string" ? body.runId : "";
       const row = await ctx.db
-        .prepare("SELECT o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.member_sub = ? AND i.course_id = ? AND i.run_id = ? AND (o.status = 'pending' OR (o.status = 'opened' AND o.pay_method = 'free')) LIMIT 1")
-        .bind(s.sub, courseId, runId)
+        .prepare("SELECT o.id FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.member_sub = ? AND i.course_id = ? AND (o.status = 'pending' OR (o.status = 'opened' AND o.pay_method = 'free')) LIMIT 1")
+        .bind(s.sub, courseId)
         .first<{ id: string }>();
       if (!row) return fail(409, "not_cancellable", "找不到可以取消的報名（已繳費開通的報名請聯絡報名窗口）");
       return cancelOrder(ctx, row.id);
@@ -1907,77 +1782,6 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   [
-    "POST",
-    /^\/admin\/courses\/([\w-]+)\/runs$/,
-    async (ctx, [courseId]) => {
-      const admin = await requireCourseManager(ctx, courseId);
-      if (!(await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ?").bind(courseId).first())) fail(404, "not_found", "找不到這門課程");
-      const f = runFields(await readJson(ctx.req), true);
-      const id = `r${randomId(8)}`;
-      await ctx.db.batch([
-        ctx.db.prepare(`INSERT INTO course_runs (id, course_id, ${f.map(([c]) => c).join(", ")}) VALUES (?, ?, ${f.map(() => "?").join(", ")})`).bind(id, courseId, ...f.map(([, v]) => v)),
-        audit(ctx.db, admin.sub, "run.create", "course_run", id),
-      ]);
-      return courseDetail(ctx, courseId);
-    },
-  ],
-  [
-    "PATCH",
-    /^\/admin\/runs\/([\w-]+)$/,
-    async (ctx, [id]) => {
-      const admin = await requireRunManager(ctx, id);
-      const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
-      if (!run) return fail(404, "not_found", "找不到這個場次");
-      const f = runFields(await readJson(ctx.req), false);
-      if (!f.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
-      await ctx.db.batch([ctx.db.prepare(`UPDATE course_runs SET ${f.map(([c]) => `${c} = ?`).join(", ")} WHERE id = ?`).bind(...f.map(([, v]) => v), id), audit(ctx.db, admin.sub, "run.update", "course_run", id)]);
-      return courseDetail(ctx, run.course_id);
-    },
-  ],
-  [
-    "GET",
-    /^\/admin\/runs\/([\w-]+)\/delete-impact$/,
-    async (ctx, [id]) => {
-      await requireRunManager(ctx, id);
-      return runDeleteImpact(ctx.db, id);
-    },
-  ],
-  [
-    "DELETE",
-    /^\/admin\/runs\/([\w-]+)$/,
-    async (ctx, [id]) => {
-      const admin = requireAdmin(ctx);
-      const run = await ctx.db.prepare("SELECT course_id FROM course_runs WHERE id = ?").bind(id).first<{ course_id: string }>();
-      if (!run) return fail(404, "not_found", "找不到這個場次");
-      const impact = await runDeleteImpact(ctx.db, id);
-      if (impact.registrations > 0 && admin.role !== "admin") fail(403, "forbidden", "已有人報名的場次只有總部管理員可以刪除");
-      if (impact.registrations === 0) {
-        await ctx.db.batch([ctx.db.prepare("DELETE FROM course_runs WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "run.delete", "course_run", id)]);
-        return courseDetail(ctx, run.course_id);
-      }
-      // 已有人報名：必須輸入 YES；報名與審核紀錄、這個場次專屬的章節（含附件、音檔）與學習進度一併刪除。
-      const body = (await ctx.req.json().catch(() => ({}))) as { confirm?: unknown };
-      if (body.confirm !== "YES") fail(409, "confirm_required", `這個場次已有 ${impact.registrations} 筆報名紀錄；刪除需輸入 YES 確認`);
-      const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE run_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
-      const files = (await ctx.db.prepare("SELECT r2_key FROM lesson_attachments WHERE r2_key IS NOT NULL AND lesson_id IN (SELECT id FROM lessons WHERE run_id = ?)").bind(id).all<{ r2_key: string }>()).results.map((r) => r.r2_key);
-      const onlyThis = "id IN (SELECT order_id FROM order_items WHERE run_id = ?1) AND NOT EXISTS (SELECT 1 FROM order_items x WHERE x.order_id = orders.id AND x.run_id <> ?1)";
-      await ctx.db.batch([
-        ctx.db.prepare(`DELETE FROM notifications WHERE (link LIKE '/orders/%' AND substr(link, 9) IN (SELECT id FROM orders WHERE ${onlyThis})) OR (link LIKE '/admin/orders/%' AND substr(link, 15) IN (SELECT id FROM orders WHERE ${onlyThis}))`).bind(id),
-        ctx.db.prepare("DELETE FROM enrollments WHERE run_id = ?").bind(id),
-        ctx.db.prepare(`DELETE FROM orders WHERE ${onlyThis}`).bind(id),
-        ctx.db.prepare("UPDATE orders SET total_twd = MAX(0, total_twd - (SELECT COALESCE(SUM(price_twd), 0) FROM order_items WHERE order_id = orders.id AND run_id = ?1)) WHERE id IN (SELECT order_id FROM order_items WHERE run_id = ?1)").bind(id),
-        ctx.db.prepare("DELETE FROM order_items WHERE run_id = ?").bind(id),
-        ctx.db.prepare("DELETE FROM lessons WHERE run_id = ?").bind(id),
-        audit(ctx.db, admin.sub, "run.delete", "course_run", id, JSON.stringify({ title: impact.title, course: impact.courseTitle, registrations: impact.registrations, students: impact.students, paidTwd: impact.paidTwd, lessons: impact.lessons })),
-        ctx.db.prepare("DELETE FROM course_runs WHERE id = ?").bind(id),
-      ]);
-      await renumber(ctx.db, run.course_id);
-      for (const k of files) await ctx.env.MEDIA?.delete(k).catch(() => undefined);
-      for (const a of audio.results) await ctx.env.MEDIA?.delete(a.media_ref).catch(() => undefined);
-      return courseDetail(ctx, run.course_id);
-    },
-  ],
-  [
     "PATCH",
     /^\/admin\/lessons\/([\w-]+)$/,
     async (ctx, [id]) => updateLesson(ctx, id, await requireLessonManager(ctx, id)),
@@ -2072,7 +1876,7 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/attachments$/,
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       const { results } = await ctx.db.prepare(`SELECT ${ATTACH_COLS} FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at`).bind(lessonId).all<AttachmentRow>();
       return Promise.all(results.map((r) => attachmentOut(ctx.env, r, true)));
     },

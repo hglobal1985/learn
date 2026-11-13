@@ -150,7 +150,7 @@ export default function MeScreen() {
             {member.titles.includes("超級管理員") ? <ListRow icon="swap-vertical-outline" title="課程排序與條件" subtitle="全部課程的排序優先順位、卡片緞帶文字與顏色" onPress={() => router.push("/admin/list-rules")} /> : null}
             {member.titles.includes("超級管理員") ? <ListRow icon="trophy-outline" title="學習成就徽章設定" subtitle="設定要達成什麼條件才能獲得徽章" onPress={() => router.push("/admin/achievements")} /> : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
-            {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
+            {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
         </Section>
       ) : null}

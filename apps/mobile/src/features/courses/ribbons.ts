@@ -54,7 +54,6 @@ export function ribbonsFor(course: CourseSummary, member: Member | null, cfg: Ui
   else if (!course.eligible) left = spec(cfg, "ineligible");
   else if (course.isPublic) left = null; // 公開免費的課程不用報名
   else if (course.priceTba) left = spec(cfg, "price_tba");
-  else if (!course.registrationOpen) left = spec(cfg, "closed");
   else left = spec(cfg, "can_register");
   const ds = dateState(course);
   const n = daysUntil(course);

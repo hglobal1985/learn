@@ -119,36 +119,9 @@ test("對帳報表 CSV：依權限範圍匯出，含實收與審核人員", asyn
   assert.equal((await raw("GET", "/admin/orders.csv", { token: taipei })).status, 403);
 });
 
-test("場次：每場各自報名與審核、名額與截止、章節只給該場學員；限時免費", async () => {
+test("限時免費：期間內付費課程免費且自動開通；過期恢復原價", async () => {
   const { call, login } = setup();
-  const [admin, student, silver] = await Promise.all(["demo-admin", "demo-student", "demo-silver"].map(login));
-  let c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "11 月", capacity: 1 } })).data;
-  c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "12 月", priceTwd: 0, registerUntil: "2000-01-01T00:00:00Z" } })).data;
-  const nov = c.runs.find((r) => r.title === "11 月")!;
-  const dec = c.runs.find((r) => r.title === "12 月")!;
-  assert.deepEqual([nov.priceTwd, nov.remaining, nov.open, dec.free, dec.open], [680, 1, true, true, false]);
-  await call("PATCH", "/admin/lessons/share-welcome", { token: admin, body: { runId: nov.id } });
-  assert.equal((await call<CourseSummary[]>("GET", "/courses", { token: student })).data.find((x) => x.id === "share")!.hasRuns, true);
-
-  assert.equal((await call("POST", "/orders", { token: student, body: { courseIds: ["share"] } })).status, 400, "需選場次");
-  assert.equal((await call("POST", "/orders", { token: student, body: { items: [{ courseId: "share", runId: dec.id }] } })).status, 409, "已截止");
-  const [o] = (await call<Order[]>("POST", "/orders", { token: student, body: { items: [{ courseId: "share", runId: nov.id }] } })).data;
-  assert.equal(o.items[0].title, "把經驗，說成動人的故事｜11 月");
-  assert.equal((await call("POST", "/orders", { token: silver, body: { items: [{ courseId: "share", runId: nov.id }] } })).status, 409, "額滿");
-  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: admin })).status, 409);
-  await call("POST", `/admin/orders/${o.id}/review`, { token: admin, body: { action: "paid" } });
-  const d = (await call<CourseDetail>("GET", "/courses/share", { token: student })).data;
-  assert.equal(d.runs.find((r) => r.id === nov.id)!.enrollment, "opened");
-  assert.equal(d.lessons.find((l) => l.id === "share-welcome")!.locked, false);
-  assert.equal((await call("GET", "/courses/share/lessons/share-welcome/playback", { token: student })).status, 200);
-
-  // 重新開放 12 月（免費場）→ 另一位學員只報名 12 月，看不到 11 月專屬章節
-  await call("PATCH", `/admin/runs/${dec.id}`, { token: admin, body: { registerUntil: null } });
-  const [free] = (await call<Order[]>("POST", "/orders", { token: silver, body: { items: [{ courseId: "share", runId: dec.id }] } })).data;
-  assert.equal(free.status, "opened");
-  assert.equal((await call("GET", "/courses/share/lessons/share-welcome/playback", { token: silver })).status, 403);
-  assert.equal((await call("GET", "/courses/share/lessons/share-foundation/playback", { token: silver })).status, 200, "系列共用章節可看");
-
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
   // 限時免費：期間內付費課程免費且自動開通；過期恢復原價
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { freeFrom: "2000-01-01T00:00:00Z", freeUntil: "2999-01-01T00:00:00Z" } });
   const lead = (await call<CourseDetail>("GET", "/courses/lead", { token: student })).data;
@@ -156,43 +129,4 @@ test("場次：每場各自報名與審核、名額與截止、章節只給該�
   assert.equal((await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data[0].status, "opened");
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { freeUntil: "2001-01-01T00:00:00Z" } });
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.priceTwd, 1280);
-});
-
-test("刪除已有人報名的場次：先看影響、必須輸入 YES、報名／進度／場次專屬章節一併刪除，別的場次不受影響", async () => {
-  const { call, login, env } = setup();
-  const [admin, student, silver] = await Promise.all(["demo-admin", "demo-student", "demo-silver"].map(login));
-  let c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "11 月", capacity: 5 } })).data;
-  c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "12 月", capacity: 5 } })).data;
-  const nov = c.runs.find((r) => r.title === "11 月")!;
-  const dec = c.runs.find((r) => r.title === "12 月")!;
-  await call("PATCH", "/admin/lessons/share-welcome", { token: admin, body: { runId: nov.id } });
-  const [o1] = (await call<Order[]>("POST", "/orders", { token: student, body: { items: [{ courseId: "share", runId: nov.id }] } })).data;
-  const [o2] = (await call<Order[]>("POST", "/orders", { token: silver, body: { items: [{ courseId: "share", runId: dec.id }] } })).data;
-  await call("POST", `/admin/orders/${o1.id}/review`, { token: admin, body: { action: "paid", paidTwd: 0 } });
-  await call("POST", "/courses/share/lessons/share-welcome/complete", { token: student });
-
-  type Impact = { registrations: number; opened: number; pending: number; students: number; lessons: number; title: string };
-  const imp = (await call<Impact>("GET", `/admin/runs/${nov.id}/delete-impact`, { token: admin })).data;
-  assert.deepEqual([imp.title, imp.registrations, imp.opened, imp.students, imp.lessons], ["11 月", 1, 1, 1, 1]);
-  assert.equal((await call("GET", `/admin/runs/${nov.id}/delete-impact`, { token: student })).status, 403);
-  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: admin })).status, 409, "沒帶確認");
-  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: admin, body: { confirm: "yes" } })).status, 409);
-  assert.equal((await call("DELETE", `/admin/runs/${nov.id}`, { token: student, body: { confirm: "YES" } })).status, 403);
-  const res = await call<CourseDetail>("DELETE", `/admin/runs/${nov.id}`, { token: admin, body: { confirm: "YES" } });
-  assert.equal(res.status, 200, JSON.stringify(res.data));
-  assert.deepEqual(res.data.runs.map((r) => r.title), ["12 月"]);
-
-  const n = async (sql: string) => (await env.DB.prepare(sql).first<{ n: number }>())!.n;
-  assert.equal(await n(`SELECT COUNT(*) AS n FROM orders WHERE id = '${o1.id}'`), 0);
-  assert.equal(await n(`SELECT COUNT(*) AS n FROM enrollments WHERE run_id = '${nov.id}'`), 0);
-  assert.equal(await n("SELECT COUNT(*) AS n FROM lessons WHERE id = 'share-welcome'"), 0, "場次專屬章節一併刪除");
-  assert.equal(await n("SELECT COUNT(*) AS n FROM lesson_progress WHERE lesson_id = 'share-welcome'"), 0);
-  assert.equal(await n(`SELECT COUNT(*) AS n FROM orders WHERE id = '${o2.id}'`), 1, "別的場次的報名不受影響");
-  assert.equal(await n("SELECT COUNT(*) AS n FROM courses WHERE id = 'share'"), 1);
-
-  // 沒人報名的場次照舊可直接刪除
-  assert.equal((await call("DELETE", `/admin/runs/${dec.id}`, { token: admin })).status, 409, "12 月已有報名仍需 YES");
-  c = (await call<CourseDetail>("POST", "/admin/courses/share/runs", { token: admin, body: { title: "空場次" } })).data;
-  const empty = c.runs.find((r) => r.title === "空場次")!;
-  assert.equal((await call("DELETE", `/admin/runs/${empty.id}`, { token: admin })).status, 200);
 });

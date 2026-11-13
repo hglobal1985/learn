@@ -54,8 +54,6 @@ export type CourseSummary = {
   /** 指導單位、主辦單位（空字串表示未設定）。 */
   guidanceUnit: string;
   hostUnit: string;
-  /** 最近一場的開課時間（沒有場次為 null）。 */
-  nextRunAt: string | null;
   /** 活動日期（YYYY-MM-DD）；eventEnd 只有連續 2～3 天的活動才有。 */
   eventStart: string | null;
   eventEnd: string | null;
@@ -69,14 +67,10 @@ export type CourseSummary = {
   /** 上課地點；locationNone 為 true 時公開卡片不顯示。 */
   location: string;
   locationNone: boolean;
-  /** 目前開放報名（沒有場次＝true；有場次＝至少一個場次尚未截止）。額滿與否要進介紹頁才知道。 */
-  registrationOpen: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
   freeUntil: string | null;
-  /** 有場次的系列課程：需選場次報名。 */
-  hasRuns: boolean;
   enrollment: EnrollmentState;
   completedLessons: number;
   /** 課程海報 EDM（直式）的公開網址；沒有上傳時為 null。 */
@@ -102,31 +96,14 @@ export type Lesson = {
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */
   start: number | null;
   end: number | null;
-  /** 屬於某一場次（null＝整個系列共用）；locked＝尚未報名該場。 */
-  runId: string | null;
+  /** locked＝尚未報名（或不符資格），不能觀看。 */
   locked: boolean;
   /** 只有管理員會拿到（編輯影片來源用）。 */
   media?: { type: MediaType; ref: string | null };
 };
-export type CourseRun = {
-  id: string;
-  title: string;
-  startsAt: string | null;
-  location: string;
-  registerUntil: string | null;
-  capacity: number | null;
-  remaining: number | null;
-  priceTwd: number | null;
-  free: boolean;
-  status: "open" | "closed";
-  open: boolean;
-  enrollment: EnrollmentState;
-  pendingOrderId: string | null;
-};
 export type CourseDetail = CourseSummary & {
   description: string;
   lessons: Lesson[];
-  runs: CourseRun[];
   /** 只有管理員會拿到。 */
   admin?: { hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
 };
@@ -173,7 +150,7 @@ export type Order = {
   memberSub?: string;
   centerLabel: string;
   hglobal: boolean;
-  items: { courseId: string; runId: string | null; title: string; priceTwd: number }[];
+  items: { courseId: string; title: string; priceTwd: number }[];
   /** 以下只在單筆明細提供。 */
   events?: OrderEvent[];
   /** 這位學員所屬中心的收費窗口姓名。 */
@@ -279,8 +256,6 @@ export type Attachment = { id: string; name: string; kind: "file" | "link"; type
 /** 刪除課程前的影響統計（有報名紀錄時，畫面要求輸入 YES 才能刪除）。 */
 export type CourseDeleteImpact = { title: string; registrations: number; pending: number; opened: number; students: number; comments: number; paidTwd: number };
 
-/** 刪除場次前的影響統計。lessons＝屬於這個場次的專屬章節數（會一併刪除）。 */
-export type RunDeleteImpact = { title: string; courseTitle: string; registrations: number; pending: number; opened: number; students: number; lessons: number; paidTwd: number };
 
 /** 封面底圖圖庫的一張圖。uploaderName／uploaderCenter 只在管理人員開啟圖庫時提供。 */
 
@@ -353,7 +328,7 @@ export const RIBBON_PALETTE = ["green", "greenDark", "olive", "orange", "warn", 
 export type RibbonColor = (typeof RIBBON_PALETTE)[number];
 
 /** 課程卡片的緞帶狀態。left＝左上角（資格或狀態）、right＝右上角（日期倒數）。 */
-export const RIBBON_KEYS = ["public_free", "learning", "completed", "pending", "can_register", "ineligible", "price_tba", "closed", "countdown", "in_progress", "ended"] as const;
+export const RIBBON_KEYS = ["public_free", "learning", "completed", "pending", "can_register", "ineligible", "price_tba", "countdown", "in_progress", "ended"] as const;
 export type RibbonKey = (typeof RIBBON_KEYS)[number];
 export const RIBBON_INFO: Record<RibbonKey, { title: string; side: "left" | "right"; hint: string }> = {
   public_free: { title: "免費公開", side: "left", hint: "訪客看到完全公開的課程" },
@@ -363,7 +338,6 @@ export const RIBBON_INFO: Record<RibbonKey, { title: string; side: "left" | "rig
   can_register: { title: "可以報名", side: "left", hint: "符合資格、尚未報名、開放報名" },
   ineligible: { title: "獎銜不符", side: "left", hint: "登入會員但獎銜不符合報名資格" },
   price_tba: { title: "費用尚未公布", side: "left", hint: "勾選「尚未公布」的課程" },
-  closed: { title: "報名已截止", side: "left", hint: "分場次的課程，所有場次都已截止或額滿" },
   countdown: { title: "倒數天數", side: "right", hint: "活動還沒開始；文字裡的 {n} 會換成天數" },
   in_progress: { title: "活動進行中", side: "right", hint: "今天正在活動日期範圍內" },
   ended: { title: "活動已結束", side: "right", hint: "活動日期已過" },
@@ -405,7 +379,6 @@ export const DEFAULT_UI_CONFIG: UiConfig = {
     can_register: { label: "可以報名", color: "yellow", enabled: true },
     ineligible: { label: "獎銜不符", color: "danger", enabled: true },
     price_tba: { label: "費用尚未公布", color: "warn", enabled: true },
-    closed: { label: "報名已截止", color: "muted", enabled: true },
     countdown: { label: "剩餘 {n} 天", color: "salmon", enabled: true },
     in_progress: { label: "進行中", color: "greenDark", enabled: true },
     ended: { label: "已結束", color: "muted", enabled: true },

@@ -51,7 +51,7 @@ function ReviewList() {
       setBusy(false);
     }
   };
-  const paidCourses = (courses.data ?? []).filter((c) => !c.free || (c.originalPriceTwd ?? 0) > 0 || c.hasRuns);
+  const paidCourses = (courses.data ?? []).filter((c) => !c.free || (c.originalPriceTwd ?? 0) > 0);
 
   return (
     <Screen header={false}>
