@@ -1079,6 +1079,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
       ? splitCats(body.hostUnit)
       : undefined;
   const host = hostList === undefined ? undefined : joinCats(hostList).slice(0, 300);
+  if (!centerOnly && hostList) await assertCentralCenters(ctx, hostList.filter((x) => x !== HQ_UNIT));
   if (centerOnly) {
     const center = who.center ?? fail(403, "forbidden", "需要有所屬中心才能管理課程");
     if (creating || host !== undefined) sets.push(["host_unit", center.label], ["host_center_key", center.key]);
@@ -1138,6 +1139,17 @@ async function createCourse(ctx: Ctx, admin: Session) {
     audit(ctx.db, admin.sub, "course.create", "course", id, String(body.title ?? "")),
   ]);
   return courseDetail(ctx, id);
+}
+
+/** 中心名稱必須是會員中心清單裡的（行動大學不可自行新增）；示範登入不檢查。 */
+async function assertCentralCenters(ctx: Ctx, labels: string[]): Promise<void> {
+  const s = ctx.session;
+  if (!s || s.kind !== "central" || !labels.length) return;
+  const list = await centerList(s.token);
+  if (!list.length) fail(503, "central_unavailable", "暫時無法取得會員中心的中心清單，請稍後再試");
+  const known = new Set(list.map(centerKey));
+  const bad = labels.find((l) => !known.has(centerKey(l)));
+  if (bad) fail(400, "unknown_center", `「${bad}」不在會員中心的中心清單裡；中心名稱以會員中心為準，行動大學不能自行新增`);
 }
 
 /** 分類可以複選：存成「、」分隔的文字（例如「達標班、會議」）。 */
@@ -1744,11 +1756,11 @@ const routes: [string, RegExp, Handler][] = [
     /^\/centers$/,
     async (ctx) => {
       const s = requireMember(ctx);
-      const fromCentral = s.kind === "central" ? await centerList(s.token) : ["台北中心", "台中中心", "高雄中心"];
-      const { results } = await ctx.db.prepare("SELECT DISTINCT center_label AS l FROM orders WHERE center_label <> '' UNION SELECT DISTINCT center_label FROM review_group_members WHERE center_label <> ''").all<{ l: string }>();
-      const seen = new Map<string, string>();
-      for (const l of [...fromCentral, ...results.map((r) => r.l)]) if (!seen.has(centerKey(l))) seen.set(centerKey(l), l);
-      return [...seen.values()];
+      // 只用會員中心的清單（正本）。不混入本地資料；中央暫時查不到時，用最近一次成功的清單，還是沒有就回報錯誤。
+      if (s.kind !== "central") return ["台北中心", "台中中心", "高雄中心"];
+      const list = await centerList(s.token);
+      if (!list.length) fail(503, "central_unavailable", "暫時無法取得會員中心的中心清單，請稍後再試");
+      return list;
     },
   ],
   ["GET", /^\/courses\/([\w-]+)\/comments$/, async (ctx, [id]) => listComments(ctx, id)],
@@ -1845,6 +1857,7 @@ const routes: [string, RegExp, Handler][] = [
       // 總部群組只有秘書與超級管理員可建立；會長、音控只能建立自己中心的群組。
       const own = text(body.ownerCenter, 100) || null;
       if (s.role !== "admin" && !(own && canManageCenter(s, centerKey(own)))) fail(403, "forbidden", "沒有建立這個群組的權限");
+      if (own) await assertCentralCenters(ctx, [own]);
       const id = `g${randomId(8)}`;
       await ctx.db.batch([
         ctx.db.prepare("INSERT INTO review_groups (id, name, owner_center_key, owner_center_label, created_by_sub) VALUES (?, ?, ?, ?, ?)").bind(id, name, own ? centerKey(own) : null, own ?? "", s.sub),
@@ -1894,6 +1907,7 @@ const routes: [string, RegExp, Handler][] = [
         ]);
         return listGroups(ctx);
       }
+      if (label) await assertCentralCenters(ctx, [label]);
       // 姓名：先用對方曾留下的報名姓名；對方下次登入時會自動更新。
       const known = await ctx.db
         .prepare("SELECT member_name AS n FROM review_group_members WHERE member_sub = ? AND member_name <> '' UNION SELECT member_name_snapshot FROM orders WHERE member_sub = ? LIMIT 1")

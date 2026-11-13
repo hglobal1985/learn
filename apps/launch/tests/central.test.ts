@@ -29,6 +29,7 @@ function fakeCentral(url: string, init?: RequestInit): Promise<Response> {
   const ok = (body: unknown) => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   if (url.endsWith("/oauth/jwks")) return ok({ keys: [jwk] });
   if (central.down) return Promise.reject(new Error("offline"));
+  if (url.includes("/v1/vocab/suggestions") && url.includes("pool=education_center")) return ok({ suggestions: ["台北 100", "台中 136"] });
   if (url.endsWith("/v1/me/profile")) return ok({ fields: { display_name: { value: sub === "m_bob" ? "課務小明" : "愛麗絲" }, ...(sub === "m_nolegal" ? {} : { legal_name: { value: "王小明（本名）" } }) } });
   if (url.endsWith("/v1/admin/me")) return Promise.resolve(new Response("{}", { status: 401 })); // 中央只接受網站本身的登入
   if (url.endsWith("/v1/apps/learn/handoff"))
@@ -200,3 +201,21 @@ test("中央職務與中心：秘書是管理員；會長只看得到自己中�
   assert.equal((await call<CourseDetail>("GET", "/courses/share", { token: alice })).data.enrollment, null);
 });
 
+
+test("中心清單以會員中心為準：不混入行動大學本地資料，也不能自行新增", async () => {
+  const call = setup();
+  const alice = token();
+  const bob = token({ sub: "m_bob" });
+  // alice 報名後，訂單裡會留下「台北中心」這個名稱（本地資料），但它不在中央清單裡
+  assert.equal((await call("POST", "/orders", { token: alice, body: { courseIds: ["share"] } })).status, 200);
+  const list = (await call<string[]>("GET", "/centers", { token: bob })).data;
+  assert.deepEqual(list, ["台北 100", "台中 136"], "只有中央的清單");
+  // 主辦單位只能用中央清單裡的名稱（寰宇總部除外）
+  assert.equal((await call("PATCH", "/admin/courses/share", { token: bob, body: { hostUnit: ["寰宇總部", "台北中心"] } })).status, 400);
+  assert.equal((await call("PATCH", "/admin/courses/share", { token: bob, body: { hostUnit: ["寰宇總部", "台中 136"] } })).status, 200);
+  // 審核群組的負責中心、成員中心也一樣
+  assert.equal((await call("POST", "/admin/review-groups", { token: bob, body: { name: "測試群組", ownerCenter: "亂寫中心" } })).status, 400);
+  // 中央暫時連不上：用最近一次成功的清單，不會變成空的或混入本地資料
+  central.down = true;
+  assert.deepEqual((await call<string[]>("GET", "/centers", { token: bob })).data, ["台北 100", "台中 136"]);
+});

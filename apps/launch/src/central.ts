@@ -273,14 +273,21 @@ export async function memberContext(sub: string, token: string): Promise<MemberC
   });
 }
 
-/** 中心清單（會員中心的地區教育中心詞庫），供主辦單位與審核群組的下拉選單。 */
+let lastCenters: string[] = [];
+/**
+ * 中心清單：**唯一的正本是會員中心**（地區教育中心詞庫）。行動大學不可自行新增、也不可把本地資料（報名紀錄、審核群組…）裡出現過的名稱混進來。
+ * 查不到時回傳「最近一次成功取得的清單」（還沒成功過就是空陣列）；失敗不快取。
+ */
 export async function centerList(token: string): Promise<string[]> {
-  return cached("centers", 300_000, async () => {
+  const fresh = await cached("centers", 300_000, async (): Promise<string[] | undefined> => {
     const res = await callCentral(token, "/v1/vocab/suggestions?pool=education_center&q=");
-    if (!res?.ok) return [];
+    if (!res?.ok) return undefined; // 失敗不放進快取
     const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;
-    return (b?.suggestions ?? []).filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, 300);
+    const list = (b?.suggestions ?? []).filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, 300);
+    return list.length ? list : undefined;
   });
+  if (fresh && fresh.length) lastCenters = fresh;
+  return lastCenters;
 }
 
 const EMAIL_RE = /^[^\s@<>"',;]{1,64}@[^\s@<>"',;]{1,255}\.[^\s@<>"',;]{2,63}$/;
