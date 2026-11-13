@@ -50,28 +50,15 @@ function OrderDetail() {
     <Screen header={false}>
       <Card style={styles.hero}>
         <MoneyArt size={72} />
-        {data.items.map((i) => (
-          <View key={i.courseId} style={styles.info}>
-            {i.series ? (
-              <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
-                {i.series}
-              </AppText>
-            ) : null}
-            <AppText variant="headline" style={{ textAlign: "center" }}>
-              {i.title}
+        {data.items.map((i) => {
+          // 系列、課程名稱、日期、地點排成一列；系列和課程名稱一樣就只顯示一次。
+          const parts = [i.series && i.series !== i.title ? i.series : "", i.title, i.eventStart ? eventDays(i.eventStart, i.eventEnd) : "", i.place ?? ""].filter(Boolean);
+          return (
+            <AppText key={i.courseId} variant="headline" style={{ textAlign: "center" }}>
+              {parts.join(" · ")}
             </AppText>
-            {i.eventStart ? (
-              <AppText variant="callout" style={{ textAlign: "center", fontWeight: "700" }}>
-                {eventDays(i.eventStart, i.eventEnd)}
-              </AppText>
-            ) : null}
-            {i.place ? (
-              <AppText variant="callout" style={{ textAlign: "center" }}>
-                {i.place}
-              </AppText>
-            ) : null}
-          </View>
-        ))}
+          );
+        })}
         <AppText style={[styles.amount, { color: c.text }]} accessibilityLabel={`金額 ${total} 元`} adjustsFontSizeToFit numberOfLines={1}>
           {total ? ntd(total) : "免費"}
         </AppText>
