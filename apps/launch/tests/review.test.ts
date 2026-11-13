@@ -261,3 +261,27 @@ test("學習進度百分比：每堂都有長度依長度算，有一堂沒長�
   await call("PATCH", `/admin/lessons/${l2}`, { token: admin, body: { minutes: 0 } });
   assert.equal(await pct(), 50, "第 2 堂沒有長度：改依章節數 1／2");
 });
+
+test("完整版影片：同一支影片裁成多堂時，清單最後自動多一個整支播放的選項（學員看得到、管理員編輯清單不加、不計入進度）", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  const c = (await call<CourseDetail>("POST", "/admin/courses", { token: admin, body: { title: "裁切課", priceTwd: 0, status: "published" } })).data;
+  const l1 = c.lessons[0]!.id;
+  const l2 = (await call<CourseDetail>("POST", `/admin/courses/${c.id}/lessons`, { token: admin, body: { title: "第 2 堂" } })).data.lessons[1]!.id;
+  for (const [id, start, end] of [[l1, 0, 600], [l2, 600, 1200]] as const) {
+    await call("PATCH", `/admin/lessons/${id}`, { token: admin, body: { mediaType: "youtube", mediaRef: "dQw4w9WgXcQ", startSeconds: start, endSeconds: end, minutes: 10 } });
+  }
+  await call("POST", "/orders", { token: student, body: { courseIds: [c.id] } });
+  const detail = (await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data;
+  assert.equal(detail.lessons.length, 3);
+  const full = detail.lessons[2]!;
+  assert.deepEqual([full.title, full.start, full.end, full.minutes, full.locked, full.completed], ["完整版影片", null, null, 20, false, false]);
+  assert.equal(detail.lessonCount, 2, "完整版不算章節總數");
+  const pb = (await call<{ kind: string; videoId: string; start: number | null; end: number | null }>("GET", `/courses/${c.id}/lessons/${full.id}/playback`, { token: student })).data;
+  assert.deepEqual([pb.kind, pb.videoId, pb.start, pb.end], ["youtube", "dQw4w9WgXcQ", null, null], "整支播放，沒有起訖時間");
+  const seg = (await call<{ start: number | null; end: number | null }>("GET", `/courses/${c.id}/lessons/${l2}/playback`, { token: student })).data;
+  assert.deepEqual([seg.start, seg.end], [600, 1200]);
+  assert.equal((await call("POST", `/courses/${c.id}/lessons/${full.id}/complete`, { token: student })).status, 200);
+  assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data.completedLessons, 0, "不計入進度");
+  assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: admin })).data.lessons.length, 2, "管理員的編輯清單不加");
+});

@@ -15,6 +15,7 @@ import {
   type ClientPlatform,
   type CourseDetail,
   type CourseSummary,
+  type Lesson,
   type Member,
   type Attachment,
   type AttachmentType,
@@ -420,6 +421,33 @@ async function listCourses(ctx: Ctx, all: boolean, manager?: Session): Promise<C
 /** 管理員，或主辦單位是自己中心的會長、音控：可看草稿、預覽、看到管理欄位。 */
 const managesCourse = (s: Session, hostCenterKey: string | null) => s.role === "admin" || (!!s.center && !!hostCenterKey && hostCenterKey === s.center.key && s.roles.some((r) => ART_TYPES.has(r)));
 
+type LessonRowLite = { id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null };
+
+/** 同一支影片（或音檔）被裁成多堂時，各自補一個「完整版影片」章節放在清單最後（管理員的編輯清單不加）。 */
+function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: string, row: CourseRow, admin: boolean, _completed: Set<string>): Lesson[] {
+  if (admin) return [];
+  const groups = new Map<string, LessonRowLite[]>();
+  for (const l of rows) {
+    if (!l.media_ref || l.media_type === "demo") continue;
+    const k = `${l.media_type}:${l.media_ref}`;
+    groups.set(k, [...(groups.get(k) ?? []), l]);
+  }
+  const segmented = [...groups.values()].filter((g) => g.some((l) => l.start_seconds != null || l.end_seconds != null));
+  return segmented.map((g, i) => ({
+    id: `${FULL_PREFIX}${g[0]!.id}`,
+    position: rows.length + i + 1,
+    title: segmented.length > 1 ? `完整版影片 ${i + 1}` : "完整版影片",
+    minutes: g.reduce((n, l) => n + l.duration_minutes, 0),
+    completed: false,
+    kind: g[0]!.media_type === "audio" ? ("audio" as const) : ("video" as const),
+    start: null,
+    end: null,
+    eventDate: null,
+    ready: true,
+    locked: !(state.enrolled.has(courseId) || row.is_public === 1),
+  }));
+}
+
 async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const s = ctx.session;
   const row = await ctx.db.prepare(`${COURSE_SELECT} WHERE c.id = ?`).bind(id).first<CourseRow>();
@@ -442,7 +470,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   return {
     ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code, DIAMOND])),
     description: row.description ?? "",
-    lessons: lessons.results.map((l) => ({
+    lessons: [...lessons.results.map((l) => ({
       id: l.id,
       position: l.position,
       title: l.title,
@@ -458,7 +486,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       locked: !admin && !(state.enrolled.has(id) || row.is_public === 1),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
-    })),
+    })), ...fullVersions(lessons.results, state, id, row, admin, completed)],
     ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, freeUntil: row.free_until, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
   };
 }
@@ -570,12 +598,18 @@ async function attachmentKeys(db: D1Database, where: "lesson_id" | "course_id", 
   return results.map((r) => r.r2_key);
 }
 
-async function lessonOf(ctx: Ctx, courseId: string, lessonId: string) {
+/** 「完整版影片」：同一支影片被裁成多堂時，自動在清單最下面多一個整支播放的選項；id＝full_＋第一個章節的 id。 */
+const FULL_PREFIX = "full_";
+
+async function lessonOf(ctx: Ctx, courseId: string, rawLessonId: string) {
+  const full = rawLessonId.startsWith(FULL_PREFIX);
+  const lessonId = full ? rawLessonId.slice(FULL_PREFIX.length) : rawLessonId;
   const lesson = await ctx.db
     .prepare("SELECT l.id, l.media_type, l.media_ref, l.start_seconds, l.end_seconds FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ? AND l.course_id = ?")
     .bind(lessonId, courseId)
     .first<{ id: string; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
-  return lesson ?? fail(404, "not_found", "找不到這個章節");
+  if (!lesson) return fail(404, "not_found", "找不到這個章節");
+  return full ? { ...lesson, start_seconds: null, end_seconds: null } : lesson;
 }
 
 // ---------- 報名與審核 ----------
@@ -1591,6 +1625,7 @@ const routes: [string, RegExp, Handler][] = [
       const s = requireMember(ctx);
       const target = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      if (lessonId.startsWith(FULL_PREFIX)) return { ok: true }; // 完整版影片不計入章節進度
       await ctx.db
         .prepare("INSERT OR IGNORE INTO lesson_progress (member_sub, lesson_id, course_id) VALUES (?, ?, ?)")
         .bind(s.sub, lessonId, courseId)
