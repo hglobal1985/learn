@@ -47,4 +47,3 @@ export function formatClock(sec: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
 }
 
-export const switchPrompt = (from: Track, to: Track) => `正在播放「${from.title}」，要改播「${to.title}」嗎？`;

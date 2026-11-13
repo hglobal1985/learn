@@ -1,5 +1,6 @@
 import { resolveUrl } from "@/api/client";
-import { EMPTY, segmentOf, switchPrompt, type Snapshot, type Track } from "./engine.types";
+import { EMPTY, segmentOf, type Snapshot, type Track } from "./engine.types";
+import { askSwitch } from "./switch-prompt";
 
 /**
  * Web 全站單一播放器：媒體元素（<video>）只建立一次、永遠不會被搬動或銷毀，
@@ -186,7 +187,7 @@ export const engine = {
       // 同一堂：只更新播放資訊（簽名網址可能更新），不重新載入。
       return true;
     }
-    if (snap.track && snap.playing && !window.confirm(switchPrompt(snap.track, t))) return false;
+    if (snap.track && snap.playing && !(await askSwitch(snap.track, t))) return false;
     engine.load(t);
     return true;
   },

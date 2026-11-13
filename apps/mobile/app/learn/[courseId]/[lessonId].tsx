@@ -100,7 +100,7 @@ export default function LessonScreen() {
         <InlineAudio trackKey={track.key} />
       ) : playError ? (
         <NoticeBox tone="danger" text={playError} />
-      ) : !picture ? (
+      ) : !picture && !track ? (
         <LoadingView />
       ) : null}
       {engineError ? <NoticeBox tone="danger" text={engineError} /> : null}

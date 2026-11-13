@@ -1,7 +1,7 @@
 import { createVideoPlayer, type VideoPlayer } from "expo-video";
-import { Alert } from "react-native";
 import { resolveUrl } from "@/api/client";
-import { EMPTY, segmentOf, switchPrompt, type Snapshot, type Track } from "./engine.types";
+import { EMPTY, segmentOf, type Snapshot, type Track } from "./engine.types";
+import { askSwitch } from "./switch-prompt";
 
 /**
  * iOS／Android 全站單一播放器：只建立一個 expo-video 播放器，離開課程頁不會銷毀；
@@ -61,14 +61,6 @@ function bind(p: VideoPlayer) {
   ];
 }
 
-const confirmSwitch = (message: string) =>
-  new Promise<boolean>((resolve) =>
-    Alert.alert("改播這一堂？", message, [
-      { text: "繼續原本的", style: "cancel", onPress: () => resolve(false) },
-      { text: "改播這一堂", onPress: () => resolve(true) },
-    ], { cancelable: false }),
-  );
-
 export const engine = {
   subscribe(l: () => void) {
     listeners.add(l);
@@ -85,7 +77,7 @@ export const engine = {
   },
   async request(t: Track): Promise<boolean> {
     if (snap.track?.key === t.key) return true;
-    if (snap.track && snap.playing && !(await confirmSwitch(switchPrompt(snap.track, t)))) return false;
+    if (snap.track && snap.playing && !(await askSwitch(snap.track, t))) return false;
     engine.load(t);
     return true;
   },

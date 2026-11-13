@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppGate } from "@/features/app-gate";
 import { MiniAudioBar } from "@/features/player/audio-bar";
 import { PlayerLayer } from "@/features/player/player-layer";
+import { SwitchSheet } from "@/features/player/switch-sheet";
 import { SessionProvider } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { BottomBar } from "@/ui";
@@ -50,6 +51,7 @@ export default function RootLayout() {
           <MiniAudioBar />
           <BottomBar />
           <PlayerLayer />
+          <SwitchSheet />
           </View>
         </ThemeProvider>
       </SessionProvider>
