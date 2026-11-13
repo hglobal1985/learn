@@ -2,16 +2,25 @@ import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
+import { useSession } from "@/state/session";
+import { daysUntilStart } from "./sort";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
-import { AppText, Card, CourseCover, Pill } from "@/ui";
+import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 
 export function CourseCard({ course }: { course: CourseSummary }) {
   const { c } = useTheme();
+  const { member } = useSession();
+  // 緞帶：訪客看到完全公開的課程 → 「免費公開」；其餘尚未開始的課程 → 「剩餘 X 天」。
+  const days = daysUntilStart(course);
+  const ribbon = !member && course.isPublic ? { label: "免費公開", tone: "accent" as const } : days != null ? { label: `剩餘 ${days} 天`, tone: "warning" as const } : null;
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
-      <CourseCover theme={course.theme} label={course.category} edmUrl={course.edmUrl} height={course.edmUrl ? 180 : 120} />
+      <View style={styles.coverWrap}>
+        <CourseCover theme={course.theme} label={course.category} edmUrl={course.edmUrl} height={course.edmUrl ? 180 : 120} />
+        {ribbon ? <CornerRibbon label={ribbon.label} tone={ribbon.tone} /> : null}
+      </View>
       <View style={styles.titleRow}>
         <AppText variant="headline" style={{ flex: 1 }}>
           {course.title}
@@ -67,6 +76,7 @@ export function UnitTags({ course }: { course: CourseSummary }) {
 }
 
 const styles = StyleSheet.create({
+  coverWrap: { borderRadius: radius.md, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   date: { textAlign: "right", flexShrink: 0, paddingTop: 2 },
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },

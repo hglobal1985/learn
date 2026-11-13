@@ -267,3 +267,4 @@
 - **橫幅改由 EDM 自動產生**：移除課程封面上傳與底圖圖庫的全部程式（API `/admin/cover-backgrounds`、`/admin/courses/:id/cover`、`/media/img`、`cover-manager`、合成封面；`coverUrl` 欄位）。橫幅＝EDM 模糊放大當底圖＋EDM 清楚置中（`CourseCover`）。管理員只需上傳 EDM（`edm-manager.web.tsx`，可裁切）。資料庫舊欄位 `cover_key`、`cover_bg_id` 與 R2 內舊的 `cover/`、`bg/` 檔案保留未刪（刪課程時會順手清掉該課的舊封面檔）。
 - **首頁**：EDM 輪播圓點放大並可點選（電腦版滑鼠可用）；改為一次最多翻一張（snapToInterval＋停用慣性＋scroll-snap-stop），輕滑不再連跳；訪客的推薦課程顯示「完全公開」的課程；備註改「顯示您可報名的課程」。
 - 後端測試 58 項。手機寬度（390px）已看過：課程編輯（尚未公布勾選）、全部課程、課程介紹（EDM 橫幅）、設定、學習成就、徽章設定、通知設定開關、學習中頁；**手機 App（iOS／Android）未用實機驗證**。
+- **課程卡片左上角斜緞帶**（業主選方案 1）：尚未開始的課程顯示橘色「剩餘 X 天」（以今天對照活動日期，沒有活動日期用最近一場開課日；今天或已開始、已結束、沒有日期都不顯示）；未登入的訪客看到「完全公開」課程時，改顯示綠色「免費公開」（優先於倒數）。元件 `src/ui/corner-ribbon.tsx`，判斷在 `course-card.tsx`／`features/courses/sort.ts`。
