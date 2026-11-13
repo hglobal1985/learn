@@ -126,6 +126,8 @@ test("播放與進度：付費課程需先開通；設定免費且符合資格�
   assert.equal((await call("GET", "/courses/start/lessons/talk-welcome/playback", { token })).status, 404, "章節必須屬於該課程");
   // 第一次播放後自動完成免費報名（學習中、進度、成就才記得到）
   assert.equal((await call<CourseDetail>("GET", "/courses/start", { token })).data.enrollment, "opened");
+  const notices = (await call<{ title: string }[]>("GET", "/notifications", { token })).data;
+  assert.equal(notices.some((n) => n.title === "課程已開通"), false, "自動報名不發通知");
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
   assert.equal((await call<CourseDetail>("GET", "/courses/start", { token })).data.completedLessons, 1);

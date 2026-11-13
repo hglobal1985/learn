@@ -371,3 +371,4 @@
 - 深色模式再降低其他亮綠：success #4FA774、successSoft #1B3022、sage 封面主題文字 #8CC4A0。
 - 設定免費（費用 0、非尚未公布）且符合資格的課程：不需報名直接看（canWatch／freeWatchable；摘要 watchFree；課程頁不顯示報名按鈕、卡片不顯示可以報名緞帶）。第一次播放或記錄完成時自動完成免費報名（ensureFreeEnrollment→createOrders），學習中、進度、成就照常記錄。限時免費與鑽石免費不在此列（仍需報名）。
 - 梯次面板狀態標籤改為與課程卡左緞帶同步的文字＋顏色（沒有左緞帶時用右緞帶），不再顯示固定的『已結束』等文字（StatusChip）。
+- 自動報名（直接看免費課程）不再發「課程已開通」通知（createOrders quiet）；手動按免費報名仍照舊發。

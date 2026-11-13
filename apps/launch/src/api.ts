@@ -535,7 +535,7 @@ async function ensureFreeEnrollment(ctx: Ctx, courseId: string): Promise<void> {
   if (has || !(await freeWatchable(ctx, courseId))) return;
   const pub = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1").bind(courseId).first();
   if (pub) return; // 完全公開的課程本來就不用報名
-  await createOrders(ctx, { courseIds: [courseId] }).catch(() => undefined);
+  await createOrders(ctx, { courseIds: [courseId] }, true).catch(() => undefined);
 }
 
 /** 刪除課程前的影響：多少筆報名紀錄、多少人已開通、已確認收款多少（供「輸入 YES」確認畫面顯示）。 */
@@ -772,7 +772,7 @@ async function cancelOrder(ctx: Ctx, orderId: string): Promise<{ ok: true }> {
   return { ok: true };
 }
 
-async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unknown }): Promise<Order[]> {
+async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unknown }, quiet = false): Promise<Order[]> {
   const s = requireMember(ctx);
   const raw: RegItem[] = [
     ...(Array.isArray(body.courseIds) ? body.courseIds.filter((x): x is string => typeof x === "string").map((courseId) => ({ courseId })) : []),
@@ -826,7 +826,7 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
       // 免費課程立即開通；PRIMARY KEY 保證同一會員同一場只會開通一次（重複請求整批失敗）。
       statements.push(
         ctx.db.prepare("INSERT INTO enrollments (member_sub, course_id, source_order_id) VALUES (?, ?, ?)").bind(s.sub, c.id, id),
-        notify(ctx.db, { sub: s.sub }, "課程已開通", title, "/learning"),
+        ...(quiet ? [] : [notify(ctx.db, { sub: s.sub }, "課程已開通", title, "/learning")]), // 自動報名（直接看免費課程）不發通知
       );
     } else {
       statements.push(
