@@ -40,8 +40,8 @@ const palettes = {
     warningSoft: "#3A2E17",
     danger: "#F2B8B5",
     dangerSoft: "#3C1E1C",
-    success: "#9BD39E",
-    successSoft: "#1F3320",
+    success: "#4FA774",
+    successSoft: "#1B3022",
     tabBar: "#171B1B",
   },
 } as const;
@@ -54,7 +54,7 @@ export const courseThemes: Record<
   string,
   { light: [string, string]; dark: [string, string] }
 > = {
-  sage: { light: ["#DCE8D2", "#47704F"], dark: ["#2A3A2C", "#B9D7A8"] },
+  sage: { light: ["#DCE8D2", "#47704F"], dark: ["#24362A", "#8CC4A0"] },
   rose: { light: ["#F3DCDD", "#8E4250"], dark: ["#3D2729", "#F0B7BE"] },
   gold: { light: ["#F3E6C4", "#7D5A12"], dark: ["#3B3220", "#EBCB7E"] },
   blue: { light: ["#D8E4F2", "#2F5687"], dark: ["#1F2D3D", "#A9C6EC"] },
