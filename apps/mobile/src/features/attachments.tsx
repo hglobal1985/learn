@@ -5,7 +5,8 @@ import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
 import { api, resolveUrl, type Attachment } from "@/api/client";
-import { AppText, Button, Card, Field, ListRow, NoticeBox, Section, type IconName } from "@/ui";
+import { AppText, Button, Card, Field, ListRow, NoticeBox, type IconName } from "@/ui";
+import { BrandIcon } from "@/ui/brand-icon";
 
 const sizeText = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
@@ -57,7 +58,7 @@ export function AttachmentList({ courseId, lessonId }: { courseId: string; lesso
           onPress={() => Linking.openURL(a.kind === "link" ? a.url! : resolveUrl(a.url!)).catch(() => setError("無法開啟連結"))}
           style={styles.item}
         >
-          <Ionicons name={TYPE_INFO[a.type].icon} size={30} color={c.accent} />
+          <BrandIcon type={a.type} fallback={TYPE_INFO[a.type].icon as never} />
           <AppText variant="caption" numberOfLines={1} style={{ color: c.text, fontSize: 11, lineHeight: 14, textAlign: "center" }}>
             {a.name}
           </AppText>
@@ -69,8 +70,8 @@ export function AttachmentList({ courseId, lessonId }: { courseId: string; lesso
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space.sm, flexShrink: 0, maxWidth: "55%" },
-  item: { width: 64, minHeight: 56, alignItems: "center", justifyContent: "center", gap: 2 },
+  wrap: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-end", gap: space.sm, flexShrink: 0, maxWidth: "55%" },
+  item: { width: 64, alignItems: "center", justifyContent: "flex-end", gap: 2 },
 });
 
 /** 管理員：在章節編輯卡片新增網址附件、上傳檔案、改標題、刪除。標題自訂；類型自動判斷。 */

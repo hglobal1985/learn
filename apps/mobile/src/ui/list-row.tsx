@@ -12,6 +12,7 @@ export function ListRow({
   right,
   onPress,
   unread,
+  highlight,
 }: {
   icon?: IconName;
   title: string;
@@ -19,6 +20,8 @@ export function ListRow({
   right?: ReactNode;
   onPress?: () => void;
   unread?: boolean;
+  /** 整列加明顯底色（例如正在播放的章節）。 */
+  highlight?: boolean;
 }) {
   const { c } = useTheme();
   return (
@@ -26,7 +29,7 @@ export function ListRow({
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
-      style={({ pressed }) => [styles.row, { borderBottomColor: c.border }, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.row, { borderBottomColor: c.border }, highlight && { backgroundColor: c.accentSoft, marginHorizontal: -space.lg, paddingHorizontal: space.lg }, pressed && { opacity: 0.7 }]}
     >
       {icon ? <Icon name={icon} size={22} color={c.textMuted} /> : null}
       <View style={{ flex: 1, gap: 2 }}>

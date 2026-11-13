@@ -111,7 +111,7 @@ export default function LessonScreen() {
           )}
         </View>
       ) : null}
-    <Screen header={false}>
+    <Screen header={false} tight>
       <Stack.Screen options={{ title: c.title, headerRight: () => <HeaderShare title={`${c.title}｜${lesson.title}`} path={`/learn/${c.id}/${lesson.id}`} /> }} />
       {legacyYoutube && playback ? (
         <LessonPlayer playback={playback} onSegmentEnd={() => setLegacyDone(true)} />
@@ -123,9 +123,6 @@ export default function LessonScreen() {
       {engineError ? <NoticeBox tone="danger" text={engineError} /> : null}
       {playback?.kind === "demo" ? <Pill label={playback.label} tone="warning" /> : null}
       <View style={{ gap: space.xs }}>
-        <AppText variant="caption" tone="muted">
-          第 {lesson.position} 堂{lesson.minutes ? ` · 約 ${lesson.minutes} 分鐘` : ""}
-        </AppText>
         <View style={styles.titleRow}>
           <AppText variant="title" style={{ flex: 1 }}>
             {lesson.title}
@@ -142,18 +139,13 @@ export default function LessonScreen() {
         {!member ? (
           <>
             <NoticeBox text="登入後可以記錄學習進度、下載附件教材與留言。" />
-            {next && !next.locked ? <Button label="下一堂" icon="play-forward" onPress={() => router.replace(`/learn/${c.id}/${next.id}`)} /> : null}
             <Button variant="secondary" label="登入" icon="log-in-outline" onPress={() => router.push({ pathname: "/me", params: { next: `/learn/${c.id}/${lesson.id}` } })} />
           </>
-        ) : lesson.completed ? (
-          next ? (
-            <Button label="下一堂" icon="play-forward" onPress={() => router.replace(`/learn/${c.id}/${next.id}`)} />
-          ) : (
-            <NoticeBox tone="success" text="恭喜！你已完成這門課程的最後一堂。" />
-          )
+        ) : lesson.completed && !next ? (
+          <NoticeBox tone="success" text="恭喜！你已完成這門課程的最後一堂。" />
         ) : null}
       </View>
-      <Section title={`課程進度 ${c.completedLessons}/${c.lessonCount}`}>
+      <View>
         <Card style={{ paddingVertical: 0 }}>
           {c.lessons.map((l) => (
             <ListRow
@@ -161,18 +153,19 @@ export default function LessonScreen() {
               icon={l.completed ? "checkmark-circle" : l.id === lesson.id ? "play-circle" : "play-circle-outline"}
               title={`${l.position}. ${l.title}`}
               subtitle={l.id === lesson.id ? "正在觀看" : l.minutes ? `約 ${l.minutes} 分鐘` : undefined}
+              highlight={l.id === lesson.id}
               right={l.eventDate ? <AppText variant="callout" tone="muted">{eventDays(l.eventDate, null)}</AppText> : undefined}
               onPress={l.id === lesson.id || l.locked ? undefined : () => router.replace(`/learn/${c.id}/${l.id}`)}
             />
           ))}
         </Card>
-      </Section>
+      </View>
     </Screen>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  titleRow: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
 });

@@ -15,12 +15,15 @@ export function Screen({
   right,
   children,
   header = true,
+  tight = false,
 }: {
   title?: string;
   subtitle?: string;
   right?: ReactNode;
   children: ReactNode;
   header?: boolean;
+  /** 上方留白縮小（內容要貼近上方影片時用）。 */
+  tight?: boolean;
 }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
@@ -29,7 +32,7 @@ export function Screen({
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={[
         styles.content,
-        { paddingTop: (header ? insets.top : 0) + space.lg, paddingBottom: space.xxl },
+        { paddingTop: (header ? insets.top : 0) + (tight ? space.xs : space.lg), paddingBottom: space.xxl },
       ]}
       contentInsetAdjustmentBehavior="automatic"
     >
