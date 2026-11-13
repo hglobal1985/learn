@@ -6,6 +6,7 @@ import { api, type Order } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
 import { ntd, orderStatus } from "@/features/format";
 import { MoneyArt } from "@/features/orders/money-art";
+import { PaymentForm, PaymentRecords } from "@/features/orders/payment-form";
 import { OrderTimeline } from "@/features/orders/timeline";
 import { WebOnly } from "@/features/web-only";
 import { useApi, useSession } from "@/state/session";
@@ -97,6 +98,8 @@ function OrderDetail() {
           ) : null}
         </Card>
       ) : null}
+      {data.status === "pending" ? <PaymentForm order={data} onDone={reload} /> : null}
+      <PaymentRecords payments={data.payments ?? []} />
       <OrderTimeline order={data} />
     </Screen>
   );

@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import type { ApiError } from "../../../launch/src/contract";
-export { KEYWORD_INFO, ACHIEVEMENT_TYPES, applicantLabel, DEFAULT_UI_CONFIG, DUTY_LABELS, HQ_UNIT, REVIEW_REASONS, RIBBON_INFO, RIBBON_KEYS, RIBBON_PALETTE, SORT_GROUP_INFO, SORT_GROUPS, STATS_ROLE_OPTIONS } from "../../../launch/src/contract";
+export { PAYMENT_METHODS, KEYWORD_INFO, ACHIEVEMENT_TYPES, applicantLabel, DEFAULT_UI_CONFIG, DUTY_LABELS, HQ_UNIT, REVIEW_REASONS, RIBBON_INFO, RIBBON_KEYS, RIBBON_PALETTE, SORT_GROUP_INFO, SORT_GROUPS, STATS_ROLE_OPTIONS } from "../../../launch/src/contract";
 import { centralToken, refresh as refreshCentral } from "./central";
 
 export type {
@@ -20,6 +20,8 @@ export type {
   ClientPlatform,
   CourseComment,
   KeywordItem,
+  PaymentMethodKey,
+  PaymentReport,
   KeywordKind,
   KeywordLists,
   CourseDeleteImpact,

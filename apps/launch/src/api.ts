@@ -24,6 +24,8 @@ import {
   type Notice,
   type NotificationSettings,
   type Order,
+  type PaymentMethodKey,
+  type PaymentReport,
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
@@ -755,6 +757,45 @@ async function reviewerNotices(ctx: Ctx, o: { id: string; centerKey: string | nu
   return out;
 }
 
+const METHOD_LABEL: Record<PaymentMethodKey, string> = { cash: "現金", linepay: "LINE Pay", transfer: "網銀轉帳", friend: "託朋友代付" };
+
+/** 學員回報繳費方式（現金／LINE Pay／網銀轉帳／託朋友代付），可送出多次；通知審核人員核對。 */
+async function reportPayment(ctx: Ctx, orderId: string, body: Record<string, unknown>): Promise<Order> {
+  const s = requireMember(ctx);
+  const o = await ctx.db
+    .prepare("SELECT o.id, o.member_sub, o.status, o.center_key, o.hglobal, o.total_twd, (SELECT c.review_group_id FROM order_items i JOIN courses c ON c.id = i.course_id WHERE i.order_id = o.id LIMIT 1) AS group_id, (SELECT i.title_snapshot FROM order_items i WHERE i.order_id = o.id LIMIT 1) AS title FROM orders o WHERE o.id = ?")
+    .bind(orderId)
+    .first<{ id: string; member_sub: string; status: string; center_key: string | null; hglobal: number; total_twd: number; group_id: string | null; title: string | null }>();
+  if (!o || o.member_sub !== s.sub) return fail(404, "not_found", "找不到這筆報名");
+  if (o.status !== "pending") fail(409, "not_pending", "這筆報名不在待審核狀態，不需要回報繳費");
+  const method = (["cash", "linepay", "transfer", "friend"] as const).find((m) => m === body.method) ?? fail(400, "invalid_method", "請選擇繳費方式");
+  const iso8601 = (v: unknown, label: string): string => {
+    const t = typeof v === "string" ? Date.parse(v) : NaN;
+    return Number.isNaN(t) ? fail(400, "invalid_time", `請填寫${label}`) : new Date(t).toISOString();
+  };
+  let last5: string | null = null;
+  let friendName: string | null = null;
+  let paidAt: string | null = null;
+  if (method === "transfer") {
+    last5 = typeof body.last5 === "string" && /^\d{5}$/.test(body.last5.trim()) ? body.last5.trim() : fail(400, "invalid_last5", "請填寫轉出帳號末五碼（5 位數字）");
+    paidAt = iso8601(body.paidAt, "轉出日期時間");
+  } else if (method === "friend") {
+    friendName = text(body.friendName, 30) || fail(400, "invalid_friend", "請填寫朋友的名字");
+  } else if (method === "linepay") {
+    paidAt = iso8601(body.paidAt, "LINE Pay 的日期時間");
+  }
+  const count = await ctx.db.prepare("SELECT COUNT(*) AS n FROM order_payments WHERE order_id = ?").bind(orderId).first<{ n: number }>();
+  if ((count?.n ?? 0) >= 10) fail(429, "too_many", "回報次數太多了，請聯絡報名窗口");
+  const id = crypto.randomUUID();
+  const detail = [METHOD_LABEL[method], last5 ? `末五碼 ${last5}` : "", friendName ? `朋友 ${friendName}` : "", paidAt ? `時間 ${paidAt.slice(0, 16).replace("T", " ")}（UTC）` : ""].filter(Boolean).join("｜");
+  await ctx.db.batch([
+    ctx.db.prepare("INSERT INTO order_payments (id, order_id, method, last5, friend_name, paid_at) VALUES (?, ?, ?, ?, ?, ?)").bind(id, orderId, method, last5, friendName, paidAt),
+    audit(ctx.db, s.sub, "order.payment_report", "order", orderId, detail),
+    ...(await reviewerNotices(ctx, { id: orderId, centerKey: o.center_key, hglobal: o.hglobal === 1, groupId: o.group_id }, "學員回報了繳費方式", `${o.title ?? ""}｜${detail}`)),
+  ]);
+  return orderDetail(ctx, orderId);
+}
+
 type RegItem = { courseId: string };
 /** 會員自己取消報名：審核中的報名、或免費自動開通的報名都可以反悔取消；已繳費（含 VIP 免繳費）開通的要聯絡窗口。 */
 async function cancelOrder(ctx: Ctx, orderId: string): Promise<{ ok: true }> {
@@ -854,7 +895,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
   const [order] = await hydrateOrders(ctx.db, [row]);
   // 審核人員（不是本人）開啟明細會看到真實姓名：留下查看紀錄（只記誰、哪一筆，不記姓名內容）。
   if (reviewer && row.member_sub !== s.sub && row.legal_name) await audit(ctx.db, s.sub, "order.view_legal_name", "order", id).run().catch(() => undefined);
-  const [events, collectors, reviewers] = await Promise.all([
+  const [events, collectors, reviewers, payments] = await Promise.all([
     ctx.db.prepare("SELECT id, actor_sub, actor_name, actor_title, action, reason_code, message, note, created_at FROM order_events WHERE order_id = ? ORDER BY created_at, rowid").bind(id).all<{
       id: string;
       actor_sub: string;
@@ -878,6 +919,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
       )
       .bind(id, row.center_key ?? "\u0000", row.center_key ?? "\u0000")
       .all<{ member_name: string }>(),
+    ctx.db.prepare("SELECT id, method, last5, friend_name, paid_at, created_at FROM order_payments WHERE order_id = ? ORDER BY created_at, rowid").bind(id).all<{ id: string; method: PaymentMethodKey; last5: string | null; friend_name: string | null; paid_at: string | null; created_at: string }>(),
   ]);
   return {
     ...order,
@@ -896,6 +938,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
       })),
     collectors: collectors.results.map((c) => c.member_name),
     reviewers: reviewers.results.map((c) => c.member_name),
+    payments: payments.results.map((p): PaymentReport => ({ id: p.id, method: p.method, last5: p.last5, friendName: p.friend_name, paidAt: p.paid_at, createdAt: p.created_at })),
     canReview: reviewer && (row.member_sub !== s.sub || s.role === "admin"),
     canRevoke: s.role === "admin" && row.status === "opened" && row.total_twd > 0,
   };
@@ -1781,6 +1824,7 @@ const routes: [string, RegExp, Handler][] = [
   ],
 
   ["POST", /^\/orders\/([\w-]+)\/cancel$/, async (ctx, [id]) => cancelOrder(ctx, id)],
+  ["POST", /^\/orders\/([\w-]+)\/payments$/, async (ctx, [id]) => reportPayment(ctx, id!, await readJson(ctx.req))],
   [
     "POST",
     /^\/courses\/([\w-]+)\/cancel-registration$/,

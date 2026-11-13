@@ -170,9 +170,20 @@ export type Order = {
   collectors?: string[];
   /** 這場活動的負責審核人員姓名（同一個審核群組、同一中心）。 */
   reviewers?: string[];
+  /** 學員回報的繳費方式紀錄（新的在後）。 */
+  payments?: PaymentReport[];
   canReview?: boolean;
   canRevoke?: boolean;
 };
+
+export const PAYMENT_METHODS = [
+  { key: "cash", label: "現金" },
+  { key: "linepay", label: "LINE Pay" },
+  { key: "transfer", label: "網銀轉帳" },
+  { key: "friend", label: "託朋友代付" },
+] as const;
+export type PaymentMethodKey = (typeof PAYMENT_METHODS)[number]["key"];
+export type PaymentReport = { id: string; method: PaymentMethodKey; last5: string | null; friendName: string | null; paidAt: string | null; createdAt: string };
 
 export type Duty = "register" | "collect" | "review";
 export const DUTY_LABELS: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };

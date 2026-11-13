@@ -286,3 +286,30 @@ test("完整版影片：同一支影片裁成多堂時，清單最後自動多�
   assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data.completedLessons, 0, "不計入進度");
   assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: admin })).data.lessons.length, 2, "管理員的編輯清單不加");
 });
+
+test("回報繳費方式：四種方式各自的必填欄位、只有本人能回報、紀錄留在明細、通知審核人員", async () => {
+  const { call, login } = setup();
+  const [admin, student, other] = await Promise.all(["demo-admin", "demo-student", "demo-silver"].map(login));
+  const [o] = (await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data;
+  const pay = (token: string, body: Record<string, unknown>) => call<Order>("POST", `/orders/${o.id}/payments`, { token, body });
+  assert.equal((await pay(other, { method: "cash" })).status, 404, "不是本人");
+  assert.equal((await pay(student, { method: "bitcoin" })).status, 400);
+  assert.equal((await pay(student, { method: "transfer", last5: "123", paidAt: "2026-11-14T05:00:00Z" })).status, 400, "末五碼要 5 位數字");
+  assert.equal((await pay(student, { method: "transfer", last5: "12345" })).status, 400, "要填轉出時間");
+  assert.equal((await pay(student, { method: "friend", friendName: " " })).status, 400);
+  assert.equal((await pay(student, { method: "linepay" })).status, 400);
+  assert.equal((await pay(student, { method: "cash" })).status, 200);
+  assert.equal((await pay(student, { method: "transfer", last5: "12345", paidAt: "2026-11-14T05:00:00Z" })).status, 200);
+  assert.equal((await pay(student, { method: "friend", friendName: "王小明" })).status, 200);
+  const last = await pay(student, { method: "linepay", paidAt: "2026-11-14T06:30:00Z" });
+  const list = last.data.payments!;
+  assert.deepEqual(list.map((p) => p.method), ["cash", "transfer", "friend", "linepay"]);
+  assert.deepEqual([list[1]!.last5, list[2]!.friendName, list[3]!.paidAt?.slice(0, 16)], ["12345", "王小明", "2026-11-14T06:30"]);
+  // 審核人員（管理員）看得到，並收到通知
+  assert.equal((await call<Order>("GET", `/orders/${o.id}`, { token: admin })).data.payments!.length, 4);
+  const notices = (await call<Notice[]>("GET", "/notifications", { token: admin })).data;
+  assert.ok(notices.some((n) => n.title.startsWith("學員回報了繳費方式")));
+  // 取消報名後不能再回報
+  await call("POST", `/orders/${o.id}/cancel`, { token: student });
+  assert.equal((await pay(student, { method: "cash" })).status, 404);
+});
