@@ -13,6 +13,7 @@ import { askSwitch } from "./switch-prompt";
  * 無縫交給一個隱藏的 <audio> 元素接著播（從同一個秒數開始）；回到瀏覽器再把影像接回去。
  */
 let snap: Snapshot = EMPTY;
+let switchAt = 0;
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<Snapshot>) => {
   snap = { ...snap, ...patch };
@@ -282,8 +283,11 @@ export const engine = {
     if (snap.slotKey !== key) emit({ slotKey: key });
   },
   setCollapsed(collapsed: boolean) {
+    switchAt = Date.now();
     if (snap.collapsed !== collapsed) emit({ collapsed });
   },
+  /** 剛縮小／放大完的 0.5 秒內：手指放開產生的「點擊」會落在換出來的新按鈕上，要忽略，免得誤按播放／暫停或關閉。 */
+  recentlySwitched: () => Date.now() - switchAt < 500,
   clearSlot(key: string) {
     if (snap.slotKey === key) {
       slotEl = null;

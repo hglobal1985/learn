@@ -31,7 +31,7 @@ export function AudioBar({ compact }: { compact?: boolean }) {
     <View style={[styles.box, compact ? styles.compact : [styles.full, { backgroundColor: c.surface, borderColor: c.border }]]}>
       {compact ? <SeekBar value={at} max={total || 1} onSeek={seek} /> : null}
       <View style={styles.row}>
-        <Pressable accessibilityRole="button" accessibilityLabel={s.playing ? "暫停" : "播放"} onPress={() => engine.toggle()} style={[styles.play, { backgroundColor: c.accent }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={s.playing ? "暫停" : "播放"} onPress={() => !engine.recentlySwitched() && engine.toggle()} style={[styles.play, { backgroundColor: c.accent }]}>
           <Ionicons name={icon} size={26} color={c.textOnAccent} />
         </Pressable>
         <Pressable style={styles.info} disabled={!compact} onPress={() => back(t.courseId, t.lessonId)} accessibilityLabel="回到課程頁">
@@ -54,10 +54,10 @@ export function AudioBar({ compact }: { compact?: boolean }) {
           </>
         ) : (
           <>
-            <Pressable accessibilityRole="button" accessibilityLabel="縮小成小圓圖" onPress={() => engine.setCollapsed(true)} style={styles.small}>
+            <Pressable accessibilityRole="button" accessibilityLabel="縮小成小圓圖" onPress={() => !engine.recentlySwitched() && engine.setCollapsed(true)} style={styles.small}>
               <Ionicons name="remove" size={26} color={c.textMuted} />
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="關閉播放" onPress={() => engine.close()} style={styles.small}>
+            <Pressable accessibilityRole="button" accessibilityLabel="關閉播放" onPress={() => !engine.recentlySwitched() && engine.close()} style={styles.small}>
               <Ionicons name="close" size={24} color={c.textMuted} />
             </Pressable>
           </>

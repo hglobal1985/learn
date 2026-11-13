@@ -250,6 +250,8 @@ export async function purgeMember(db: D1Database, sub: string, actor: string, ac
     db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(sub),
     db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(sub),
     db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(sub),
+    // 審核員／窗口收到的「有新的報名待審核」等通知連到這位會員的報名紀錄，報名紀錄刪除前先清掉，免得點了找不到。
+    db.prepare("DELETE FROM notifications WHERE (link LIKE '/admin/orders/%' AND substr(link, 15) IN (SELECT id FROM orders WHERE member_sub = ?1)) OR (link LIKE '/orders/%' AND substr(link, 9) IN (SELECT id FROM orders WHERE member_sub = ?1))").bind(sub),
     db.prepare("DELETE FROM orders WHERE member_sub = ?").bind(sub),
     db.prepare("DELETE FROM notifications WHERE recipient_sub = ?").bind(sub),
     db.prepare("DELETE FROM member_achievements WHERE member_sub = ?").bind(sub),

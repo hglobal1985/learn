@@ -284,3 +284,9 @@
 - **審核員看到「本名（暱稱）」同時顯示**：共用函式 `applicantLabel`（`contract.ts`），用在報名審核卡片與「有新的報名待審核」通知（付費報名才有本名快照；兩者相同或缺一時只顯示一個）。
 - **Mux／示範影片可放大縮小**（`zoom-math.ts`）：雙指（手機）或滾輪（電腦）放大縮小，**縮小不低於 100%**，放大後按住拖曳查看其他區域；換堂或離開課程頁自動還原。網頁版在 `player-layer.web.tsx`（pointer events＋滾輪）；手機 App 在 `player-slot.tsx`（PanResponder，未實機驗證）。YouTube 不支援（iframe 無法）。
 - **課程卡片緞帶**：登入會員、獎銜不符且尚未報名的課程，右上角另外顯示紅色「獎銜不符」（左上角仍是倒數或免費公開，兩條並存）。`CornerRibbon` 新增 `side`、`danger`。
+
+## 2026-11-13（九）：YouTube 放大、刪帳號清通知、禁止整頁縮放、迷你播放器防誤觸
+- **YouTube 也能放大縮小**：與 Mux 同一套手勢（滾輪／雙指，不低於 100%，放大後拖曳）；縮放的是整個影片區（含 iframe），手勢層蓋在上面（YouTube 自己的點擊暫停被擋住，改用外面的 `PlayerControls`）。手機 App 內 YouTube 是 WebView（不經全站播放器），尚無放大。
+- **會員刪除帳號後的孤兒通知**：`purgeMember` 在刪報名紀錄前，先刪連到這些報名的通知（`/admin/orders/:id`、`/orders/:id`）。migration `0022` 一次清掉所有「連到已不存在報名紀錄」的通知。
+- **禁止整頁雙指縮放**（`lib/no-page-zoom.ts`，根版面啟用）：viewport 鎖 1 倍＋`touch-action: pan-x pan-y`＋擋 iOS Safari gesture 事件與觸控板 Ctrl＋滾輪；影片區與圖片小視窗自己的手勢不受影響。App 本來就不會整頁縮放。
+- **迷你播放器防誤觸**：縮小／放大後 0.5 秒內忽略「點擊」（`engine.recentlySwitched()`），避免手指放開的點擊落在換出來的新按鈕（播放／暫停、關閉）上造成暫停。

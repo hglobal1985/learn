@@ -1,4 +1,5 @@
 import { Stack } from "expo-router/stack";
+import { useEffect } from "react";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
@@ -8,12 +9,14 @@ import { ConfirmSheetHost } from "@/features/confirm";
 import { MiniAudioBar } from "@/features/player/audio-bar";
 import { PlayerLayer } from "@/features/player/player-layer";
 import { SwitchSheet } from "@/features/player/switch-sheet";
+import { installNoPageZoom } from "@/lib/no-page-zoom";
 import { SessionProvider } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { BottomBar } from "@/ui";
 
 export default function RootLayout() {
   const { scheme, c } = useTheme();
+  useEffect(() => installNoPageZoom(), []);
   const base = scheme === "dark" ? DarkTheme : DefaultTheme;
   const navTheme = {
     ...base,

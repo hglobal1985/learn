@@ -10,6 +10,7 @@ import { askSwitch } from "./switch-prompt";
  * 注意：YouTube 在手機 App 內仍只在課程頁內嵌播放（WebView 無法跨頁保留），不經過這裡。
  */
 let snap: Snapshot = EMPTY;
+let switchAt = 0;
 const listeners = new Set<() => void>();
 const emit = (patch: Partial<Snapshot>) => {
   snap = { ...snap, ...patch };
@@ -81,8 +82,11 @@ export const engine = {
     void fsView?.enterFullscreen();
   },
   setCollapsed(collapsed: boolean) {
+    switchAt = Date.now();
     if (snap.collapsed !== collapsed) emit({ collapsed });
   },
+  /** 剛縮小／放大完的 0.5 秒內：手指放開產生的「點擊」會落在換出來的新按鈕上，要忽略，免得誤按播放／暫停或關閉。 */
+  recentlySwitched: () => Date.now() - switchAt < 500,
   clearSlot(key: string) {
     if (snap.slotKey === key) emit({ slotKey: null });
   },

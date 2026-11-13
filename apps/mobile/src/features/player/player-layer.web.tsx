@@ -42,6 +42,7 @@ export function PlayerLayer() {
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null);
   const zoomLayer = useRef<HTMLDivElement>(null);
   const gesture = useRef<HTMLDivElement>(null);
+  const justSwitched = () => engine.recentlySwitched();
   const zoom = useRef<Zoom>(IDENTITY);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null);
@@ -55,13 +56,13 @@ export function PlayerLayer() {
   const windowed = floating && !s.collapsed;
 
   // 影片放大：雙指（手機）或滾輪（電腦）放大縮小，縮小不低於 100%；放大後按住拖曳查看其他區域。只用在 Mux／示範影片，在課程頁內嵌時才有。
-  const canZoom = inline && t?.mode === "video";
+  const canZoom = inline && (t?.mode === "video" || t?.mode === "youtube");
   const applyZoom = (z: Zoom) => {
     zoom.current = z;
-    if (hostRef.current) hostRef.current.style.transform = z.s === 1 ? "none" : `translate(${z.x}px, ${z.y}px) scale(${z.s})`;
+    if (zoomLayer.current) zoomLayer.current.style.transform = z.s === 1 ? "none" : `translate(${z.x}px, ${z.y}px) scale(${z.s})`;
   };
   const boxSize = () => {
-    const r = zoomLayer.current?.getBoundingClientRect();
+    const r = gesture.current?.getBoundingClientRect(); // 手勢層不會被縮放，量它才是影片區塊的實際大小
     return { w: r?.width ?? 1, h: r?.height ?? 1, left: r?.left ?? 0, top: r?.top ?? 0 };
   };
   useEffect(() => {
@@ -220,6 +221,7 @@ export function PlayerLayer() {
     drag.current = null;
     if (!d) return;
     if (d.moved) return save();
+    if (justSwitched()) return;
     if (s.collapsed) restore(); // 點一下小圓圖＝恢復原本的迷你播放器
     else if (t) router.push(`/learn/${t.courseId}/${t.lessonId}`); // 點一下小視窗＝回到課程頁
   };
@@ -252,22 +254,22 @@ export function PlayerLayer() {
     <div ref={boxRef} style={{ position: "fixed", left: 0, top: 0, display: "none", zIndex: 1000, overflow: "hidden", background: "#000" }}>
       <style>{"@keyframes hg-spin{to{transform:rotate(360deg)}}@keyframes hg-sheen{0%{background-position:0% 50%}100%{background-position:300% 50%}}"}</style>
       <div style={{ position: "absolute", inset: "var(--pad, 0px)", borderRadius: "inherit", overflow: "hidden", background: "#000" }}>
-      <div ref={zoomLayer} style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <div ref={hostRef} style={{ position: "absolute", inset: 0, display: yt ? "none" : "block", transformOrigin: "0 0" }} />
+      <div ref={zoomLayer} style={{ position: "absolute", inset: 0, transformOrigin: "0 0" }}>
+        <div ref={hostRef} style={{ position: "absolute", inset: 0, display: yt ? "none" : "block" }} />
+        {yt ? (
+          <iframe
+            key={t!.key}
+            ref={setFrame}
+            title="課程影片"
+            src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}?controls=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&rel=0&modestbranding=1&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${range}`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
+          />
+        ) : null}
       </div>
       {canZoom ? <div ref={gesture} onPointerDown={zDown} onPointerMove={zMove} onPointerUp={zUp} onPointerCancel={zUp} style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} aria-label="影片（雙指或滾輪放大縮小）" /> : null}
-      {yt ? (
-        <iframe
-          key={t!.key}
-          ref={setFrame}
-          title="課程影片"
-          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}?controls=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&rel=0&modestbranding=1&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${range}`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-        />
-      ) : null}
       {circle ? (
         <div style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab", background: "#000", borderRadius: "50%", overflow: "hidden" }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => (drag.current = null)} role="button" aria-label="恢復迷你播放器（可按住拖曳移動）">
           <img src={art} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", animation: "hg-spin 8s linear infinite", animationPlayState: s.playing ? "running" : "paused", pointerEvents: "none" }} />
@@ -276,13 +278,13 @@ export function PlayerLayer() {
       ) : null}
       {windowed ? (
         <div style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => (drag.current = null)} role="button" aria-label="回到課程頁（可按住拖曳移動）">
-          <button type="button" aria-label="關閉播放" style={{ ...btn, top: 4, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => engine.close()}>
+          <button type="button" aria-label="關閉播放" style={{ ...btn, top: 4, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.close()}>
             ✕
           </button>
-          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, top: 48, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={minimize}>
+          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, top: 48, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && minimize()}>
             ─
           </button>
-          <button type="button" aria-label={s.playing ? "暫停" : "播放"} style={{ ...btn, left: "50%", top: "50%", width: 52, height: 52, transform: "translate(-50%,-50%)" }} onPointerDown={stop} onPointerUp={stop} onClick={() => engine.toggle()}>
+          <button type="button" aria-label={s.playing ? "暫停" : "播放"} style={{ ...btn, left: "50%", top: "50%", width: 52, height: 52, transform: "translate(-50%,-50%)" }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.toggle()}>
             {s.playing ? "❚❚" : "▶"}
           </button>
         </div>

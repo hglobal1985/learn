@@ -88,3 +88,15 @@ test("學習成就：超級管理員設定條件、會員完成課程後自動�
   assert.equal((await call<Achievement[]>("GET", "/me/achievements", { token: student })).data.some((a) => a.id === id), false, "停用的不顯示");
   assert.equal((await call("DELETE", `/admin/achievements/${id}`, { token: admin })).status, 200);
 });
+
+test("會員刪除帳號：審核員收到的相關通知一併清掉（不會留下點了找不到的通知）", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  const paid = await call<CourseDetail>("POST", "/admin/courses", { token: admin, body: { title: "付費課", priceTwd: 500, status: "published" } });
+  const [o] = (await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: [paid.data.id] } })).data;
+  const before = (await call<{ link: string }[]>("GET", "/notifications", { token: admin })).data;
+  assert.ok(before.some((n) => n.link === `/admin/orders/${o!.id}`), "審核員有收到通知");
+  assert.equal((await call("DELETE", "/me", { token: student })).status, 200);
+  const after = (await call<{ link: string }[]>("GET", "/notifications", { token: admin })).data;
+  assert.equal(after.some((n) => n.link.includes(o!.id)), false, "相關通知已清掉");
+});
