@@ -316,3 +316,4 @@
 - Mux delivery-usage 時間須為整點，已取整。
 - 緞帶（業主說明：更靠近角落、三角形範圍小、減少遮擋 EDM）：框 104、band left -50/top 12、字 13px、padding 5；5 字標籤剛好容納。
 - 統計「各影片本月傳輸量」改顯示影片名稱（meta.title／passthrough），404＝已刪除的影片。
+- 緞帶：band 中心對齊角落對角線（文字置中）；框 90、left/right -60、top 15、字 11px。
