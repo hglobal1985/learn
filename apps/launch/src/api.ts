@@ -311,6 +311,7 @@ type CourseRow = {
   location: string;
   location_none: number;
   is_online: number;
+  show_full: number;
   cover_key: string | null;
   edm_view_y: number;
   edm_key: string | null;
@@ -320,7 +321,7 @@ type CourseRow = {
   zero_minute_lessons: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.show_full, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id AND l.duration_minutes = 0) AS zero_minute_lessons
@@ -397,6 +398,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     location: row.location,
     locationNone: row.location_none === 1,
     isOnline: row.is_online === 1,
+    showFull: row.show_full === 1,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
     eligible: eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row),
@@ -432,6 +434,7 @@ type LessonRowLite = { id: string; position: number; title: string; duration_min
 
 /** 同一支影片（或音檔）被裁成多堂時，各自補一個「完整版」章節（管理員也看得到；管理員的章節編輯清單由前端濾掉 full）。 */
 function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: string, row: CourseRow, admin: boolean, watchFree: boolean): Lesson[] {
+  if (row.show_full !== 1) return []; // 課程設定關閉了「顯示完整版」
   const groups = new Map<string, LessonRowLite[]>();
   for (const l of rows) {
     if (!l.media_ref || l.media_type === "demo") continue;
@@ -1196,6 +1199,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (loc !== undefined) sets.push(["location", loc]);
   if (body.locationNone !== undefined) sets.push(["location_none", body.locationNone === true ? 1 : 0]);
   if (body.isOnline !== undefined) sets.push(["is_online", body.isOnline === true ? 1 : 0]);
+  if (body.showFull !== undefined) sets.push(["show_full", body.showFull === true ? 1 : 0]);
   if (body.earlyBird !== undefined) {
     if (body.earlyBird === true) {
       const price = Number(body.earlyPriceTwd);
@@ -1372,7 +1376,7 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
   const newId = `c${randomId(7)}`;
   const series = String(row.series || "").trim() || String(row.title ?? "").slice(0, 60);
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
-  const keep = ["subtitle", "teacher", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online"];
+  const keep = ["subtitle", "teacher", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online", "show_full"];
   const cols = ["id", "sort_order", "status", "title", "series", ...keep];
   const vals = [newId, (max?.m ?? 0) + 1, "draft", `${String(row.title ?? "")}（複製）`.slice(0, 120), series, ...keep.map((k) => row[k] ?? null)];
   const stmts: D1PreparedStatement[] = [

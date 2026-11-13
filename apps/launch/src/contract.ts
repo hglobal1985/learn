@@ -82,6 +82,8 @@ export type CourseSummary = {
   locationNone: boolean;
   /** 線上課程：地點顯示為「線上課程」。 */
   isOnline: boolean;
+  /** 是否顯示「完整版」區塊（預設顯示）。 */
+  showFull: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
