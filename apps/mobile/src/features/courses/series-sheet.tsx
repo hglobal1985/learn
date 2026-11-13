@@ -18,7 +18,7 @@ function statusPill(c: CourseSummary) {
 }
 
 /** 「還有 N 個梯次」：從下方彈出，列出同系列所有梯次（日期＋狀態），點一列進入那一場的課程頁。 */
-export function SeriesSheet({ title, items, onClose }: { title: string; items: CourseSummary[]; onClose: () => void }) {
+export function SeriesSheet({ title, items, onClose, onPick, currentId }: { title: string; items: CourseSummary[]; onClose: () => void; onPick?: (c: CourseSummary) => void; currentId?: string }) {
   const { c } = useTheme();
   return (
     <BottomSheet onClose={onClose}>
@@ -31,13 +31,14 @@ export function SeriesSheet({ title, items, onClose }: { title: string; items: C
             accessibilityLabel={`${x.title} ${x.eventStart ?? ""}`}
             onPress={() => {
               onClose();
-              router.push(`/course/${x.id}`);
+              if (onPick) onPick(x);
+              else router.push(`/course/${x.id}`);
             }}
             style={[styles.row, { borderTopColor: c.border }]}
           >
             <View style={{ flex: 1, gap: 2 }}>
               <AppText variant="callout" style={{ fontWeight: "700" }}>
-                {x.eventStart ? eventDays(x.eventStart, x.eventEnd) : "未設定日期"}
+                {x.eventStart ? eventDays(x.eventStart, x.eventEnd) : "未設定日期"}{x.id === currentId ? "（目前顯示）" : ""}
               </AppText>
               <AppText variant="caption" tone="muted" numberOfLines={1}>
                 {x.title}

@@ -11,7 +11,7 @@ import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 
-export function CourseCard({ course, siblings = [], footer, onPress }: { course: CourseSummary; siblings?: CourseSummary[]; footer?: React.ReactNode; onPress?: () => void }) {
+export function CourseCard({ course, siblings = [], footer, onPress, onPickSibling }: { course: CourseSummary; siblings?: CourseSummary[]; footer?: React.ReactNode; onPress?: () => void; onPickSibling?: (c: CourseSummary) => void }) {
   const { c } = useTheme();
   const [sheet, setSheet] = useState(false);
   const { member } = useSession();
@@ -64,7 +64,7 @@ export function CourseCard({ course, siblings = [], footer, onPress }: { course:
           <AppText style={{ color: c.accent, fontWeight: "700" }}>›</AppText>
         </Pressable>
       ) : null}
-      {sheet ? <SeriesSheet title={course.series || course.title} items={[course, ...siblings].sort((a, b) => (b.eventStart ?? "").localeCompare(a.eventStart ?? ""))} onClose={() => setSheet(false)} /> : null}
+      {sheet ? <SeriesSheet title={course.series || course.title} items={[course, ...siblings].sort((a, b) => (b.eventStart ?? "").localeCompare(a.eventStart ?? ""))} onClose={() => setSheet(false)} onPick={onPickSibling} currentId={course.id} /> : null}
     </Card>
   );
 }

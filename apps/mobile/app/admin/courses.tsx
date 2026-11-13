@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { api, type CourseSummary, type Rank } from "@/api/client";
 import { CourseCard } from "@/features/courses/course-card";
-import { sortCourses } from "@/features/courses/sort";
+import { collapseSeries, sortCourses } from "@/features/courses/sort";
 import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
@@ -16,7 +16,7 @@ const ALL = "";
 /**
  * 管理員的課程清單：呈現方式與「全部課程」完全一致（同樣的排序、分類與單位篩選、同樣的課程卡），
  * 每張卡下方多一排管理按鈕：上架／下架、編輯、章節與影片，以及最低獎銜。
- * 為了能選到每一個梯次，這裡不會把同系列的課合併成一張。
+ * 同系列的課合併成一張，點「還有 N 個梯次」選擇要管理哪一梯（和「全部課程」相同的設計）。
  */
 export default function AdminCoursesScreen() {
   const { c } = useTheme();
@@ -27,6 +27,7 @@ export default function AdminCoursesScreen() {
   const ranks = useApi<Rank[]>("/ranks");
   const [busy, setBusy] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Record<string, string>>({}); // 系列 → 目前選擇顯示（管理）的梯次
   const [category, setCategory] = useState(ALL);
   const [unit, setUnit] = useState(ALL);
   const [message, setMessage] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
@@ -36,6 +37,16 @@ export default function AdminCoursesScreen() {
   const units = useMemo(() => [...new Set(sorted.flatMap((x) => [x.guidanceUnit, ...x.hostUnit.split("、")]).filter(Boolean))], [sorted]);
   const list = sorted.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit.split("、").includes(unit)));
 
+  // 同系列合併成一張，從「還有 N 個梯次」選擇要管理哪一梯（選了之後這張卡就換成那一梯）。
+  const entries = useMemo(
+    () =>
+      collapseSeries(list, sorted).map((e) => {
+        const want = e.course.series ? picked[e.course.series] : undefined;
+        const chosen = want && want !== e.course.id ? e.siblings.find((x) => x.id === want) : undefined;
+        return chosen ? { course: chosen, siblings: [e.course, ...e.siblings.filter((x) => x.id !== chosen.id)] } : e;
+      }),
+    [list, sorted, picked],
+  );
   if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (!courses.data || !ranks.data)
     return <Screen header={false}>{courses.error ? <ErrorView message={courses.error} onRetry={courses.reload} /> : <LoadingView />}</Screen>;
@@ -108,12 +119,18 @@ export default function AdminCoursesScreen() {
         {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} onChange={setUnit} /> : null}
       </View>
       <AppText variant="caption" tone="muted">
-        共 {list.length} 門課程。點課程卡可以預覽課程頁；下方按鈕用來編輯、上下架、管理章節。
+        共 {entries.length} 門課程（同系列已合併）。點「還有 N 個梯次」選擇要管理哪一梯；下方按鈕用來編輯、上下架、管理章節，點課程卡可以預覽課程頁。
       </AppText>
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
-      {!list.length ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}
-      {list.map((course) => (
-        <CourseCard key={course.id} course={course} footer={manage(course)} />
+      {!entries.length ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}
+      {entries.map((e) => (
+        <CourseCard
+          key={e.course.series || e.course.id}
+          course={e.course}
+          siblings={e.siblings}
+          footer={manage(e.course)}
+          onPickSibling={(x) => setPicked((p) => ({ ...p, [x.series]: x.id }))}
+        />
       ))}
     </Screen>
   );
