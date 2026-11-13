@@ -1,11 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Animated, Image, Modal, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveUrl, type CourseSummary } from "@/api/client";
 import { downloadImage, shareImage } from "@/lib/share";
 import { useTheme } from "@/theme/theme";
-import { minTouch, radius, space } from "@/theme/tokens";
+import { radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, ShareIcon, StageFrame } from "@/ui";
 
 /**
@@ -33,6 +33,7 @@ function EdmPan({ uri, viewY, onOpen }: { uri: string; viewY: number; onOpen: ()
   const startY = useRef(0);
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
+  const [pressed, setPressed] = useState(false); // 手指按著時，下方提示暫時消失
 
   useEffect(() => {
     let alive = true;
@@ -60,11 +61,14 @@ function EdmPan({ uri, viewY, onOpen }: { uri: string; viewY: number; onOpen: ()
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         startY.current = cur.current;
+        setPressed(true);
       },
       onPanResponderMove: (_e, g) => set(startY.current + g.dy), // 只看上下，左右拖曳完全忽略
       onPanResponderRelease: (_e, g) => {
+        setPressed(false);
         if (Math.hypot(g.dx, g.dy) < 6) openRef.current(); // 點一下＝放大
       },
+      onPanResponderTerminate: () => setPressed(false),
     }),
   ).current;
   const wheel = Platform.OS === "web" ? { onWheel: (e: { deltaY: number; preventDefault?: () => void }) => set(cur.current - e.deltaY) } : {};
@@ -72,8 +76,8 @@ function EdmPan({ uri, viewY, onOpen }: { uri: string; viewY: number; onOpen: ()
   return (
     <View style={StyleSheet.absoluteFill} onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} {...pan.panHandlers} {...wheel} accessibilityRole="imagebutton" accessibilityLabel="課程海報，點一下放大，上下拖曳查看">
       {imgH ? <Animated.Image source={{ uri }} resizeMode="stretch" style={{ width: box.w, height: imgH, transform: [{ translateY: ty }] }} accessibilityIgnoresInvertColors /> : null}
-      {maxUp.current > 8 ? (
-        <View style={[styles.hint, { backgroundColor: "rgba(0,0,0,0.55)" }]} pointerEvents="none">
+      {maxUp.current > 8 && !pressed ? (
+        <View style={[styles.hint, { backgroundColor: "rgba(0,0,0,0.8)" }]} pointerEvents="none">
           <Ionicons name="swap-vertical" size={14} color="#fff" />
           <AppText variant="caption" style={{ color: "#fff" }}>
             上下拖曳 · 點一下放大
@@ -95,6 +99,7 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
   const [scale, setScale] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
   const [ratio, setRatio] = useState(0.7); // 寬 / 高
+  const [touching, setTouching] = useState(false); // 手指或滑鼠按著圖片時，按鈕暫時消失
   const full = resolveUrl(uri);
   useEffect(() => {
     Image.getSize(full, (w, h) => h && setRatio(w / h), () => undefined);
@@ -103,7 +108,45 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
   const maxH = win.height - insets.top - insets.bottom - 40;
   const frameW = Math.min(maxW, maxH * ratio);
   const frameH = frameW / ratio;
-  const zoom = (d: number) => setScale((s) => Math.min(4, Math.max(1, Math.round((s + d) * 10) / 10)));
+
+  // 放大後可以上下左右自由拖曳（自己處理手勢，不用巢狀捲動）。
+  const tx = useRef(new Animated.Value(0)).current;
+  const ty = useRef(new Animated.Value(0)).current;
+  const off = useRef({ x: 0, y: 0 });
+  const start = useRef({ x: 0, y: 0 });
+  const live = useRef({ scale: 1, w: frameW, h: frameH });
+  live.current = { scale, w: frameW, h: frameH };
+  const place = (x: number, y: number) => {
+    const { scale: sc, w, h } = live.current;
+    off.current = { x: Math.min(0, Math.max(-(w * sc - w), x)), y: Math.min(0, Math.max(-(h * sc - h), y)) };
+    tx.setValue(off.current.x);
+    ty.setValue(off.current.y);
+  };
+  const zoomTo = (next: number) => {
+    const { scale: sc, w, h } = live.current;
+    // 以畫面中心為基準放大縮小
+    const cx = (w / 2 - off.current.x) / sc;
+    const cy = (h / 2 - off.current.y) / sc;
+    live.current = { scale: next, w, h };
+    setScale(next);
+    place(w / 2 - cx * next, h / 2 - cy * next);
+  };
+  const zoom = (d: number) => zoomTo(Math.min(4, Math.max(1, Math.round((live.current.scale + d) * 10) / 10)));
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        start.current = { ...off.current };
+        setTouching(true);
+      },
+      onPanResponderMove: (_e, g) => place(start.current.x + g.dx, start.current.y + g.dy),
+      onPanResponderRelease: () => setTouching(false),
+      onPanResponderTerminate: () => setTouching(false),
+    }),
+  ).current;
+  const wheel = Platform.OS === "web" ? { onWheel: (e: { deltaY: number }) => zoom(e.deltaY < 0 ? 0.25 : -0.25) } : {};
+
   const share = async () => {
     const r = await shareImage(title, uri, `${title}.jpg`);
     if (r === "copied") setMsg("已複製連結");
@@ -116,7 +159,7 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
     }
   };
   const tool = (label: string, onPress: () => void, child: React.ReactNode, disabled?: boolean) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={[styles.tool, { opacity: disabled ? 0.4 : 1 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={[styles.tool, { opacity: disabled ? 0.45 : 1 }]}>
       {child}
     </Pressable>
   );
@@ -125,25 +168,25 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="關閉" />
         <View style={[styles.frame, { width: frameW, height: frameH }]}>
-          <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={{ width: frameW * scale, height: frameH * scale }} maximumZoomScale={4} minimumZoomScale={1} bounces={false} showsVerticalScrollIndicator={false}>
-            <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ width: frameW * scale, height: frameH * scale }}>
-              <Image source={{ uri: full }} resizeMode="stretch" style={{ width: frameW * scale, height: frameH * scale }} accessibilityIgnoresInvertColors />
-            </ScrollView>
-          </ScrollView>
-          <View style={styles.topRight} pointerEvents="box-none">
-            {tool("關閉", onClose, <Ionicons name="close" size={24} color="#fff" />)}
+          <View style={[StyleSheet.absoluteFill, Platform.OS === "web" ? ({ touchAction: "none", cursor: "grab" } as object) : null]} {...pan.panHandlers} {...wheel}>
+            <Animated.Image source={{ uri: full }} resizeMode="stretch" style={{ width: frameW * scale, height: frameH * scale, transform: [{ translateX: tx }, { translateY: ty }] }} accessibilityIgnoresInvertColors />
           </View>
-          <View style={styles.bottom} pointerEvents="box-none">
-            {tool("縮小", () => zoom(-0.5), <Ionicons name="remove" size={24} color="#fff" />, scale <= 1)}
-            <View style={styles.pct} pointerEvents="none">
-              <AppText variant="caption" style={{ color: "#fff", fontWeight: "700" }}>
-                {Math.round(scale * 100)}%
-              </AppText>
+          <View style={[StyleSheet.absoluteFill, { opacity: touching ? 0 : 1 }]} pointerEvents={touching ? "none" : "box-none"}>
+            <View style={styles.topRight} pointerEvents="box-none">
+              {tool("關閉", onClose, <Ionicons name="close" size={30} color="#fff" />)}
             </View>
-            {tool("放大", () => zoom(0.5), <Ionicons name="add" size={24} color="#fff" />, scale >= 4)}
-            <View style={{ flex: 1 }} />
-            {tool("下載", download, <Ionicons name="download-outline" size={22} color="#fff" />)}
-            {tool("分享", share, <ShareIcon size={22} color="#fff" />)}
+            <View style={styles.bottom} pointerEvents="box-none">
+              {tool("縮小", () => zoom(-0.5), <Ionicons name="remove" size={30} color="#fff" />, scale <= 1)}
+              <View style={styles.pct} pointerEvents="none">
+                <AppText variant="callout" style={{ color: "#fff", fontWeight: "800" }}>
+                  {Math.round(scale * 100)}%
+                </AppText>
+              </View>
+              {tool("放大", () => zoom(0.5), <Ionicons name="add" size={30} color="#fff" />, scale >= 4)}
+              <View style={{ flex: 1 }} />
+              {tool("下載", download, <Ionicons name="download-outline" size={28} color="#fff" />)}
+              {tool("分享", share, <ShareIcon size={28} color="#fff" />)}
+            </View>
           </View>
           {msg ? (
             <View style={styles.toast} pointerEvents="none">
@@ -159,12 +202,12 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
 }
 
 const styles = StyleSheet.create({
-  hint: { position: "absolute", bottom: 8, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  hint: { position: "absolute", bottom: 8, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill },
   backdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.72)" },
   frame: { overflow: "hidden", borderRadius: radius.md, backgroundColor: "#000" },
   topRight: { position: "absolute", top: space.xs, right: space.xs },
   bottom: { position: "absolute", left: space.xs, right: space.xs, bottom: space.xs, flexDirection: "row", alignItems: "center", gap: space.xs },
-  tool: { width: minTouch - 4, height: minTouch - 4, borderRadius: (minTouch - 4) / 2, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
-  pct: { paddingHorizontal: 8, height: 28, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
+  tool: { width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(0,0,0,0.85)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
+  pct: { paddingHorizontal: 12, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.85)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
   toast: { position: "absolute", alignSelf: "center", top: "45%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.7)" },
 });
