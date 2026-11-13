@@ -67,7 +67,7 @@ export default function MeScreen() {
   const earned = (achievements.data ?? []).filter((a) => a.earned);
 
   return (
-    <Screen title="設定">
+    <Screen>
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
       {!ready ? <LoadingView /> : null}
       {member ? (

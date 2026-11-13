@@ -31,7 +31,7 @@ export default function LearningScreen() {
   const resume = last && mine.some((c) => c.id === last.courseId) ? last : null;
   if (!member)
     return (
-      <Screen title="學習中">
+      <Screen>
         <EmptyState
           icon="person-circle-outline"
           title="尚未登入"
@@ -41,7 +41,7 @@ export default function LearningScreen() {
       </Screen>
     );
   return (
-    <Screen title="學習中">
+    <Screen>
       {enrolled.length ? (
         <View style={styles.filters}>
           <Select label="費用" value={kind} options={[{ key: "", label: "全部（免費與付費）" }, { key: "free", label: "免費" }, { key: "paid", label: "付費" }]} onChange={setKind} />

@@ -23,7 +23,7 @@ export default function NoticesScreen() {
   };
   if (!member)
     return (
-      <Screen title="站內通知">
+      <Screen>
         <EmptyState
           icon="notifications-outline"
           title="尚未登入"
@@ -34,7 +34,6 @@ export default function NoticesScreen() {
     );
   return (
     <Screen
-      title="站內通知"
       subtitle={data ? (unread ? `${unread} 則未讀` : "全部已讀") : undefined}
       right={
         <View style={{ flexDirection: "row", alignItems: "center" }}>

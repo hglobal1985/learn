@@ -180,7 +180,7 @@ export default function CourseEditScreen() {
     <Screen header={false}>
       <Stack.Screen options={{ title: id ? "編輯課程" : "新增課程" }} />
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
-      <CourseCover theme={form.theme} label={form.category} title={form.title || "課程名稱"} imageUrl={course.data?.coverUrl ?? null} height={160} />
+      <CourseCover theme={form.theme} label={form.category} title={form.title || "課程名稱"} imageUrl={course.data?.coverUrl ?? null} />
       <Card>
         {field("系列（同系列的課，全部課程清單只顯示最近的一場；不填＝不合併）", "series", { placeholder: "例如：翡翠達標班" })}
         {seriesList.data?.length ? <Chips label="已有的系列" options={[{ key: "", label: "不合併" }, ...seriesList.data.map((x) => ({ key: x, label: x }))]} value={form.series} onChange={set("series")} /> : null}

@@ -34,7 +34,7 @@ export function fitFontSize(title: string, w: number, h: number, max = 72, min =
  * 沒有就由系統自動產生：依「課程名稱＋分類」在主題色底上放大大的標題文字（程式排版，不是 AI 生成）。
  * fill＝填滿父層（課程介紹頁上方沒有 EDM 時用）。
  */
-export function CourseCover({ theme, label, title, height = 120, imageUrl, fill }: { theme: string; label: string; title?: string; height?: number; imageUrl?: string | null; fill?: boolean }) {
+export function CourseCover({ theme, label, title, height, imageUrl, fill }: { theme: string; label: string; title?: string; height?: number; imageUrl?: string | null; fill?: boolean }) {
   const { scheme } = useTheme();
   const [box, setBox] = useState({ w: 0, h: 0 });
   if (imageUrl) {
@@ -50,7 +50,7 @@ export function CourseCover({ theme, label, title, height = 120, imageUrl, fill 
   const fs = hasTitle && box.w ? fitFontSize(title!, innerW, innerH) : 0;
   return (
     <View
-      style={[styles.cover, fill ? [StyleSheet.absoluteFill, { borderRadius: 0 }] : { height }, { backgroundColor: bg }]}
+      style={[styles.cover, fill ? [StyleSheet.absoluteFill, { borderRadius: 0 }] : height ? { height } : { aspectRatio: 16 / 9 }, { backgroundColor: bg }]}
       onLayout={(e) => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
       accessible
       accessibilityRole="image"

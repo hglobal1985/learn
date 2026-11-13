@@ -39,7 +39,7 @@ export function SeriesTile({ group, width }: { group: SeriesGroup; width: number
   const { config } = useUiConfig();
   const [sheet, setSheet] = useState(false);
   const rep = group.nearest;
-  const height = Math.round((width * 4) / 3);
+  const height = Math.round((width * 9) / 16); // 16:9
   const inSeries = !!rep.series;
   const edm = inSeries ? rep.seriesEdmUrl : rep.edmUrl;
   const ribbons = ribbonsFor(rep, member, config);

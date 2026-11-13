@@ -34,12 +34,14 @@ export function Screen({
       contentInsetAdjustmentBehavior="automatic"
     >
       <View style={styles.inner}>
-        {header && title ? (
+        {header && (title || subtitle || right) ? (
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <AppText variant="display" accessibilityRole="header">
-                {title}
-              </AppText>
+              {title ? (
+                <AppText variant="display" accessibilityRole="header">
+                  {title}
+                </AppText>
+              ) : null}
               {subtitle ? (
                 <AppText tone="muted" variant="callout">
                   {subtitle}

@@ -23,7 +23,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
   return (
     <Card onPress={onPress ?? (() => router.push(`/course/${course.id}`))} accessibilityLabel={displayName(course)}>
       <View style={styles.coverWrap}>
-        <CourseCover theme={course.theme} label={course.category} title={displayName(course)} imageUrl={course.coverUrl} height={160} />
+        <CourseCover theme={course.theme} label={course.category} title={displayName(course)} imageUrl={course.coverUrl} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
@@ -45,9 +45,6 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         <CoursePriceTag course={course} />
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
         {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
-        <AppText variant="caption" tone="muted">
-          {course.lessonCount ? `${course.lessonCount} 堂` : ""}{course.lessonCount && course.totalMinutes ? " · " : ""}{course.totalMinutes ? `約 ${course.totalMinutes} 分鐘` : ""}
-        </AppText>
       </View>
       {course.enrollment === "opened" ? (
         <View style={[styles.track, { backgroundColor: c.surfaceMuted }]} accessibilityLabel={`已完成 ${course.completedLessons}/${course.lessonCount}`}>

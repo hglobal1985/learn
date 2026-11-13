@@ -28,7 +28,7 @@ export default function CoursesScreen() {
   const cols = boxW >= 520 ? 3 : 2;
   const tileW = boxW ? Math.floor((boxW - GAP * (cols - 1)) / cols) : 0;
   return (
-    <Screen title="全部課程" subtitle={data ? `共 ${groups.length} 個課程系列` : undefined}>
+    <Screen>
       <View style={styles.filters}>
         <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
         {units.length ? <Select label="主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
