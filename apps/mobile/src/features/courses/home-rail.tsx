@@ -160,6 +160,11 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               日期：{cur.eventStart ? eventDays(cur.eventStart, cur.eventEnd) : cur.nextRunAt!.slice(0, 10)}
             </AppText>
           ) : null}
+          {cur.location && !cur.locationNone ? (
+            <AppText variant="caption" tone="muted" numberOfLines={1}>
+              地點：{cur.location}
+            </AppText>
+          ) : null}
           <View style={{ alignSelf: "center" }}>
             <CoursePriceTag course={cur} />
           </View>

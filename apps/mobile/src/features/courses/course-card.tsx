@@ -37,6 +37,11 @@ export function CourseCard({ course }: { course: CourseSummary }) {
         {course.subtitle}
       </AppText>
       <UnitTags course={course} />
+      {course.location && !course.locationNone ? (
+        <AppText variant="caption" tone="muted" numberOfLines={1}>
+          地點：{course.location}
+        </AppText>
+      ) : null}
       <View style={styles.meta}>
         <CoursePriceTag course={course} />
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}

@@ -13,8 +13,8 @@ import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { todayStr } from "@/ui/date-select";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; location: string; locationNone: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, location: "", locationNone: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -43,6 +43,8 @@ export default function CourseEditScreen() {
         isPublic: d.isPublic,
         priceTba: d.priceTba,
         hideFromHome: d.hideFromHome,
+        location: d.location,
+        locationNone: d.locationNone,
         guidanceUnit: d.guidanceUnit,
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
@@ -64,7 +66,7 @@ export default function CourseEditScreen() {
   if (!canManage) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
-  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "location" | "locationNone">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   const save = async (status?: "draft" | "published") => {
     const freeFrom = parseLocal(form.freeFrom);
@@ -127,7 +129,7 @@ export default function CourseEditScreen() {
     }
   };
 
-  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
+  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "location" | "locationNone">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
     <View style={{ gap: space.xs }}>
       <AppText variant="callout" tone="muted">
         {label}
@@ -167,6 +169,26 @@ export default function CourseEditScreen() {
           <AppText variant="body">尚未公布</AppText>
         </Pressable>
         {form.priceTba ? <Pill label="費用尚未公布：課程頁顯示「費用尚未公布」，暫不開放報名" tone="warning" /> : price === 0 ? <Pill label="免費課程：報名後立即開通" tone="accent" /> : <Pill label="付費課程：報名後需審核繳費才開通" tone="warning" />}
+        <View style={{ gap: space.xs }}>
+          <AppText variant="callout" tone="muted">
+            地點
+          </AppText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <TextInput
+              value={form.location}
+              onChangeText={(v) => setForm((f) => ({ ...f, location: v }))}
+              editable={!form.locationNone}
+              placeholder="例如：台北總部教室"
+              placeholderTextColor={c.textMuted}
+              accessibilityLabel="地點"
+              style={[styles.input, type.body, { flex: 1, color: c.text, borderColor: c.border, backgroundColor: c.surface, opacity: form.locationNone ? 0.5 : 1 }]}
+            />
+            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.locationNone }} onPress={() => setForm((f) => ({ ...f, locationNone: !f.locationNone }))} style={styles.check}>
+              <Ionicons name={form.locationNone ? "checkbox" : "square-outline"} size={28} color={form.locationNone ? c.accent : c.textMuted} />
+              <AppText variant="body">無</AppText>
+            </Pressable>
+          </View>
+        </View>
         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.hideFromHome }} onPress={() => setForm((f) => ({ ...f, hideFromHome: !f.hideFromHome }))} style={styles.check}>
           <Ionicons name={form.hideFromHome ? "checkbox" : "square-outline"} size={28} color={form.hideFromHome ? c.accent : c.textMuted} />
           <AppText variant="body">不顯示首頁推薦</AppText>
