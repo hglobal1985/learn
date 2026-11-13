@@ -388,7 +388,7 @@ export const DEFAULT_UI_CONFIG: UiConfig = {
     can_register: { label: "可以報名", color: "yellow", enabled: true },
     ineligible: { label: "獎銜不符", color: "danger", enabled: true },
     price_tba: { label: "費用尚未公布", color: "warn", enabled: true },
-    countdown: { label: "剩餘 {n} 天", color: "salmon", enabled: true },
+    countdown: { label: "倒數 {n} 天", color: "salmon", enabled: true },
     in_progress: { label: "進行中", color: "greenDark", enabled: true },
     ended: { label: "已結束", color: "muted", enabled: true },
   },

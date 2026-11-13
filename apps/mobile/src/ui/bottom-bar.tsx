@@ -5,6 +5,7 @@ import { Keyboard, Platform, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUnreadCount } from "@/state/unread";
 import { useTheme } from "@/theme/theme";
+import { barHeight } from "@/theme/tokens";
 import { AppText } from "./text";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -34,7 +35,7 @@ export function BottomBar() {
   }, []);
   if (pathname.startsWith("/auth") || keyboard) return null;
   return (
-    <View style={[styles.bar, { backgroundColor: c.tabBar, borderTopColor: c.border, paddingBottom: insets.bottom }]} accessibilityRole="tablist">
+    <View style={[styles.bar, { backgroundColor: c.tabBar, paddingBottom: insets.bottom }]} accessibilityRole="tablist">
       {tabs.map((t) => {
         const on = t.match(pathname);
         const color = on ? c.accentText : c.textMuted;
@@ -61,7 +62,7 @@ export function BottomBar() {
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: "row", borderTopWidth: StyleSheet.hairlineWidth, minHeight: 56 },
-  tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2, paddingTop: 6, paddingBottom: 6, minHeight: 56 },
+  bar: { flexDirection: "row", minHeight: barHeight, shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: -3 }, elevation: 10 },
+  tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2, paddingTop: 6, paddingBottom: 6, minHeight: barHeight },
   badge: { position: "absolute", top: -4, right: -12, minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3, alignItems: "center", justifyContent: "center" },
 });

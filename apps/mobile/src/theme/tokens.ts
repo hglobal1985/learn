@@ -79,3 +79,6 @@ export type TypeVariant = keyof typeof type;
 export const minTouch = 48;
 /** 網頁版內容最大寬度，避免桌機上一行過長。 */
 export const maxContentWidth = 720;
+
+/** 底部分頁列與上方置頂標題列（返回＋分享）共用的高度：兩者永遠一樣高。 */
+export const barHeight = 56;

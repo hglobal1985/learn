@@ -19,7 +19,8 @@ export function normalizeConfig(raw: unknown): UiConfig {
   for (const k of RIBBON_KEYS) {
     const g = given[k];
     if (!g) continue;
-    const label = typeof g.label === "string" ? g.label.trim().slice(0, 20) : "";
+    let label = typeof g.label === "string" ? g.label.trim().slice(0, 20) : "";
+    if (k === "countdown" && label === "剩餘 {n} 天") label = ""; // 舊預設文字，改用新預設「倒數 {n} 天」
     ribbons[k] = {
       label: label || DEFAULT_UI_CONFIG.ribbons[k].label,
       color: (RIBBON_PALETTE as readonly string[]).includes(g.color as string) ? (g.color as RibbonColor) : DEFAULT_UI_CONFIG.ribbons[k].color,

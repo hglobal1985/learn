@@ -1,3 +1,4 @@
+import { barHeight } from "@/theme/tokens";
 import { Stack } from "expo-router/stack";
 import { useEffect } from "react";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
@@ -14,7 +15,7 @@ import { installNoPageZoom } from "@/lib/no-page-zoom";
 import { SessionProvider } from "@/state/session";
 import { UiConfigProvider } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
-import { BottomBar } from "@/ui";
+import { BottomBar, HeaderShadow } from "@/ui";
 
 export default function RootLayout() {
   const { scheme, c } = useTheme();
@@ -33,10 +34,18 @@ export default function RootLayout() {
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
           <View style={{ flex: 1, backgroundColor: c.background }}>
           <View style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerBackButtonDisplayMode: "minimal", contentStyle: { backgroundColor: c.background } }}>
+          <Stack
+            screenOptions={{
+              headerBackButtonDisplayMode: "minimal",
+              contentStyle: { backgroundColor: c.background },
+              // 上方標題列與下方主選單同高（barHeight），兩者都有陰影。
+              headerShadowVisible: false,
+              headerStyle: { height: barHeight, zIndex: 10, position: "relative", boxShadow: "0 3px 8px rgba(0,0,0,0.18)", shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 } as object,
+            }}
+          >
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "寰宇行動大學" }} />
-            <Stack.Screen name="course/[id]" options={{ title: "課程介紹", headerStyle: { height: 44 } as object }} />
-            <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課", headerStyle: { height: 44 } as object }} />
+            <Stack.Screen name="course/[id]" options={{ title: "課程介紹" }} />
+            <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課" }} />
             <Stack.Screen name="admin/list-rules" options={{ title: "課程排序與條件" }} />
             <Stack.Screen name="admin/stats" options={{ title: "統計分析" }} />
             <Stack.Screen name="admin/keywords" options={{ title: "關鍵字管理" }} />
@@ -59,6 +68,7 @@ export default function RootLayout() {
             <Stack.Screen name="auth/google" options={{ headerShown: false }} />
             <Stack.Screen name="auth/sso" options={{ headerShown: false }} />
           </Stack>
+          <HeaderShadow />
           </View>
           <MiniAudioBar />
           <BottomBar />

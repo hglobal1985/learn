@@ -28,7 +28,7 @@ test("畫面設定：公開讀取、只有超級管理員能改；顏色只能�
   const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
   const def = (await call<UiConfig>("GET", "/ui-config")).data;
   assert.deepEqual(def.sortGroups, DEFAULT_UI_CONFIG.sortGroups);
-  assert.equal(def.ribbons.countdown.label, "剩餘 {n} 天");
+  assert.equal(def.ribbons.countdown.label, "倒數 {n} 天");
   assert.equal((await call("PUT", "/admin/ui-config", { token: student, body: { sortGroups: [] } })).status, 403);
   const put = await call<UiConfig>("PUT", "/admin/ui-config", { token: admin, body: { sortGroups: ["enrolled", "pending"], ribbons: { learning: { label: "上課中", color: "olive", enabled: true }, pending: { label: "x", color: "not-a-color", enabled: false } }, statsRoles: ["president", "hacker"] } });
   assert.equal(put.status, 200);
