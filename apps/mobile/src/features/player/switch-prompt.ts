@@ -4,7 +4,7 @@ import type { Track } from "./engine.types";
 export type SwitchPrompt = { from: Track; to: Track; resolve: (ok: boolean) => void };
 
 /** 沒有操作時，倒數幾秒後視同「同意改播」。 */
-export const SWITCH_COUNTDOWN_SECONDS = 10;
+export const SWITCH_COUNTDOWN_SECONDS = 15;
 
 let current: SwitchPrompt | null = null;
 const listeners = new Set<() => void>();
