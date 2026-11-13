@@ -1826,6 +1826,20 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/orders\/([\w-]+)\/cancel$/, async (ctx, [id]) => cancelOrder(ctx, id)],
   ["POST", /^\/orders\/([\w-]+)\/payments$/, async (ctx, [id]) => reportPayment(ctx, id!, await readJson(ctx.req))],
   [
+    "DELETE",
+    /^\/orders\/([\w-]+)\/payments\/([\w-]+)$/,
+    async (ctx, [orderId, payId]) => {
+      const s = requireMember(ctx);
+      const o = await ctx.db.prepare("SELECT member_sub, status FROM orders WHERE id = ?").bind(orderId).first<{ member_sub: string; status: string }>();
+      if (!o || o.member_sub !== s.sub) return fail(404, "not_found", "找不到這筆報名");
+      if (o.status !== "pending") fail(409, "not_pending", "這筆報名已處理完畢，不能刪除回報紀錄");
+      const r = await ctx.db.prepare("DELETE FROM order_payments WHERE id = ? AND order_id = ?").bind(payId, orderId).run();
+      if (r.meta?.changes === 0) return fail(404, "not_found", "找不到這筆回報");
+      await audit(ctx.db, s.sub, "order.payment_delete", "order", orderId, payId).run();
+      return orderDetail(ctx, orderId);
+    },
+  ],
+  [
     "POST",
     /^\/courses\/([\w-]+)\/cancel-registration$/,
     async (ctx, [courseId]) => {

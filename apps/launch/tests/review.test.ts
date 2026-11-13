@@ -309,6 +309,12 @@ test("回報繳費方式：四種方式各自的必填欄位、只有本人能�
   assert.equal((await call<Order>("GET", `/orders/${o.id}`, { token: admin })).data.payments!.length, 4);
   const notices = (await call<Notice[]>("GET", "/notifications", { token: admin })).data;
   assert.ok(notices.some((n) => n.title.startsWith("學員回報了繳費方式")));
+  // 刪除回報：只有本人、待審核時
+  const gone = list[0]!.id;
+  assert.equal((await call("DELETE", `/orders/${o.id}/payments/${gone}`, { token: other })).status, 404);
+  const after = (await call<Order>("DELETE", `/orders/${o.id}/payments/${gone}`, { token: student })).data;
+  assert.deepEqual(after.payments!.map((p) => p.method), ["transfer", "friend", "linepay"]);
+  assert.equal((await call("DELETE", `/orders/${o.id}/payments/${gone}`, { token: student })).status, 404, "已刪掉");
   // 取消報名後不能再回報
   await call("POST", `/orders/${o.id}/cancel`, { token: student });
   assert.equal((await pay(student, { method: "cash" })).status, 404);

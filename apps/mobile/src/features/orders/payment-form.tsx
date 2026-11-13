@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, PAYMENT_METHODS, type Order, type PaymentMethodKey, type PaymentReport } from "@/api/client";
+import { confirmSheet } from "@/features/confirm";
 import { dateTime } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
@@ -133,8 +134,18 @@ const methodText = (p: PaymentReport) => PAYMENT_METHODS.find((m) => m.key === p
 const detailText = (p: PaymentReport) => [p.last5 ? `末五碼 ${p.last5}` : "", p.friendName ? `朋友：${p.friendName}` : "", p.paidAt ? dateTime(p.paidAt) : ""].filter(Boolean).join("　");
 
 /** 送出的繳費回報紀錄（新的在下面），顯示在頁面下方。 */
-export function PaymentRecords({ payments }: { payments: PaymentReport[] }) {
+export function PaymentRecords({ orderId, payments, canDelete, onDone }: { orderId: string; payments: PaymentReport[]; canDelete: boolean; onDone: () => void }) {
   const { c } = useTheme();
+  const remove = async (p: PaymentReport) => {
+    if (!(await confirmSheet({ title: "刪除這筆回報", message: `確定要刪除「${methodText(p)}」這筆繳費回報嗎？`, confirmLabel: "刪除", cancelLabel: "先不要", danger: true }))) return;
+    try {
+      await api("DELETE", `/orders/${orderId}/payments/${p.id}`);
+      showToast("已刪除");
+      onDone();
+    } catch (e) {
+      showToast((e as Error).message);
+    }
+  };
   if (!payments.length) return null;
   return (
     <Section title="繳費回報紀錄">
@@ -152,6 +163,11 @@ export function PaymentRecords({ payments }: { payments: PaymentReport[] }) {
             <AppText variant="caption" tone="muted">
               送出 {dateTime(p.createdAt)}
             </AppText>
+            {canDelete ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="刪除這筆回報" onPress={() => remove(p)} hitSlop={8} style={styles.trash}>
+                <Ionicons name="trash-outline" size={22} color={c.danger} />
+              </Pressable>
+            ) : null}
           </View>
         ))}
       </Card>
@@ -164,5 +180,6 @@ const styles = StyleSheet.create({
   method: { flexGrow: 1, flexBasis: "45%", flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.md },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
   pair: { flexDirection: "row", gap: space.sm },
+  trash: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   record: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, paddingVertical: space.sm },
 });

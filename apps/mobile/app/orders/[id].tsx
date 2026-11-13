@@ -99,7 +99,7 @@ function OrderDetail() {
         </Card>
       ) : null}
       {data.status === "pending" ? <PaymentForm order={data} onDone={reload} /> : null}
-      <PaymentRecords payments={data.payments ?? []} />
+      <PaymentRecords orderId={data.id} payments={data.payments ?? []} canDelete={data.status === "pending"} onDone={reload} />
       <OrderTimeline order={data} />
     </Screen>
   );
