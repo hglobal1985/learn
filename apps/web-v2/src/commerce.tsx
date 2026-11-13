@@ -1,0 +1,381 @@
+import { useState } from "react";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { ArrowRight, CheckCircle2, Trash2, ShieldCheck } from "lucide-react";
+import { useStore } from "./store";
+import { eligible, ranks, submitOrder, type Member } from "./domain";
+import { Artwork, Empty, MemberShell, Page } from "./components";
+export function RequireMember({
+  children,
+  admin = false,
+}: {
+  children: React.ReactNode;
+  admin?: boolean;
+}) {
+  const { state } = useStore();
+  const location = useLocation();
+  if (!state.member)
+    return (
+      <Navigate
+        replace
+        to={`/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
+      />
+    );
+  if (admin && state.member.role !== "admin")
+    return (
+      <Page title="需要管理員權限">
+        <Empty
+          title="此頁僅供管理員使用"
+          body="請切換為隔離測試管理員，正式管理權限尚未接入。"
+          to="/login?returnTo=/admin"
+          action="切換測試身分"
+        />
+      </Page>
+    );
+  return <>{children}</>;
+}
+export function Login() {
+  const { update } = useStore();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const [rank, setRank] = useState<Member["rank"]>("白金");
+  function login(admin: boolean) {
+    update((s) => ({
+      ...s,
+      member: {
+        id: admin ? "admin" : "demo-student",
+        name: admin ? "測試管理員" : "寰宇體驗學員",
+        rank: admin ? "鑽石" : rank,
+        role: admin ? "admin" : "student",
+      },
+      cart:
+        s.member && s.member.id !== (admin ? "admin" : "demo-student")
+          ? []
+          : s.cart,
+    }));
+    const next = params.get("returnTo") || "/account";
+    navigate(
+      next.startsWith("/") && !next.startsWith("//") ? next : "/account",
+      { replace: true },
+    );
+  }
+  return (
+    <Page title="開始你的學習旅程">
+      <div className="login-card">
+        <div className="avatar">
+          <ShieldCheck />
+        </div>
+        <h2>歡迎回到寰宇</h2>
+        <p>
+          正式登入將使用 H-Global1985 中央會員。
+          <br />
+          目前依開發指示暫不連線，請使用測試身分。
+        </p>
+        <label>
+          測試學員獎銜
+          <select
+            value={rank}
+            onChange={(e) => setRank(e.target.value as Member["rank"])}
+          >
+            {ranks.map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+        </label>
+        <button className="primary full" onClick={() => login(false)}>
+          以測試學員進入 <ArrowRight size={18} />
+        </button>
+        <button className="secondary full" onClick={() => login(true)}>
+          以測試管理員進入
+        </button>
+        <p className="fine">
+          不需要密碼、不建立中央帳號。資料僅保存在此瀏覽器，請勿輸入真實個資。
+        </p>
+      </div>
+    </Page>
+  );
+}
+export function Cart() {
+  const { state, update } = useStore();
+  const courses = state.cart
+    .map((id) => state.courses.find((c) => c.id === id))
+    .filter((c) => !!c);
+  return (
+    <Page title="購物車" subtitle="為下一次成長，留一個位置。">
+      {!courses.length ? (
+        <Empty
+          title="購物車還是空的"
+          body="先找一堂感興趣的課，開始你的學習旅程。"
+        />
+      ) : (
+        <div className="checkout-grid">
+          <div>
+            {courses.map((c) => (
+              <article className="cart-item" key={c.id}>
+                <Link to={`/courses/${c.id}`}>
+                  <Artwork course={c} />
+                </Link>
+                <div>
+                  <span className="eyebrow">{c.category}</span>
+                  <h3>
+                    <Link to={`/courses/${c.id}`}>{c.title}</Link>
+                  </h3>
+                  <p>{c.teacher}</p>
+                  <strong>NT$ {c.price.toLocaleString()}</strong>
+                  {state.member && !eligible(state.member, c) && (
+                    <p className="error">需 {c.rank}以上獎銜</p>
+                  )}
+                </div>
+                <button
+                  aria-label={`移除${c.title}`}
+                  onClick={() =>
+                    update((s) => ({
+                      ...s,
+                      cart: s.cart.filter((id) => id !== c.id),
+                    }))
+                  }
+                >
+                  <Trash2 size={18} />
+                </button>
+              </article>
+            ))}
+          </div>
+          <aside className="panel">
+            <h2>訂單明細</h2>
+            <div className="summary-row">
+              <span>課程數量</span>
+              <span>{courses.length} 門</span>
+            </div>
+            <div className="summary-row total">
+              <span>總金額</span>
+              <strong>
+                NT$ {courses.reduce((n, c) => n + c.price, 0).toLocaleString()}
+              </strong>
+            </div>
+            <Link className="primary full" to="/checkout">
+              前往結帳 <ArrowRight size={18} />
+            </Link>
+            <p className="fine">免費課程立即開通；付費課程由管理員人工審核。</p>
+          </aside>
+        </div>
+      )}
+    </Page>
+  );
+}
+export function Checkout() {
+  const { state, update } = useStore();
+  const navigate = useNavigate();
+  const [agreed, setAgreed] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const courses = state.cart
+    .map((id) => state.courses.find((c) => c.id === id))
+    .filter((c) => !!c);
+  const total = courses.reduce((n, c) => n + c.price, 0);
+  if (!courses.length && !busy) return <Navigate to="/cart" replace />;
+  function submit() {
+    if (busy || !agreed) return;
+    setBusy(true);
+    try {
+      const id = `DEMO-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const next = submitOrder(state, id, new Date().toISOString());
+      update(() => next);
+      navigate(`/checkout/complete/${id}`, { replace: true });
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  }
+  return (
+    <Page title="確認你的課程">
+      <div className="steps">
+        <span>01 購物車</span>
+        <strong>02 確認領取</strong>
+        <span>03 開始學習</span>
+      </div>
+      <div className="checkout-grid">
+        <div>
+          <section className="panel">
+            <h2>學員資料</h2>
+            <label>
+              學員姓名
+              <input value={state.member?.name || ""} readOnly />
+            </label>
+            <label>
+              會員獎銜
+              <input value={state.member?.rank || ""} readOnly />
+            </label>
+            <p className="fine">
+              目前使用隔離測試會員，不要求電話、付款工具或真實個資。
+            </p>
+          </section>
+          <section className="panel">
+            <h2>{total === 0 ? "免費領取" : "付款與開通方式"}</h2>
+            <p>
+              {total === 0
+                ? "這筆訂單為 0 元，不需要付款或管理員審核。完成後即可在「我的課程」開始學習。"
+                : "本平台不提供線上刷卡。訂單送出後將通知管理員，確認款項後開通付費課程。若包含免費課程，免費課程會先行開通。"}
+            </p>
+          </section>
+        </div>
+        <aside className="panel">
+          <h2>訂單明細</h2>
+          {courses.map((c) => (
+            <div className="summary-row" key={c.id}>
+              <span>{c.title}</span>
+              <strong>NT$ {c.price}</strong>
+            </div>
+          ))}
+          <div className="summary-row total">
+            <span>總金額</span>
+            <strong>NT$ {total.toLocaleString()}</strong>
+          </div>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+            />
+            我了解這是測試流程，不產生正式訂單或扣款。
+          </label>
+          <button
+            disabled={!agreed || busy}
+            className="primary full"
+            onClick={submit}
+          >
+            {busy ? "處理中…" : total === 0 ? "確認免費領取" : "送出待審核訂單"}
+          </button>
+          {error && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
+        </aside>
+      </div>
+    </Page>
+  );
+}
+export function Complete() {
+  const { id } = useParams();
+  const { state } = useStore();
+  const order = state.orders.find(
+    (o) => o.id === id && o.memberId === state.member?.id,
+  );
+  if (!order) return <Navigate to="/orders" replace />;
+  return (
+    <Page title="你的學習旅程，向前一步">
+      <section className="success panel">
+        <CheckCircle2 size={56} />
+        <h2>
+          {order.status === "opened" ? "免費課程已成功領取！" : "訂單已送出"}
+        </h2>
+        <p>
+          {order.status === "opened"
+            ? "課程已加入「我的課程」，現在就能開始學習。"
+            : "管理員已收到站內通知；審核結果將透過站內通知告知。"}
+        </p>
+        <p className="fine">測試訂單 {order.id}</p>
+        <Link className="primary" to="/my-courses">
+          前往我的課程 <ArrowRight size={18} />
+        </Link>
+        <Link className="secondary" to={`/orders/${order.id}`}>
+          查看訂單明細
+        </Link>
+      </section>
+    </Page>
+  );
+}
+export const orderStatus = {
+  opened: "已開通",
+  pending: "待人工審核",
+  rejected: "未通過",
+};
+export function Orders() {
+  const { state } = useStore();
+  const { id } = useParams();
+  const [filter, setFilter] = useState("all");
+  const orders = state.orders.filter(
+    (o) =>
+      o.memberId === state.member?.id &&
+      (!id || o.id === id) &&
+      (filter === "all" || o.status === filter),
+  );
+  return (
+    <MemberShell>
+      <h2>{id ? "訂單明細" : "訂單紀錄"}</h2>
+      {!id && (
+        <nav className="tabs">
+          {[
+            ["all", "全部訂單"],
+            ["opened", "已開通"],
+            ["pending", "待審核"],
+            ["rejected", "未通過"],
+          ].map(([v, label]) => (
+            <button
+              key={v}
+              className={filter === v ? "active" : ""}
+              onClick={() => setFilter(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
+      {!orders.length ? (
+        <Empty
+          title="目前沒有符合的訂單"
+          body="領取課程後，訂單資訊會顯示在這裡。"
+        />
+      ) : (
+        orders.map((o) => (
+          <article className="panel order-card" key={o.id}>
+            <div className="summary-row">
+              <strong>訂單資訊</strong>
+              <span className={`tag ${o.status}`}>{orderStatus[o.status]}</span>
+            </div>
+            <dl>
+              <dt>訂單編號</dt>
+              <dd>{o.id}</dd>
+              <dt>訂單日期</dt>
+              <dd>
+                {new Date(o.createdAt).toLocaleString("zh-TW", {
+                  timeZone: "Asia/Taipei",
+                })}
+              </dd>
+              <dt>訂單金額</dt>
+              <dd>NT$ {o.total.toLocaleString()}</dd>
+              <dt>開通方式</dt>
+              <dd>{o.total === 0 ? "免費課程 · 自動開通" : "人工確認付款"}</dd>
+            </dl>
+            {o.reason && <p className="error">審核說明：{o.reason}</p>}
+            <details open={!!id}>
+              <summary>展開課程明細</summary>
+              {o.items.map((i) => (
+                <div className="summary-row" key={i.courseId}>
+                  <Link to={`/courses/${i.courseId}`}>{i.title}</Link>
+                  <span>NT$ {i.price}</span>
+                </div>
+              ))}
+            </details>
+            {!id && (
+              <Link className="text-link" to={`/orders/${o.id}`}>
+                查看完整訂單 →
+              </Link>
+            )}
+            {o.status === "opened" && (
+              <Link className="primary" to="/my-courses">
+                開始學習
+              </Link>
+            )}
+          </article>
+        ))
+      )}
+    </MemberShell>
+  );
+}

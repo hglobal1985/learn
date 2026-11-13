@@ -1,0 +1,541 @@
+import { useState, useRef } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  Check,
+  Play,
+  LockKeyhole,
+} from "lucide-react";
+import { useStore } from "./store";
+import { owned, eligible } from "./domain";
+import {
+  CourseCard,
+  Empty,
+  MemberShell,
+  Page,
+  SectionTitle,
+} from "./components";
+export function Dashboard() {
+  const { state } = useStore();
+  const mine = state.courses.filter((c) => owned(state, c.id));
+  const notes = Object.entries(state.notes).filter(
+    ([k, v]) => k.startsWith(`${state.member?.id}:`) && v,
+  );
+  return (
+    <MemberShell>
+      <div className="welcome-panel">
+        <span className="eyebrow">KEEP YOUR MOMENTUM</span>
+        <h2>今天，也為自己前進一點。</h2>
+        <p>每一次練習，都在累積明天的可能。</p>
+        <Link className="primary" to="/my-courses">
+          繼續我的學習 <ArrowRight size={17} />
+        </Link>
+      </div>
+      <div className="stats">
+        <div>
+          <strong>{mine.length}</strong>
+          <span>已加入課程</span>
+        </div>
+        <div>
+          <strong>
+            {Object.entries(state.completed)
+              .filter(([k]) => k.startsWith(`${state.member?.id}:`))
+              .reduce((sum, [, v]) => sum + v.length, 0)}
+          </strong>
+          <span>完成單元</span>
+        </div>
+        <div>
+          <strong>{notes.length}</strong>
+          <span>學習筆記</span>
+        </div>
+      </div>
+      <SectionTitle title="我的學習筆記" />
+      {notes.length ? (
+        notes.map(([key, note]) => {
+          const [, cid, lid] = key.split(":");
+          return (
+            <article className="panel" key={key}>
+              <Link to={`/learn/${cid}/${lid}`}>
+                {state.courses.find((c) => c.id === cid)?.title} →
+              </Link>
+              <p className="note-text">{note}</p>
+            </article>
+          );
+        })
+      ) : (
+        <Empty
+          title="讓每個靈感，都有地方留下"
+          body="上課時記錄的筆記，會整理在這裡。"
+          to="/my-courses"
+          action="前往我的課程"
+        />
+      )}
+    </MemberShell>
+  );
+}
+export function MyCourses() {
+  const { state } = useStore();
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
+  const courses = state.courses
+    .filter((c) => owned(state, c.id) && `${c.title}${c.teacher}`.includes(q))
+    .filter((c) => {
+      const count = (state.completed[`${state.member?.id}:${c.id}`] || [])
+        .length;
+      return (
+        filter === "all" ||
+        (filter === "done"
+          ? count === c.lessons.length
+          : count < c.lessons.length)
+      );
+    });
+  return (
+    <MemberShell>
+      <h2>我的課程</h2>
+      <input
+        className="search-input"
+        aria-label="搜尋我的課程"
+        placeholder="搜尋課程或講師…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+      <nav className="tabs">
+        {[
+          ["all", "所有課程"],
+          ["learning", "學習中"],
+          ["done", "已完課"],
+        ].map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => setFilter(v)}
+            className={filter === v ? "active" : ""}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {courses.length ? (
+        <div className="course-grid">
+          {courses.map((c) => {
+            const done = state.completed[`${state.member?.id}:${c.id}`] || [];
+            const progress = Math.round((done.length / c.lessons.length) * 100);
+            return (
+              <div key={c.id}>
+                <CourseCard course={c} />
+                <div className="learning-progress">
+                  <div>
+                    <span>學習進度</span>
+                    <strong>{progress}%</strong>
+                  </div>
+                  <progress max={100} value={progress} />
+                  <Link
+                    className="primary full"
+                    to={`/learn/${c.id}/${c.lessons.find((l) => !done.includes(l.id))?.id || c.lessons[0].id}`}
+                  >
+                    繼續學習 <Play size={16} />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          title="你的下一堂課，等你開始"
+          body="免費領取或經管理員開通的課程，都會出現在這裡。"
+        />
+      )}
+    </MemberShell>
+  );
+}
+export function Favorites() {
+  const { state } = useStore();
+  const courses = state.courses.filter(
+    (c) => state.favorites.includes(c.id) && c.published,
+  );
+  return (
+    <MemberShell>
+      <h2>我的收藏</h2>
+      {courses.length ? (
+        <div className="course-grid">
+          {courses.map((c) => (
+            <CourseCard course={c} key={c.id} />
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="收藏你感興趣的課程"
+          body="點擊課程卡片上的愛心，讓下一次學習更容易開始。"
+        />
+      )}
+    </MemberShell>
+  );
+}
+export function Notifications() {
+  const { state, update } = useStore();
+  const { id } = useParams();
+  const [unread, setUnread] = useState(false);
+  const notices = state.notices.filter(
+    (n) =>
+      n.recipient === state.member?.id &&
+      (!id || n.id === id) &&
+      (!unread || !n.read),
+  );
+  function read(nid: string) {
+    update((s) => ({
+      ...s,
+      notices: s.notices.map((n) =>
+        n.id === nid && n.recipient === s.member?.id ? { ...n, read: true } : n,
+      ),
+    }));
+  }
+  return (
+    <MemberShell>
+      <div className="section-title">
+        <h2>站內通知</h2>
+        <button
+          className="text-link"
+          onClick={() =>
+            update((s) => ({
+              ...s,
+              notices: s.notices.map((n) =>
+                n.recipient === s.member?.id ? { ...n, read: true } : n,
+              ),
+            }))
+          }
+        >
+          全部標為已讀
+        </button>
+      </div>
+      <nav className="tabs">
+        <button
+          className={!unread ? "active" : ""}
+          onClick={() => setUnread(false)}
+        >
+          全部通知
+        </button>
+        <button
+          className={unread ? "active" : ""}
+          onClick={() => setUnread(true)}
+        >
+          未讀
+        </button>
+      </nav>
+      {notices.length ? (
+        notices.map((n) => (
+          <article
+            className={`notice panel ${n.read ? "" : "unread"}`}
+            key={n.id}
+          >
+            <Bell />
+            <div>
+              <Link to={`/notifications/${n.id}`} onClick={() => read(n.id)}>
+                <h3>{n.title}</h3>
+              </Link>
+              <p>{n.body}</p>
+              <Link
+                className="text-link"
+                to={n.href}
+                onClick={() => read(n.id)}
+              >
+                查看詳情 →
+              </Link>
+            </div>
+            {!n.read && (
+              <button
+                aria-label={`標為已讀：${n.title}`}
+                onClick={() => read(n.id)}
+              >
+                <Check size={18} />
+              </button>
+            )}
+          </article>
+        ))
+      ) : (
+        <Empty
+          title="目前沒有新通知"
+          body="課程開通與訂單審核結果會在這裡通知你。"
+          to="/my-courses"
+          action="查看我的課程"
+        />
+      )}
+    </MemberShell>
+  );
+}
+export function Settings() {
+  const { state, update } = useStore();
+  const [name, setName] = useState(state.member?.name || "");
+  const [message, setMessage] = useState("");
+  return (
+    <MemberShell>
+      <h2>會員資料</h2>
+      <nav className="tabs">
+        <a href="#basic">基本資料</a>
+        <a href="#preferences">學習偏好</a>
+        <a href="#account">帳號設定</a>
+      </nav>
+      <form
+        className="panel settings"
+        id="basic"
+        onSubmit={(e) => {
+          e.preventDefault();
+          update((s) => ({
+            ...s,
+            member: s.member ? { ...s.member, name: name.trim() } : null,
+          }));
+          setMessage("測試資料已儲存，中央會員未變更。");
+        }}
+      >
+        <h3>基本資料</h3>
+        <label>
+          測試顯示名稱
+          <input
+            required
+            maxLength={40}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label>
+          獎銜
+          <input readOnly value={state.member?.rank || ""} />
+        </label>
+        <p className="fine">
+          獎銜正式上線後由中央會員提供，此頁不可自行更改。測試獎銜請在測試登入頁選擇。
+        </p>
+        <button className="primary">儲存測試資料</button>
+        {message && <p role="status">{message}</p>}
+      </form>
+      <section className="panel settings" id="preferences">
+        <h3>學習偏好</h3>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={state.preferences.reminders}
+            onChange={(e) =>
+              update((s) => ({
+                ...s,
+                preferences: { reminders: e.target.checked },
+              }))
+            }
+          />
+          顯示學習提醒（測試偏好）
+        </label>
+      </section>
+      <section className="panel settings" id="account">
+        <h3>帳號設定</h3>
+        <p>
+          密碼、登入方式與帳號刪除將由中央會員管理。此環境尚未串接，不提供修改正式帳號的操作。
+        </p>
+        <Link className="secondary" to="/login">
+          切換測試身分
+        </Link>
+      </section>
+    </MemberShell>
+  );
+}
+export function Player({ preview = false }: { preview?: boolean }) {
+  const { id, lessonId } = useParams();
+  const { state, update } = useStore();
+  const navigate = useNavigate();
+  const c = state.courses.find((c) => c.id === id);
+  const [active, setActive] = useState("chapters");
+  const video = useRef<HTMLVideoElement>(null);
+  const [saved, setSaved] = useState(false);
+  if (!c) return <Page title="課程不存在" />;
+  const index = preview ? 0 : c.lessons.findIndex((l) => l.id === lessonId);
+  const lesson = c.lessons[index];
+  if (!lesson)
+    return (
+      <Page title="找不到這個單元">
+        <Link to={`/learn/${c.id}/${c.lessons[0].id}`}>回到第一堂課</Link>
+      </Page>
+    );
+  if (!preview && (!owned(state, c.id) || !eligible(state.member, c)))
+    return (
+      <Page title="尚未開通此課程">
+        <Empty
+          title="先完成領取，開始學習"
+          body="此課程需要已開通訂單，並符合獎銜條件。"
+          to={`/courses/${c.id}`}
+          action="查看課程資格"
+        />
+      </Page>
+    );
+  const key = `${state.member?.id}:${c.id}`;
+  const noteKey = `${key}:${lesson.id}`;
+  const completed = state.completed[key] || [];
+  function complete() {
+    if (preview) return;
+    update((s) => ({
+      ...s,
+      completed: {
+        ...s.completed,
+        [key]: Array.from(new Set([...(s.completed[key] || []), lesson.id])),
+      },
+    }));
+  }
+  return (
+    <div className="container page player-page">
+      <Link
+        className="text-link"
+        to={preview ? `/courses/${c.id}` : "/my-courses"}
+      >
+        <ArrowLeft size={16} /> {preview ? "返回課程介紹" : "返回我的課程"}
+      </Link>
+      <div className="player-layout">
+        <div>
+          <div className="video-wrap">
+            <video
+              ref={video}
+              key={lesson.id}
+              controls
+              playsInline
+              preload="metadata"
+              src="/orientation.mp4"
+              onEnded={complete}
+              aria-label="寰宇原創示範導讀影片"
+            />
+            <span className="video-label">原創示範導讀 · 非正式課程影片</span>
+          </div>
+          <p className="eyebrow">{c.title}</p>
+          <h1>{lesson.title}</h1>
+          <p className="muted">
+            {preview ? "免費試看示範" : "測試學習模式"} · 正式 Mux
+            Signed／YouTube 播放尚未接入。
+          </p>
+          <div className="player-actions">
+            <button
+              className="secondary"
+              disabled={preview || index === 0}
+              onClick={() =>
+                navigate(`/learn/${c.id}/${c.lessons[index - 1].id}`)
+              }
+            >
+              <ArrowLeft size={16} />
+              上一堂
+            </button>
+            {!preview && (
+              <button className="secondary" onClick={complete}>
+                {completed.includes(lesson.id) ? "已完成 ✓" : "標記已完成"}
+              </button>
+            )}
+            <button
+              className="primary"
+              disabled={preview || index === c.lessons.length - 1}
+              onClick={() =>
+                navigate(`/learn/${c.id}/${c.lessons[index + 1].id}`)
+              }
+            >
+              下一堂
+              <ArrowRight size={16} />
+            </button>
+          </div>
+          <p className="fine">
+            示範影片用於驗證播放控制與進度流程；各單元共用這支示範素材，不代表正式課程內容。
+          </p>
+          <nav className="tabs">
+            <button
+              className={active === "chapters" ? "active" : ""}
+              onClick={() => setActive("chapters")}
+            >
+              課程章節
+            </button>
+            <button
+              className={active === "intro" ? "active" : ""}
+              onClick={() => setActive("intro")}
+            >
+              課程介紹
+            </button>
+            <button
+              className={active === "notes" ? "active" : ""}
+              onClick={() => setActive("notes")}
+            >
+              我的筆記
+            </button>
+          </nav>
+          {active === "intro" && (
+            <section className="panel">
+              <h2>{c.title}</h2>
+              <p>{c.subtitle}</p>
+              <Link to={`/courses/${c.id}`}>完整課程介紹 →</Link>
+            </section>
+          )}
+          {active === "notes" &&
+            (preview ? (
+              <p>領取課程後即可建立學習筆記。</p>
+            ) : (
+              <form
+                key={noteKey}
+                className="panel"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const note = String(
+                    new FormData(e.currentTarget).get("note") || "",
+                  );
+                  update((s) => ({
+                    ...s,
+                    notes: { ...s.notes, [noteKey]: note },
+                  }));
+                  setSaved(true);
+                }}
+              >
+                <label>
+                  記下這堂課的收穫
+                  <textarea
+                    name="note"
+                    maxLength={5000}
+                    defaultValue={state.notes[noteKey] || ""}
+                    rows={6}
+                    onChange={() => setSaved(false)}
+                    placeholder="一個觀念、一個問題，或下一個行動…"
+                  />
+                </label>
+                <button className="primary">儲存筆記</button>
+                {saved && <p role="status">筆記已儲存</p>}
+              </form>
+            ))}
+          {active === "chapters" && (
+            <div className="mobile-chapters">{chapterList()}</div>
+          )}
+        </div>
+        <aside className="panel desktop-chapters">
+          <h2>課程章節</h2>
+          <p>
+            {completed.length} / {c.lessons.length} 單元已完成
+          </p>
+          <progress max={c.lessons.length} value={completed.length} />
+          {chapterList()}
+        </aside>
+      </div>
+    </div>
+  );
+  function chapterList() {
+    return (
+      <div>
+        {c!.lessons.map((l, i) => (
+          <button
+            className={`lesson-row ${i === index ? "selected" : ""}`}
+            disabled={preview && i !== 0}
+            key={l.id}
+            onClick={() => {
+              if (!preview) navigate(`/learn/${c!.id}/${l.id}`);
+            }}
+          >
+            {completed.includes(l.id) ? (
+              <Check size={16} />
+            ) : preview && i !== 0 ? (
+              <LockKeyhole size={16} />
+            ) : (
+              <Play size={16} />
+            )}
+            <span>{l.title}</span>
+            <small>{l.minutes} 分鐘</small>
+          </button>
+        ))}
+      </div>
+    );
+  }
+}

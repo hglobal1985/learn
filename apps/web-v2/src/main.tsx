@@ -1,0 +1,87 @@
+import React from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Store } from "./store";
+import { Layout, Page, Empty } from "./components";
+import { Home, Catalog, CourseDetail } from "./catalog";
+import {
+  RequireMember,
+  Login,
+  Cart,
+  Checkout,
+  Complete,
+  Orders,
+} from "./commerce";
+import {
+  Dashboard,
+  MyCourses,
+  Favorites,
+  Notifications,
+  Settings,
+  Player,
+} from "./learning";
+import { Admin, AdminCourses, EditCourse, AdminOrders } from "./admin";
+import { Teachers, Articles, Help, Policy } from "./info";
+import "./styles.css";
+const member = (node: React.ReactNode) => <RequireMember>{node}</RequireMember>;
+const admin = (node: React.ReactNode) => (
+  <RequireMember admin>{node}</RequireMember>
+);
+createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <Store>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route index element={<Home />} />
+            <Route path="courses" element={<Catalog />} />
+            <Route path="courses/:id" element={<CourseDetail />} />
+            <Route path="login" element={<Login />} />
+            <Route path="cart" element={<Cart />} />
+            <Route path="checkout" element={member(<Checkout />)} />
+            <Route
+              path="checkout/complete/:id"
+              element={member(<Complete />)}
+            />
+            <Route path="account" element={member(<Dashboard />)} />
+            <Route path="my-courses" element={member(<MyCourses />)} />
+            <Route path="favorites" element={member(<Favorites />)} />
+            <Route path="orders" element={member(<Orders />)} />
+            <Route path="orders/:id" element={member(<Orders />)} />
+            <Route path="notifications" element={member(<Notifications />)} />
+            <Route
+              path="notifications/:id"
+              element={member(<Notifications />)}
+            />
+            <Route path="settings" element={member(<Settings />)} />
+            <Route path="learn/:id/:lessonId" element={member(<Player />)} />
+            <Route path="preview/:id" element={<Player preview />} />
+            <Route path="teachers" element={<Teachers />} />
+            <Route path="teachers/:id" element={<Teachers />} />
+            <Route path="articles" element={<Articles />} />
+            <Route path="articles/:id" element={<Articles />} />
+            <Route path="help" element={<Help />} />
+            <Route path="privacy" element={<Policy privacy />} />
+            <Route path="terms" element={<Policy />} />
+            <Route path="admin" element={admin(<Admin />)} />
+            <Route path="admin/courses" element={admin(<AdminCourses />)} />
+            <Route path="admin/courses/:id" element={admin(<EditCourse />)} />
+            <Route path="admin/orders" element={admin(<AdminOrders />)} />
+            <Route path="admin/orders/:id" element={admin(<AdminOrders />)} />
+            <Route
+              path="*"
+              element={
+                <Page title="找不到這個頁面">
+                  <Empty
+                    title="換個方向，繼續探索"
+                    body="這個連結可能已變更。"
+                  />
+                </Page>
+              }
+            />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </Store>
+  </React.StrictMode>,
+);

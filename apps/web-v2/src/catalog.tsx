@@ -1,0 +1,458 @@
+import { useState } from "react";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Play,
+  Clock,
+  Check,
+  LockKeyhole,
+  Search,
+  ChevronRight,
+} from "lucide-react";
+import { useStore } from "./store";
+import { eligible, owned, initialCourses } from "./domain";
+import { Artwork, CourseCard, SectionTitle, Page, Empty } from "./components";
+export function Home() {
+  const { state } = useStore();
+  const courses = state.courses.filter((c) => c.published);
+  return (
+    <>
+      <section className="home-hero container">
+        <div className="hero-copy">
+          <span className="eyebrow">LEARN. CONNECT. GROW.</span>
+          <h1>
+            每一次學習，
+            <br />
+            都是<span>新的可能。</span>
+          </h1>
+          <p>
+            把想做的事，變成做得到的事。
+            <br />
+            與寰宇一起，走出屬於自己的成長之路。
+          </p>
+          <Link className="primary" to="/courses">
+            探索你的下一堂課 <ArrowUpRight size={20} />
+          </Link>
+          <span className="hero-foot">
+            從一堂免費課程開始，按自己的步調前進。
+          </span>
+        </div>
+        <Link className="hero-visual" to="/courses/start">
+          <Artwork course={courses[0] || initialCourses[0]} hero />
+          <div className="hero-visual-caption">
+            <span>本月精選 · 自我成長</span>
+            <h2>把目標變成每天的行動</h2>
+            <span className="circle-arrow">
+              <ArrowUpRight />
+            </span>
+          </div>
+        </Link>
+      </section>
+      <nav className="quick-nav container">
+        {[
+          ["/courses?free=1", "免費體驗"],
+          ["/courses", "精選課程"],
+          ["/#categories", "課程分類"],
+          ["/my-courses", "我的學習"],
+        ].map(([url, label], i) => (
+          <Link to={url} key={url}>
+            <span>0{i + 1}</span>
+            {label}
+            <ChevronRight size={16} />
+          </Link>
+        ))}
+      </nav>
+      <section className="container section">
+        <SectionTitle
+          title="從這裡，開始你的學習"
+          sub="START SOMETHING GOOD"
+          to="/courses?free=1"
+        />
+        <div className="course-grid">
+          {courses
+            .filter((c) => c.price === 0)
+            .slice(0, 3)
+            .map((c) => (
+              <CourseCard key={c.id} course={c} />
+            ))}
+        </div>
+      </section>
+      <section className="feature-strip">
+        <div className="container">
+          <span className="eyebrow">YOUR PACE. YOUR POSSIBILITY.</span>
+          <h2>
+            不必一次做到最好。
+            <br />
+            每天，向前一點就好。
+          </h2>
+          <Link to="/account">
+            繼續我的學習 <ArrowRight size={18} />
+          </Link>
+        </div>
+        <span className="feature-star">✳</span>
+      </section>
+      <section className="container section" id="categories">
+        <SectionTitle title="找到你想成長的方向" sub="EXPLORE YOUR INTERESTS" />
+        <div className="category-grid">
+          {["自我成長", "溝通表達", "團隊領導", "健康生活"].map((c, i) => (
+            <Link to={`/courses?category=${c}`} key={c}>
+              <span>0{i + 1}</span>
+              <h3>{c}</h3>
+              <ArrowUpRight />
+            </Link>
+          ))}
+        </div>
+      </section>
+      <section className="container section">
+        <SectionTitle
+          title="讓好經驗，成為你的下一步"
+          sub="CURATED FOR YOU"
+          to="/courses"
+        />
+        <div className="course-grid">
+          {courses.slice(2, 5).map((c) => (
+            <CourseCard key={c.id} course={c} />
+          ))}
+        </div>
+      </section>
+      <section className="container section">
+        <SectionTitle
+          title="學習，不只在課堂裡"
+          sub="LEARNING JOURNAL"
+          to="/articles"
+        />
+        <Link className="journal-card" to="/articles/learning">
+          <span className="journal-art">
+            一步
+            <br />
+            一步。
+          </span>
+          <div>
+            <p className="eyebrow">學習方法 · 5 分鐘閱讀</p>
+            <h2>給忙碌的你：建立每天十分鐘的學習習慣</h2>
+            <p>從一個小小的承諾，累積看得見的改變。</p>
+            <ArrowUpRight />
+          </div>
+        </Link>
+      </section>
+    </>
+  );
+}
+export function Catalog() {
+  const { state } = useStore();
+  const [params, setParams] = useSearchParams();
+  const q = params.get("q") || "";
+  const category = params.get("category") || "全部課程";
+  const free = params.get("free") === "1";
+  const sort = params.get("sort") || "recommended";
+  const courses = state.courses
+    .filter(
+      (c) =>
+        c.published &&
+        (category === "全部課程" || c.category === category) &&
+        (!free || c.price === 0) &&
+        `${c.title}${c.teacher}${c.subtitle}`
+          .toLowerCase()
+          .includes(q.toLowerCase()),
+    )
+    .sort((a, b) => (sort === "price" ? a.price - b.price : 0));
+  function change(key: string, value: string) {
+    setParams((p) => {
+      if (value) p.set(key, value);
+      else p.delete(key);
+      return p;
+    });
+  }
+  return (
+    <Page title="探索課程" subtitle="找到適合現在的你，也看見下一步的可能。">
+      <form
+        className="search-field"
+        onSubmit={(e) => {
+          e.preventDefault();
+          change("q", String(new FormData(e.currentTarget).get("q") || ""));
+        }}
+      >
+        <Search size={20} />
+        <input
+          aria-label="搜尋課程或講師"
+          name="q"
+          defaultValue={q}
+          placeholder="搜尋課程、講師或關鍵字"
+        />
+        <button>搜尋</button>
+      </form>
+      <nav className="tabs">
+        {["全部課程", "自我成長", "溝通表達", "團隊領導", "健康生活"].map(
+          (c) => (
+            <button
+              key={c}
+              className={category === c ? "active" : ""}
+              onClick={() => change("category", c === "全部課程" ? "" : c)}
+            >
+              {c}
+            </button>
+          ),
+        )}
+      </nav>
+      <div className="filter-row">
+        <p>共 {courses.length} 門課程</p>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={free}
+            onChange={(e) => change("free", e.target.checked ? "1" : "")}
+          />
+          免費課程
+        </label>
+        <select
+          aria-label="課程排序"
+          value={sort}
+          onChange={(e) => change("sort", e.target.value)}
+        >
+          <option value="recommended">精選推薦</option>
+          <option value="price">價格由低到高</option>
+        </select>
+      </div>
+      {courses.length ? (
+        <div className="course-grid">
+          {courses.map((c) => (
+            <CourseCard course={c} key={c.id} />
+          ))}
+        </div>
+      ) : (
+        <Empty
+          title="還沒找到符合的課程"
+          body="試試其他關鍵字，或查看全部課程。"
+        />
+      )}
+    </Page>
+  );
+}
+export function CourseDetail() {
+  const { id } = useParams();
+  const { state, update } = useStore();
+  const navigate = useNavigate();
+  const c = state.courses.find((c) => c.id === id && c.published);
+  const [message, setMessage] = useState("");
+  if (!c)
+    return (
+      <Page title="找不到課程">
+        <Empty
+          title="這堂課暫時無法瀏覽"
+          body="可能尚未上架，請探索其他課程。"
+        />
+      </Page>
+    );
+  const has = owned(state, c.id);
+  const pending = state.orders.find(
+    (o) =>
+      o.memberId === state.member?.id &&
+      o.status === "pending" &&
+      o.items.some((i) => i.courseId === c.id),
+  );
+  const qualified = eligible(state.member, c);
+  function enroll() {
+    if (!state.member) {
+      navigate(`/login?returnTo=/courses/${c!.id}`);
+      return;
+    }
+    if (!qualified) {
+      setMessage(`本課程限 ${c!.rank}以上測試會員領取`);
+      return;
+    }
+    update((s) => ({
+      ...s,
+      cart: s.cart.includes(c!.id) ? s.cart : [...s.cart, c!.id],
+    }));
+    navigate("/cart");
+  }
+  return (
+    <>
+      <div className="container page course-detail">
+        <nav className="breadcrumb">
+          <Link to="/courses">探索課程</Link>
+          <ChevronRight size={14} />
+          {c.category}
+        </nav>
+        <div className="detail-grid">
+          <div>
+            <Artwork course={c} hero />
+            <div className="course-heading">
+              <p className="eyebrow">{c.category} · 寰宇原創系列</p>
+              <h1>{c.title}</h1>
+              <p className="lead">{c.subtitle}</p>
+              <div className="meta">
+                <span>
+                  <Clock size={16} />
+                  {c.lessons.reduce((sum, l) => sum + l.minutes, 0)} 分鐘
+                </span>
+                <span>{c.lessons.length} 堂單元</span>
+                <span>隨時隨地學習</span>
+              </div>
+            </div>
+            <nav className="tabs detail-tabs">
+              <a href="#intro">課程介紹</a>
+              <a href="#teacher">關於講師</a>
+              <a href="#chapters">課程內容</a>
+              <a href="#reviews">學員評價</a>
+            </nav>
+            <section id="intro" className="detail-section">
+              <h2>把學到的，變成做得到的</h2>
+              <p>
+                這堂課從日常情境出發，帶你整理想法、建立方法，並把每一個觀念轉化為可實踐的小步驟。不需要一次做到完美，讓我們從現在開始。
+              </p>
+              <div className="benefit-grid">
+                {["理解核心觀念", "練習真實情境", "帶走行動計畫"].map(
+                  (x, i) => (
+                    <div key={x}>
+                      <span>0{i + 1}</span>
+                      <h3>{x}</h3>
+                      <p>循序學習，依照自己的節奏反覆練習。</p>
+                    </div>
+                  ),
+                )}
+              </div>
+              <details>
+                <summary>這堂課適合誰？</summary>
+                <p>
+                  想建立學習習慣、整理實務經驗，並願意為自己安排一段成長時間的學員。
+                </p>
+              </details>
+            </section>
+            <section id="teacher" className="detail-section teacher-card">
+              <div className="avatar">H</div>
+              <div>
+                <span className="eyebrow">關於講師</span>
+                <h2>
+                  <Link to={`/teachers/${encodeURIComponent(c.teacher)}`}>
+                    {c.teacher}
+                  </Link>
+                </h2>
+                <p>
+                  用清楚的方法、實際的練習，陪伴每一位學員將學習帶進生活。此為
+                  V2 原創示範課程，正式講師資料待確認。
+                </p>
+              </div>
+            </section>
+            <section id="chapters" className="detail-section">
+              <h2>課程內容</h2>
+              <p className="muted">
+                共 {c.lessons.length} 堂課 · 每一步都有方向
+              </p>
+              <details open>
+                <summary>第一章 · 開始你的學習旅程</summary>
+                {c.lessons.map((l, i) => (
+                  <Link
+                    className="lesson-row"
+                    to={
+                      has
+                        ? `/learn/${c.id}/${l.id}`
+                        : i === 0
+                          ? `/preview/${c.id}`
+                          : `/courses/${c.id}`
+                    }
+                    key={l.id}
+                  >
+                    <span className="lesson-no">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span>{l.title}</span>
+                    <small>{l.minutes}:00</small>
+                    {has || i === 0 ? (
+                      <Play size={15} />
+                    ) : (
+                      <LockKeyhole size={15} />
+                    )}
+                  </Link>
+                ))}
+              </details>
+            </section>
+            <section id="reviews" className="detail-section">
+              <h2>學員評價</h2>
+              <p className="muted">
+                目前尚無評價。示範環境不建立虛構學員推薦。
+              </p>
+            </section>
+          </div>
+          <aside className="purchase-panel">
+            <span className="tag">
+              {c.price === 0 ? "免費開始學習" : "人工確認付款"}
+            </span>
+            <h2>{c.title}</h2>
+            <p>{c.teacher}</p>
+            <strong className="price">NT$ {c.price.toLocaleString()}</strong>
+            <ul className="check-list">
+              <li>
+                <Check />
+                完整章節學習
+              </li>
+              <li>
+                <Check />
+                學習進度與筆記
+              </li>
+              <li>
+                <Check />
+                {c.rank === "不限獎銜" ? "不限獎銜" : `${c.rank}以上限定`}
+              </li>
+            </ul>
+            {has ? (
+              <Link
+                className="primary full"
+                to={`/learn/${c.id}/${c.lessons[0].id}`}
+              >
+                開始學習 <Play size={18} />
+              </Link>
+            ) : pending ? (
+              <Link className="secondary full" to={`/orders/${pending.id}`}>
+                查看待審核訂單
+              </Link>
+            ) : (
+              <button className="primary full" onClick={enroll}>
+                {c.price === 0 ? "免費領取課程" : "加入購物車"}
+                <ArrowRight size={18} />
+              </button>
+            )}
+            <Link className="secondary full" to={`/preview/${c.id}`}>
+              免費試看導讀
+            </Link>
+            <p className="fine">
+              {c.price === 0
+                ? "0 元免審核，完成領取即可開始學習。"
+                : "送出訂單後，由管理員確認付款並開通。"}
+            </p>
+            {message && (
+              <p role="alert" className="error">
+                {message}
+              </p>
+            )}
+            {state.member && !qualified && (
+              <p className="error">目前獎銜不符合本課程條件。</p>
+            )}
+          </aside>
+        </div>
+      </div>
+      <div className="mobile-purchase">
+        <strong>NT$ {c.price.toLocaleString()}</strong>
+        {has ? (
+          <Link className="primary" to={`/learn/${c.id}/${c.lessons[0].id}`}>
+            開始學習
+          </Link>
+        ) : pending ? (
+          <Link className="primary" to={`/orders/${pending.id}`}>
+            查看訂單
+          </Link>
+        ) : (
+          <button className="primary" onClick={enroll}>
+            {c.price === 0 ? "免費領取" : "加入購物車"}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
