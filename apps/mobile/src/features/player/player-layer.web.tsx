@@ -43,6 +43,7 @@ export function PlayerLayer() {
 
   useEffect(() => {
     hostRef.current?.appendChild(engine.element());
+    engine.setFullscreenTarget(boxRef.current);
     try {
       const raw = localStorage.getItem(POS_KEY);
       if (raw) pos.current = JSON.parse(raw) as Pos;
@@ -140,7 +141,7 @@ export function PlayerLayer() {
           key={t!.key}
           ref={setFrame}
           title="課程影片"
-          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}?rel=0&modestbranding=1&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${range}`}
+          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(yt.videoId)}?controls=0&disablekb=1&fs=0&iv_load_policy=3&cc_load_policy=0&rel=0&modestbranding=1&autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}${range}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowFullScreen
           referrerPolicy="strict-origin-when-cross-origin"

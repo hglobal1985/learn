@@ -32,6 +32,7 @@ let intent = false;
 /** 目前由隱藏的 <audio> 在背景接手播放。 */
 let bg = false;
 let coverUrl: string | null = null;
+let fsTarget: HTMLElement | null = null;
 
 const active = (): HTMLMediaElement | null => (bg ? audio : video);
 
@@ -234,13 +235,19 @@ function updateSessionPosition(el: HTMLMediaElement) {
 }
 
 // ---- YouTube（iframe + postMessage）----
+let captionsOff = false;
 function ytCommand(func: string, args: unknown[] = []) {
   ytFrame?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
+}
+/** 預設關閉字幕（網址已帶 cc_load_policy=0；再補一道指令，避免被使用者帳號的字幕偏好蓋過）。 */
+function ytCaptionsOff() {
+  ytCommand("unloadModule", ["captions"]);
+  ytCommand("unloadModule", ["cc"]);
 }
 if (typeof window !== "undefined") {
   window.addEventListener("message", (e) => {
     if (!/^https:\/\/www\.youtube(-nocookie)?\.com$/.test(e.origin) || snap.track?.mode !== "youtube") return;
-    let d: { event?: string; info?: { playerState?: number; currentTime?: number } | number };
+    let d: { event?: string; info?: { playerState?: number; currentTime?: number; duration?: number } | number };
     try {
       d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
     } catch {
@@ -250,7 +257,14 @@ if (typeof window !== "undefined") {
     if (state === 1) emit({ playing: true, segmentEnded: false, loading: false });
     else if (state === 2) emit({ playing: false });
     else if (state === 0) emit({ playing: false, segmentEnded: true });
-    if (d.event === "infoDelivery" && typeof d.info === "object" && typeof d.info?.currentTime === "number") emit({ position: d.info.currentTime });
+    if (d.event === "infoDelivery" && typeof d.info === "object") {
+      if (typeof d.info.currentTime === "number") emit({ position: d.info.currentTime });
+      if (typeof d.info.duration === "number" && d.info.duration > 0 && d.info.duration !== snap.duration) emit({ duration: d.info.duration });
+    }
+    if (state === 1 && !captionsOff) {
+      captionsOff = true;
+      ytCaptionsOff();
+    }
   });
 }
 
@@ -275,7 +289,21 @@ export const engine = {
   slotElement: () => slotEl,
   setYoutubeFrame(f: HTMLIFrameElement | null) {
     ytFrame = f;
-    if (f) f.addEventListener("load", () => f.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"));
+    if (f)
+      f.addEventListener("load", () => {
+        f.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
+        captionsOff = false;
+        ytCaptionsOff();
+      });
+  },
+  /** 全螢幕：影片畫面框（Layer）登記後，課程頁自家控制列的全螢幕鈕才可用。iPhone Safari 不支援（只有 <video> 可全螢幕）。 */
+  setFullscreenTarget(el: HTMLElement | null) {
+    fsTarget = el;
+  },
+  canFullscreen: () => typeof document !== "undefined" && !!document.fullscreenEnabled && !!fsTarget,
+  toggleFullscreen() {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void fsTarget?.requestFullscreen().catch(() => undefined);
   },
   /**
    * 課程頁要播放這一堂。同一堂：直接接上（不重新載入）。

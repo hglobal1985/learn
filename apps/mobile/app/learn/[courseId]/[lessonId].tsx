@@ -9,6 +9,7 @@ import { buildTrack } from "@/features/player/engine.types";
 import { LessonPlayer } from "@/features/player/lesson-player";
 import { PlayerSlot } from "@/features/player/player-slot";
 import { usePlayer } from "@/features/player/use-player";
+import { YouTubeControls } from "@/features/player/youtube-controls";
 import { useApi, useSession } from "@/state/session";
 import { maxContentWidth, space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
@@ -89,6 +90,7 @@ export default function LessonScreen() {
         <View style={styles.pinned}>
           <View style={styles.pinnedInner}>
             <PlayerSlot trackKey={track.key} />
+            {track.mode === "youtube" ? <YouTubeControls /> : null}
           </View>
         </View>
       ) : null}

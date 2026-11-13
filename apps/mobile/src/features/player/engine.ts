@@ -72,6 +72,9 @@ export const engine = {
   setSlot(key: string | null, _node?: unknown) {
     if (snap.slotKey !== key) emit({ slotKey: key });
   },
+  setFullscreenTarget(_el: unknown) {},
+  canFullscreen: () => false,
+  toggleFullscreen() {},
   clearSlot(key: string) {
     if (snap.slotKey === key) emit({ slotKey: null });
   },
