@@ -335,3 +335,4 @@
 - 日期顯示一律不補 0（format.ts：dateTime／dateOnly／plainDate／eventDays；分隔符統一為 /；分鐘保留兩位數）。輸入欄位（toLocal）與 CSV 維持原格式。
 - 課程新增「鑽石免費」（migration 0026 diamond_free）：鑽石（含）以上獎銜報名費用為 0（自動開通），其他獎銜原價；編輯頁勾選位於費用輸入框右側、在「尚未公布」下方。欄位 diamondFree／diamondFreeNow。
 - 早鳥優惠（migration 0027 early_bird／early_price_twd／early_until）：勾選後設早鳥價與截止日（台灣時間含當天）；有效期間 priceTwd＝早鳥價；欄位 earlyBird{priceTwd,until,active}；免費／鑽石免費優先於早鳥。
+- 系列合併（migration 0028 courses.series）：課程編輯頁「系列」欄位＋已有系列選項＋「複製這門課，建立下一梯」（POST /admin/courses/:id/duplicate：草稿、標題加（複製）、帶費用／資格／章節架構，不帶日期／EDM／附件／音檔；原課程無系列時兩邊都設成課程名稱）。全部課程清單與首頁推薦：同系列只顯示一張代表卡（審核中＞已開通＞日期最近未開始＞最近結束），卡片「還有 N 個梯次」點開底部面板列全部梯次。各梯次的報名、繳費、審核仍各自獨立。

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Announcement, type CourseSummary } from "@/api/client";
 import { ProfilePrompt } from "@/features/profile-prompt";
 import { HomeRail } from "@/features/courses/home-rail";
+import { collapseSeries } from "@/features/courses/sort";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { maxContentWidth, space } from "@/theme/tokens";
@@ -48,7 +49,9 @@ export default function HomeScreen() {
     .filter((x) => x.enrollment === "opened")
     .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
   // 會員：符合獎銜、尚未報名的課程；訪客：完全公開的課程。
-  const recommended = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && !x.hideFromHome && (member ? x.eligible && !x.isPublic : x.isPublic));
+  const recommendedAll = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && !x.hideFromHome && (member ? x.eligible && !x.isPublic : x.isPublic));
+  // 同系列的課只推薦最近的一場。
+  const recommended = collapseSeries(recommendedAll, recommendedAll).map((e) => e.course);
   return (
     <>
     {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} initial={member.profileForm ?? null} /> : null}

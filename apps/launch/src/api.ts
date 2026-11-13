@@ -299,6 +299,7 @@ type CourseRow = {
   price_tba: number;
   hide_home: number;
   diamond_free: number;
+  series: string;
   early_bird: number;
   early_price_twd: number | null;
   early_until: string | null;
@@ -312,7 +313,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
@@ -377,6 +378,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     pendingOrderId: state.pendingOrder.get(row.id) ?? null,
     priceTba: row.price_tba === 1,
     hideFromHome: row.hide_home === 1,
+    series: row.series,
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
     earlyBird: row.early_bird === 1 && row.early_price_twd != null && !!row.early_until ? { priceTwd: web ? row.early_price_twd : null, until: row.early_until, active: earlyNow } : null,
@@ -1053,6 +1055,8 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
       sets.push(["early_bird", 1], ["early_price_twd", price], ["early_until", until]);
     } else sets.push(["early_bird", 0], ["early_price_twd", null], ["early_until", null]);
   }
+  const series = text(body.series, 60);
+  if (series !== undefined) sets.push(["series", series]);
   if (body.diamondFree !== undefined) sets.push(["diamond_free", body.diamondFree === true ? 1 : 0]);
   if (body.hideFromHome !== undefined) sets.push(["hide_home", body.hideFromHome === true ? 1 : 0]);
   if (body.edmViewY !== undefined) {
@@ -1121,6 +1125,35 @@ async function createCourse(ctx: Ctx, admin: Session) {
     audit(ctx.db, admin.sub, "course.create", "course", id, String(body.title ?? "")),
   ]);
   return courseDetail(ctx, id);
+}
+
+/** 複製這門課，建立下一梯：基本資料、章節架構照搬；活動日期、早鳥與限時免費、EDM／封面、附件、音檔不帶（避免共用同一份檔案）。新課程是草稿。 */
+async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
+  const row = await ctx.db.prepare("SELECT * FROM courses WHERE id = ?").bind(id).first<Record<string, unknown>>();
+  if (!row) return fail(404, "not_found", "找不到這門課程");
+  const { results: lessons } = await ctx.db
+    .prepare("SELECT title, position, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
+    .bind(id)
+    .all<{ title: string; position: number; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
+  const newId = `c${randomId(7)}`;
+  const series = String(row.series || "").trim() || String(row.title ?? "").slice(0, 60);
+  const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
+  const keep = ["subtitle", "teacher", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none"];
+  const cols = ["id", "sort_order", "status", "title", "series", ...keep];
+  const vals = [newId, (max?.m ?? 0) + 1, "draft", `${String(row.title ?? "")}（複製）`.slice(0, 120), series, ...keep.map((k) => row[k] ?? null)];
+  const stmts: D1PreparedStatement[] = [
+    ctx.db.prepare(`INSERT INTO courses (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).bind(...vals),
+    ...lessons.map((l) => {
+      const audio = l.media_type === "audio"; // 音檔是這門課自己的檔案，不共用
+      return ctx.db
+        .prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(`${newId}-${randomId(6)}`, newId, l.position, l.title, audio ? 0 : l.duration_minutes, audio ? "demo" : l.media_type, audio ? null : l.media_ref, audio ? null : l.start_seconds, audio ? null : l.end_seconds);
+    }),
+    audit(ctx.db, admin.sub, "course.duplicate", "course", newId, id),
+  ];
+  if (!String(row.series || "").trim()) stmts.push(ctx.db.prepare("UPDATE courses SET series = ? WHERE id = ?").bind(series, id));
+  await ctx.db.batch(stmts);
+  return courseDetail(ctx, newId);
 }
 
 async function updateCourse(ctx: Ctx, id: string, admin: Session) {
@@ -2361,6 +2394,24 @@ const routes: [string, RegExp, Handler][] = [
   ],
   ["GET", /^\/admin\/courses$/, async (ctx) => listCourses(ctx, true, requireCourseCreator(ctx))],
   ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireCourseCreator(ctx))],
+  [
+    "GET",
+    /^\/admin\/series$/,
+    async (ctx) => {
+      const who = requireCourseCreator(ctx);
+      const own = who.role !== "admin";
+      const { results } = await ctx.db
+        .prepare(`SELECT DISTINCT series FROM courses WHERE series <> ''${own ? " AND host_center_key = ?" : ""} ORDER BY series`)
+        .bind(...(own ? [who.center?.key ?? ""] : []))
+        .all<{ series: string }>();
+      return results.map((r) => r.series);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/courses\/([\w-]+)\/duplicate$/,
+    async (ctx, [id]) => duplicateCourse(ctx, id!, await requireCourseManager(ctx, id!)),
+  ],
   ["PATCH", /^\/admin\/courses\/([\w-]+)$/, async (ctx, [id]) => updateCourse(ctx, id, await requireCourseManager(ctx, id))],
   [
     "GET",

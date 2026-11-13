@@ -160,3 +160,25 @@ test("早鳥優惠：期間內用早鳥價，過期恢復原價；早鳥價要�
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { earlyBird: false } });
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.earlyBird, null);
 });
+
+test("系列：存系列名稱、列出系列；複製這門課建立下一梯（草稿、不帶日期與音檔）", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  assert.equal((await call("PATCH", "/admin/courses/share", { token: admin, body: { series: "分享達標班", eventStart: "2026-11-08" } })).status, 200);
+  assert.deepEqual((await call<string[]>("GET", "/admin/series", { token: admin })).data, ["分享達標班"]);
+  assert.equal((await call("GET", "/admin/series", { token: student })).status, 403);
+  assert.equal((await call("POST", "/admin/courses/share/duplicate", { token: student })).status, 403);
+  const copy = (await call<CourseDetail>("POST", "/admin/courses/share/duplicate", { token: admin })).data;
+  assert.notEqual(copy.id, "share");
+  assert.equal(copy.status, "draft");
+  assert.equal(copy.series, "分享達標班");
+  assert.equal(copy.eventStart, null, "活動日期不帶過去");
+  assert.match(copy.title, /（複製）$/);
+  const orig = (await call<CourseDetail>("GET", "/courses/share", { token: admin })).data;
+  assert.equal(copy.lessons.length, orig.lessons.length);
+  // 原本沒有系列：複製時兩邊都設成課程名稱
+  const c2 = (await call<CourseDetail>("POST", "/admin/courses/lead/duplicate", { token: admin })).data;
+  const lead = (await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data;
+  assert.equal(c2.series, lead.series);
+  assert.notEqual(lead.series, "");
+});

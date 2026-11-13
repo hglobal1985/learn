@@ -25,3 +25,31 @@ export function sortCourses(list: CourseSummary[], member: Member | null, groups
     return ua === 0 ? sa.localeCompare(sb) : sb.localeCompare(sa);
   });
 }
+
+export type SeriesEntry = { course: CourseSummary; siblings: CourseSummary[] };
+
+/** 代表卡的挑選分數（越小越優先）：審核中 > 已開通 > 還沒開始且日期最近 > 已結束且最近結束。 */
+function repScore(c: CourseSummary, today: string): number {
+  if (c.enrollment === "pending") return 0;
+  if (c.enrollment === "opened") return 1;
+  const d = startOf(c) ?? "9999-12-31";
+  const days = Math.abs(Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000;
+  return d >= today ? 2 + days / 100000 : 3 + days / 100000;
+}
+
+/**
+ * 同系列的課只留一張代表卡（沒有填系列的課不合併），順序依代表卡在原清單的位置。
+ * siblings＝同系列的其他梯次（從 all 找，不受分類或單位篩選影響）。
+ */
+export function collapseSeries(list: CourseSummary[], all: CourseSummary[]): SeriesEntry[] {
+  const today = todayStr();
+  const best = new Map<string, CourseSummary>();
+  for (const c of list) {
+    if (!c.series) continue;
+    const cur = best.get(c.series);
+    if (!cur || repScore(c, today) < repScore(cur, today)) best.set(c.series, c);
+  }
+  return list
+    .filter((c) => !c.series || best.get(c.series) === c)
+    .map((c) => ({ course: c, siblings: c.series ? all.filter((x) => x.series === c.series && x.id !== c.id).sort((a, b) => (startOf(b) ?? "").localeCompare(startOf(a) ?? "")) : [] }));
+}

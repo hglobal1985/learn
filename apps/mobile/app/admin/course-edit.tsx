@@ -7,14 +7,15 @@ import { confirmAsk } from "@/features/confirm";
 import { EdmManager } from "@/features/admin/edm-manager";
 import { ntd, parseLocal, toLocal } from "@/features/format";
 import { canManageCourses } from "@/lib/roles";
+import { confirmSheet } from "@/features/confirm";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { todayStr } from "@/ui/date-select";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -27,6 +28,7 @@ export default function CourseEditScreen() {
   const ranks = useApi<Rank[]>("/ranks");
   const centers = useApi<string[]>(isAdmin ? "/centers" : null);
   const groups = useApi<ReviewGroup[]>(canManage ? "/admin/review-groups" : null);
+  const seriesList = useApi<string[]>(canManage ? "/admin/series" : null);
   const [form, setForm] = useState<Form>(() => ({ ...empty, eventStart: todayStr(), ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export default function CourseEditScreen() {
         priceTba: d.priceTba,
         hideFromHome: d.hideFromHome,
         diamondFree: d.diamondFree,
+        series: d.series ?? "",
         earlyBird: !!d.earlyBird,
         earlyPriceTwd: d.earlyBird?.priceTwd != null ? String(d.earlyBird.priceTwd) : "",
         earlyUntil: d.earlyBird?.until ?? "",
@@ -72,6 +75,22 @@ export default function CourseEditScreen() {
 
   const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "diamondFree" | "earlyBird" | "earlyUntil" | "location" | "locationNone">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
+  /** 複製這門課成為新的草稿（日期、EDM、音檔不帶），然後直接到新課程的編輯頁。 */
+  const duplicate = async () => {
+    if (!id) return;
+    if (!(await confirmSheet({ title: "複製這門課", message: "會建立一門新的草稿課程（名稱後面加「（複製）」），帶入費用、資格、章節架構，並放進同一個系列。活動日期、EDM、附件和音檔不會帶過去。", confirmLabel: "複製", cancelLabel: "先不要" }))) return;
+    setBusy("dup");
+    setMsg(null);
+    try {
+      const copy = await api<CourseDetail>("POST", `/admin/courses/${id}/duplicate`, {});
+      invalidate();
+      router.replace({ pathname: "/admin/course-edit", params: { id: copy.id } });
+    } catch (e) {
+      setMsg({ tone: "danger", text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  };
   const save = async (status?: "draft" | "published") => {
     const freeFrom = parseLocal(form.freeFrom);
     const freeUntil = parseLocal(form.freeUntil);
@@ -167,6 +186,11 @@ export default function CourseEditScreen() {
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}
         {field("講師／主辦", "teacher", { placeholder: "例如：寰宇總部" })}
         {field("分類", "category", { placeholder: "例如：系列課程" })}
+        {field("系列（同系列的課，全部課程清單只顯示最近的一場；不填＝不合併）", "series", { placeholder: "例如：翡翠達標班" })}
+        {seriesList.data?.length ? <Chips label="已有的系列" options={[{ key: "", label: "不合併" }, ...seriesList.data.map((x) => ({ key: x, label: x }))]} value={form.series} onChange={set("series")} /> : null}
+        {id ? (
+          <Button variant="secondary" label="複製這門課，建立下一梯" icon="copy-outline" loading={busy === "dup"} disabled={!!busy} onPress={duplicate} fullWidth />
+        ) : null}
         <View style={{ gap: space.xs }}>
           <AppText variant="callout" tone="muted">
             報名費用（新台幣，0 為免費）

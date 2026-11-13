@@ -1,16 +1,19 @@
 import { router } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { eventDays, plainDate } from "@/features/format";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
+import { SeriesSheet } from "./series-sheet";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 
-export function CourseCard({ course }: { course: CourseSummary }) {
+export function CourseCard({ course, siblings = [] }: { course: CourseSummary; siblings?: CourseSummary[] }) {
   const { c } = useTheme();
+  const [sheet, setSheet] = useState(false);
   const { member } = useSession();
   // 緞帶：左上角＝資格或狀態、右上角＝日期倒數；文字與顏色由超級管理員在「課程排序與條件」設定。
   const { config } = useUiConfig();
@@ -55,6 +58,15 @@ export function CourseCard({ course }: { course: CourseSummary }) {
           <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
         </View>
       ) : null}
+      {siblings.length ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={`還有 ${siblings.length} 個梯次，點開查看`} onPress={() => setSheet(true)} style={[styles.more, { borderColor: c.accent }]}>
+          <AppText variant="callout" style={{ color: c.accent, fontWeight: "700", flex: 1 }}>
+            還有 {siblings.length} 個梯次
+          </AppText>
+          <AppText style={{ color: c.accent, fontWeight: "700" }}>›</AppText>
+        </Pressable>
+      ) : null}
+      {sheet ? <SeriesSheet title={course.series || course.title} items={[course, ...siblings].sort((a, b) => (b.eventStart ?? "").localeCompare(a.eventStart ?? ""))} onClose={() => setSheet(false)} /> : null}
     </Card>
   );
 }
@@ -84,6 +96,7 @@ export function UnitTags({ course }: { course: CourseSummary }) {
 }
 
 const styles = StyleSheet.create({
+  more: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderStyle: "dashed", borderRadius: radius.md },
   coverWrap: { borderRadius: radius.md, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   date: { textAlign: "right", flexShrink: 0, paddingTop: 2 },
