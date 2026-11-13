@@ -313,25 +313,27 @@ type CourseRow = {
   art_version: number;
   lesson_count: number;
   total_minutes: number;
+  zero_minute_lessons: number;
 };
 
 const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
-  (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
+  (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes,
+  (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id AND l.duration_minutes = 0) AS zero_minute_lessons
   FROM courses c`;
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>() };
+  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
   if (!sub) return empty;
   const [e, p, d] = await db.batch([
     db.prepare("SELECT course_id FROM enrollments WHERE member_sub = ?").bind(sub),
     db.prepare("SELECT i.course_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
-    db.prepare("SELECT course_id, COUNT(*) AS n FROM lesson_progress WHERE member_sub = ? GROUP BY course_id").bind(sub),
+    db.prepare("SELECT p.course_id AS course_id, COUNT(*) AS n, COALESCE(SUM(l.duration_minutes), 0) AS m FROM lesson_progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.member_sub = ? GROUP BY p.course_id").bind(sub),
   ]);
   const keys = (rows: unknown[]) => new Set((rows as { course_id: string }[]).map((r) => r.course_id));
   const pendingOrder = new Map<string, string>();
   for (const r of p.results as { course_id: string; order_id: string }[]) pendingOrder.set(r.course_id, r.order_id);
-  return { enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])) };
+  return { enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
@@ -393,6 +395,11 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     allowPresident: row.allow_president === 1,
     enrollment: state.enrolled.has(row.id) ? "opened" : state.pending.has(row.id) ? "pending" : null,
     completedLessons: state.done.get(row.id) ?? 0,
+    // 學習進度百分比：每一堂都有長度就以「已完成的長度／總長度」算；有任何一堂沒有長度（例如 YouTube 抓不到時間），改用「已完成章節數／章節總數」。
+    progressPercent:
+      row.lesson_count === 0
+        ? 0
+        : Math.min(100, Math.round(row.zero_minute_lessons === 0 && row.total_minutes > 0 ? ((state.doneMinutes.get(row.id) ?? 0) / row.total_minutes) * 100 : ((state.done.get(row.id) ?? 0) / row.lesson_count) * 100)),
   };
 }
 

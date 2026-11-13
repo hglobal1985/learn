@@ -244,3 +244,20 @@ test("主辦單位可複選：存成「、」分隔，權限以第一個中心�
   const one = await call<{ hostUnit: string }>("PATCH", "/admin/courses/share", { token: admin, body: { hostUnit: "寰宇總部" } });
   assert.equal(one.data.hostUnit, "寰宇總部");
 });
+
+test("學習進度百分比：每堂都有長度依長度算，有一堂沒長度（YouTube）改依章節數算", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  const c = (await call<CourseDetail>("POST", "/admin/courses", { token: admin, body: { title: "進度課", priceTwd: 0, status: "published" } })).data;
+  const l1 = c.lessons[0]!.id;
+  await call("PATCH", `/admin/lessons/${l1}`, { token: admin, body: { minutes: 30 } });
+  const added = (await call<CourseDetail>("POST", `/admin/courses/${c.id}/lessons`, { token: admin, body: { title: "第 2 堂" } })).data;
+  const l2 = added.lessons[1]!.id;
+  await call("PATCH", `/admin/lessons/${l2}`, { token: admin, body: { minutes: 90 } });
+  await call("POST", "/orders", { token: student, body: { courseIds: [c.id] } });
+  await call("POST", `/courses/${c.id}/lessons/${l1}/complete`, { token: student });
+  const pct = async () => (await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data.progressPercent;
+  assert.equal(await pct(), 25, "30／120 分鐘");
+  await call("PATCH", `/admin/lessons/${l2}`, { token: admin, body: { minutes: 0 } });
+  assert.equal(await pct(), 50, "第 2 堂沒有長度：改依章節數 1／2");
+});

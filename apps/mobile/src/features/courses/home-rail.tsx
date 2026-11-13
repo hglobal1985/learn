@@ -156,7 +156,7 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
           </View>
           {progress && cur.lessonCount ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
-              已完成 {cur.completedLessons}/{cur.lessonCount} 堂
+              學習進度 {cur.progressPercent}%
             </AppText>
           ) : null}
         </Pressable>

@@ -82,6 +82,8 @@ export type CourseSummary = {
   freeUntil: string | null;
   enrollment: EnrollmentState;
   completedLessons: number;
+  /** 學習進度百分比（0～100）：每堂都有長度就依長度算，否則依章節數算。 */
+  progressPercent: number;
   /** 課程海報 EDM（直式）的公開網址；沒有上傳時為 null。 */
   edmUrl: string | null;
   /** 從 EDM 裁切出來的 16:9 橫式封面（課程清單縮圖）；沒有時畫面改用色塊。 */

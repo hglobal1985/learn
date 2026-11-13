@@ -19,7 +19,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
   // 緞帶：左上角＝資格或狀態、右上角＝日期倒數；文字與顏色由超級管理員在「課程排序與條件」設定。
   const { config } = useUiConfig();
   const ribbons = ribbonsFor(course, member, config);
-  const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
+  const ratio = course.progressPercent / 100;
   return (
     <Card onPress={onPress ?? (() => router.push(`/course/${course.id}`))} accessibilityLabel={displayName(course)}>
       <View style={styles.coverWrap}>
@@ -47,7 +47,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
       </View>
       {course.enrollment === "opened" ? (
-        <View style={[styles.track, { backgroundColor: c.surfaceMuted }]} accessibilityLabel={`已完成 ${course.completedLessons}/${course.lessonCount}`}>
+        <View style={[styles.track, { backgroundColor: c.surfaceMuted }]} accessibilityLabel={`學習進度 ${course.progressPercent}%`}>
           <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
         </View>
       ) : null}
