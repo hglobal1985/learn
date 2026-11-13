@@ -18,7 +18,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
       <View style={styles.coverWrap}>
-        <CourseCover theme={course.theme} label={course.category} edmUrl={course.edmUrl} height={course.edmUrl ? 180 : 120} />
+        <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
         {ribbon ? <CornerRibbon label={ribbon.label} tone={ribbon.tone} /> : null}
       </View>
       <View style={styles.titleRow}>
@@ -40,7 +40,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
         {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
         <AppText variant="caption" tone="muted">
-          {course.lessonCount} 堂 · {course.totalMinutes} 分鐘
+          {course.lessonCount} 堂{course.totalMinutes ? ` · 約 ${course.totalMinutes} 分鐘` : ""}
         </AppText>
       </View>
       {course.enrollment === "opened" ? (

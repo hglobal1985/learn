@@ -4,6 +4,7 @@
  */
 export const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 export const EDM_MAX_SIDE = 2048; // EDM 原圖（小字與 QR code 要看得清楚）
+export const COVER_MAX_SIDE = 1024; // 16:9 封面（課程清單縮圖）長邊
 
 export type Rect = { x: number; y: number; w: number; h: number };
 

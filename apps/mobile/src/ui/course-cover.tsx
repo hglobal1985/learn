@@ -5,24 +5,17 @@ import { courseThemes, radius, space } from "@/theme/tokens";
 import { AppText } from "./text";
 
 /**
- * 課程橫幅：有 EDM 時，系統自動把 EDM 模糊並放大到橫幅的最大寬度當底圖，EDM 本身清楚地置中疊在上面；
- * 沒有 EDM 時顯示原創色塊（不引用他站素材）。
+ * 課程封面（課程清單縮圖）：有 16:9 封面圖就顯示圖片（管理員從 EDM 裁切出來的）；
+ * 沒有就顯示原創色塊（不引用他站素材）。fill＝填滿父層（課程介紹頁上方沒有 EDM 時用）。
  */
-export function CourseCover({ theme, label, height = 120, edmUrl }: { theme: string; label: string; height?: number; edmUrl?: string | null }) {
+export function CourseCover({ theme, label, height = 120, imageUrl, fill }: { theme: string; label: string; height?: number; imageUrl?: string | null; fill?: boolean }) {
   const { scheme } = useTheme();
-  if (edmUrl) {
-    const uri = resolveUrl(edmUrl);
-    return (
-      <View style={[styles.cover, { height, backgroundColor: "#222", padding: 0 }]} accessibilityLabel={`${label}課程橫幅`}>
-        <Image source={{ uri }} blurRadius={24} resizeMode="cover" style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.25 }] }]} accessibilityIgnoresInvertColors />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.18)" }]} />
-        <Image source={{ uri }} resizeMode="contain" style={{ width: "100%", height: "100%" }} accessibilityIgnoresInvertColors accessibilityLabel="課程海報" />
-      </View>
-    );
+  if (imageUrl) {
+    return <Image source={{ uri: resolveUrl(imageUrl) }} style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: radius.md }} resizeMode="cover" accessibilityLabel={`${label}課程封面`} />;
   }
   const [bg, fg] = (courseThemes[theme] ?? courseThemes.sage)[scheme];
   return (
-    <View style={[styles.cover, { backgroundColor: bg, height }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View style={[styles.cover, fill ? [StyleSheet.absoluteFill, { borderRadius: 0 }] : { height }, { backgroundColor: bg }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={[styles.ring, { borderColor: fg }]} />
       <AppText variant="caption" style={{ color: fg, letterSpacing: 1 }}>
         {label}

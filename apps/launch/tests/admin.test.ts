@@ -305,16 +305,15 @@ test("刪除已有人報名的課程：先看影響、必須輸入 YES、報名�
   assert.equal((await call("DELETE", `/admin/courses/${c}`, { token: admin })).status, 200);
 });
 
-test("EDM（橫幅由畫面自動用 EDM 模糊放大）：公開網址、權限依中心、壓縮後格式檢查、換圖刪舊檔、刪課程時清檔", async () => {
+test("EDM 與 16:9 封面（從 EDM 裁切）：公開網址、權限依中心、壓縮後格式檢查、換圖刪舊檔、刪課程時清檔", async () => {
   const r2 = fakeR2();
   const { env, call, raw, login } = setup({ MEDIA: r2, MEDIA_URL_SECRET: "s" });
   const [admin, pres, student] = await Promise.all(["demo-admin", "demo-president", "demo-student"].map(login));
   const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array.from({ length: n + 10 }, (_, i) => i % 256)]);
   const put = (token: string, path: string, bytes: Uint8Array) => call<Record<string, unknown>>("PUT", path, { token, bytes });
 
-  // 已移除的封面與底圖圖庫功能：路徑不存在
+  // 底圖圖庫功能已移除：路徑不存在
   assert.equal((await call("GET", "/admin/cover-backgrounds", { token: admin })).status, 404);
-  assert.equal((await put(admin, "/admin/courses/start/cover", jpeg(10))).status, 404);
 
   // 課程：主辦單位是會長的中心，會長才能編輯 EDM；別的課程、學員不行
   await call("PATCH", "/admin/courses/start", { token: admin, body: { hostUnit: "台北中心" } });
@@ -325,14 +324,26 @@ test("EDM（橫幅由畫面自動用 EDM 模糊放大）：公開網址、權限
   assert.equal((await put(admin, "/admin/courses/start/edm", new Uint8Array(9 * 1024 * 1024).fill(1)).catch(() => ({ status: 0 }))).status === 200, false);
 
   // 課程摘要帶公開網址，未登入也能讀圖；舊檔已被取代而刪除
-  const sum = (await call<{ id: string; edmUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
+  const sum = (await call<{ id: string; edmUrl: string | null; coverUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
   assert.ok(decodeURIComponent(sum.edmUrl ?? "").startsWith("/api/v2/media/pub?k=edm/start/"));
-  assert.equal("coverUrl" in sum, false, "不再有封面網址");
+  assert.equal(sum.coverUrl, null, "沒有裁切封面時為 null");
   const img = await raw("GET", sum.edmUrl!);
   assert.deepEqual([img.status, img.headers.get("content-type"), img.headers.get("cache-control")?.includes("immutable")], [200, "image/jpeg", true]);
   assert.equal((await raw("GET", "/api/v2/media/pub?k=edm/start/not-used.jpg")).status, 404, "沒在使用的檔案不提供");
   await put(pres, "/admin/courses/start/edm", jpeg(120));
   assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("edm/start/")).length, 1, "舊 EDM 已刪");
+  // 16:9 封面（從 EDM 裁切）：權限同 EDM、換圖刪舊檔、課程摘要帶網址；EDM 預設位置 0～1
+  assert.equal((await put(student, "/admin/courses/start/cover", jpeg(10))).status, 403);
+  assert.equal((await put(pres, "/admin/courses/start/cover", jpeg(40))).status, 200);
+  await put(pres, "/admin/courses/start/cover", jpeg(50));
+  assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("cover/start/")).length, 1, "舊封面已刪");
+  assert.equal((await call("PATCH", "/admin/courses/start", { token: admin, body: { edmViewY: 0.35 } })).status, 200);
+  assert.equal((await call("PATCH", "/admin/courses/start", { token: admin, body: { edmViewY: 2 } })).status, 400);
+  const sum2 = (await call<{ id: string; coverUrl: string | null; edmViewY: number }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
+  assert.ok(decodeURIComponent(sum2.coverUrl ?? "").startsWith("/api/v2/media/pub?k=cover/start/"));
+  assert.equal(sum2.edmViewY, 0.35);
+  assert.equal((await raw("GET", sum2.coverUrl!)).status, 200);
+  assert.equal((await call("DELETE", "/admin/courses/start/cover", { token: pres })).status, 200);
   assert.equal((await call("DELETE", "/admin/courses/start/edm", { token: pres })).status, 200);
   assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("edm/start/")).length, 0);
 

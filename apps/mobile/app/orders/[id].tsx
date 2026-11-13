@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { api, type Order } from "@/api/client";
+import { confirmSheet } from "@/features/confirm";
 import { OrderCard } from "@/features/orders/order-card";
 import { OrderTimeline } from "@/features/orders/timeline";
 import { WebOnly } from "@/features/web-only";
@@ -15,7 +16,7 @@ function OrderDetail() {
   const [err, setErr] = useState<string | null>(null);
   if (!data) return <Screen header={false}>{loading ? <LoadingView /> : <ErrorView message={error ?? "找不到這筆報名"} onRetry={reload} />}</Screen>;
   const cancel = async () => {
-    if (!window.confirm("確定要取消這筆報名嗎？\n\n取消後可以重新報名。")) return;
+    if (!(await confirmSheet({ title: "取消報名", message: "確定要取消這筆報名嗎？取消後可以重新報名。", confirmLabel: "確定取消", cancelLabel: "先不要", danger: true }))) return;
     setBusy(true);
     setErr(null);
     try {

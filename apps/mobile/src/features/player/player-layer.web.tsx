@@ -7,7 +7,9 @@ import { usePlayer } from "./use-player";
 
 const POS_KEY = "hglobal:learn:mini-pos";
 const MARGIN = 8;
-const CIRCLE = 60;
+const CIRCLE = 84;
+/** 外框：網站色系（深綠、橄欖、金）的高級反光漸層，緩慢流動。 */
+const FRAME = "linear-gradient(135deg,#0c603c 0%,#cee49f 16%,#fff3c4 28%,#f2c063 40%,#486c48 56%,#0c603c 70%,#cee49f 84%,#0c603c 100%)";
 
 type Pos = { x: number; y: number };
 const floatWidth = () => Math.round(Math.min(240, Math.max(180, window.innerWidth * 0.55)));
@@ -62,9 +64,16 @@ export function PlayerLayer() {
     if (ready && !member) engine.close();
   }, [ready, member]);
 
+  // 播放控制列在影片外面（PlayerControls）；只有全螢幕時才用瀏覽器內建的控制列（全螢幕裡看不到外面的控制列）。
   useEffect(() => {
-    engine.element().controls = inline;
-  }, [inline]);
+    const el = engine.element();
+    const sync = () => {
+      el.controls = !!document.fullscreenElement && document.fullscreenElement === boxRef.current;
+    };
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
 
   // 每個畫面更新時對齊位置：內嵌＝貼齊課程頁的播放區塊；浮動＝使用者拖曳過的位置；縮小＝小圓圖。
   useEffect(() => {
@@ -97,7 +106,20 @@ export function PlayerLayer() {
         return;
       }
       const [l, tp, w, h, fl] = css.split("|");
-      Object.assign(box.style, { display: "block", left: `${l}px`, top: `${tp}px`, width: `${w}px`, height: `${h}px`, borderRadius: fl === "2" ? "50%" : fl === "1" ? "12px" : "0", boxShadow: fl === "0" ? "none" : "0 6px 24px rgba(0,0,0,0.45)" });
+      const framed = fl !== "0";
+      box.style.setProperty("--pad", framed ? "3px" : "0px");
+      Object.assign(box.style, {
+        display: "block",
+        left: `${l}px`,
+        top: `${tp}px`,
+        width: `${w}px`,
+        height: `${h}px`,
+        borderRadius: fl === "2" ? "50%" : fl === "1" ? "14px" : "0",
+        boxShadow: framed ? "0 6px 24px rgba(12,96,60,0.45), 0 0 0 1px rgba(255,243,196,0.35)" : "none",
+        background: framed ? FRAME : "#000",
+        backgroundSize: framed ? "300% 300%" : "auto",
+        animation: framed ? "hg-sheen 7s linear infinite" : "none",
+      });
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -167,7 +189,8 @@ export function PlayerLayer() {
   const art = s.artworkUrl ? (/^(https?:|blob:|data:)/.test(s.artworkUrl) ? s.artworkUrl : s.artworkUrl) : "/icon-512.png";
   return createPortal(
     <div ref={boxRef} style={{ position: "fixed", left: 0, top: 0, display: "none", zIndex: 1000, overflow: "hidden", background: "#000" }}>
-      <style>{"@keyframes hg-spin{to{transform:rotate(360deg)}}"}</style>
+      <style>{"@keyframes hg-spin{to{transform:rotate(360deg)}}@keyframes hg-sheen{0%{background-position:0% 50%}100%{background-position:300% 50%}}"}</style>
+      <div style={{ position: "absolute", inset: "var(--pad, 0px)", borderRadius: "inherit", overflow: "hidden", background: "#000" }}>
       <div ref={hostRef} style={{ position: "absolute", inset: 0, display: yt ? "none" : "block" }} />
       {yt ? (
         <iframe
@@ -192,7 +215,7 @@ export function PlayerLayer() {
           <button type="button" aria-label="關閉播放" style={{ ...btn, top: 4, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => engine.close()}>
             ✕
           </button>
-          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, top: 4, right: 48, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={minimize}>
+          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, top: 48, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={minimize}>
             ─
           </button>
           <button type="button" aria-label={s.playing ? "暫停" : "播放"} style={{ ...btn, left: "50%", top: "50%", width: 52, height: 52, transform: "translate(-50%,-50%)" }} onPointerDown={stop} onPointerUp={stop} onClick={() => engine.toggle()}>
@@ -200,6 +223,7 @@ export function PlayerLayer() {
           </button>
         </div>
       ) : null}
+      </div>
     </div>,
     document.body,
   );

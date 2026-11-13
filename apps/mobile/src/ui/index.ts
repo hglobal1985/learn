@@ -20,3 +20,5 @@ export { BrandTitle } from "./brand-title";
 export { Select, type SelectOption } from "./select";
 export { DateSelect, todayStr } from "./date-select";
 export { CornerRibbon } from "./corner-ribbon";
+export { StageFrame } from "./stage-frame";
+export { ShareIcon, isApplePlatform } from "./share-icon";

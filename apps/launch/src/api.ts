@@ -284,6 +284,8 @@ type CourseRow = {
   event_end: string | null;
   is_public: number;
   price_tba: number;
+  cover_key: string | null;
+  edm_view_y: number;
   edm_key: string | null;
   art_version: number;
   run_count: number;
@@ -291,7 +293,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, c.edm_key, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -348,6 +350,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     minRank,
     theme: row.theme,
     edmUrl: row.edm_key ? pubUrl(row.edm_key, row.art_version) : null,
+    coverUrl: row.cover_key ? pubUrl(row.cover_key, row.art_version) : null,
+    edmViewY: row.edm_view_y,
     status: row.status,
     guidanceUnit: row.guidance_unit,
     hostUnit: row.host_unit,
@@ -451,8 +455,8 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       end: l.end_seconds,
       runId: l.run_id,
       eventDate: l.event_date,
-      // 完全公開的課程：訪客可以看沒有綁場次的章節。
-      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id) || (row.is_public === 1 && !l.run_id && !s)),
+      // 完全公開的課程：任何人（含訪客與會員）都可以看沒有綁場次的章節，不需要報名。
+      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id) || (row.is_public === 1 && !l.run_id)),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
@@ -469,6 +473,7 @@ async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promi
     return !!pub && !runId;
   }
   if (s.role === "admin") return true;
+  if (!runId && (await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first())) return true; // 完全公開的課程，會員也不必報名
   if (s.center && s.roles.some((r) => ART_TYPES.has(r))) {
     const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
     if (c && managesCourse(s, c.host_center_key)) return true;
@@ -1080,6 +1085,11 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (body.allowPresident !== undefined) sets.push(["allow_president", body.allowPresident === true ? 1 : 0]);
   if (body.isPublic !== undefined) sets.push(["is_public", body.isPublic === true ? 1 : 0]);
   if (body.priceTba !== undefined) sets.push(["price_tba", body.priceTba === true ? 1 : 0]);
+  if (body.edmViewY !== undefined) {
+    const y = Number(body.edmViewY);
+    if (!Number.isFinite(y) || y < 0 || y > 1) fail(400, "invalid_view", "EDM 預設位置不正確");
+    sets.push(["edm_view_y", y]);
+  }
   const guidance = text(body.guidanceUnit, 60);
   if (centerOnly && guidance === HQ_UNIT) fail(403, "forbidden", `指導單位「${HQ_UNIT}」只有總部管理員可以設定`);
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
@@ -2295,7 +2305,7 @@ const routes: [string, RegExp, Handler][] = [
       const key = ctx.url.searchParams.get("k") ?? "";
       const bucket = ctx.env.MEDIA;
       if (!bucket || !/^(edm|cover)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
-      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ?").bind(key).first();
+      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ?").bind(key, key).first();
       const obj = used ? await bucket.get(key) : null;
       if (!obj) return new Response("Not found", { status: 404 });
       return new Response(obj.body, {
@@ -2337,6 +2347,37 @@ const routes: [string, RegExp, Handler][] = [
         ctx.db.prepare("UPDATE courses SET edm_key = NULL, art_version = art_version + 1 WHERE id = ?").bind(id),
         audit(ctx.db, s.sub, "course.edm_remove", "course", id),
       ]);
+      if (old?.k) await ctx.env.MEDIA?.delete(old.k).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/courses\/([\w-]+)\/cover$/,
+    async (ctx, [id]) => {
+      // 課程清單用的 16:9 封面：管理員在瀏覽器從 EDM 裁切、壓縮後上傳。
+      const s = requireMember(ctx);
+      await requireCourseArt(ctx, s, id);
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "圖片儲存空間尚未啟用");
+      const data = new Uint8Array(await ctx.req.arrayBuffer());
+      if (!data.byteLength || data.byteLength > 3 * 1024 * 1024) fail(413, "invalid_size", "封面大小需在 3MB 以內（上傳時會自動壓縮）");
+      const img = sniffImage(data) ?? fail(400, "invalid_image", "請上傳 JPG、PNG 或 WebP 圖片");
+      const old = await ctx.db.prepare("SELECT cover_key AS k FROM courses WHERE id = ?").bind(id).first<{ k: string | null }>();
+      const key = `cover/${id}/${crypto.randomUUID()}.${img.ext}`;
+      await bucket.put(key, data.buffer as ArrayBuffer, { httpMetadata: { contentType: img.type } });
+      await ctx.db.batch([ctx.db.prepare("UPDATE courses SET cover_key = ?, art_version = art_version + 1 WHERE id = ?").bind(key, id), audit(ctx.db, s.sub, "course.cover_upload", "course", id, key)]);
+      if (old?.k) await bucket.delete(old.k).catch(() => undefined);
+      return { ok: true, url: pubUrl(key, 0) };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/courses\/([\w-]+)\/cover$/,
+    async (ctx, [id]) => {
+      const s = requireMember(ctx);
+      await requireCourseArt(ctx, s, id);
+      const old = await ctx.db.prepare("SELECT cover_key AS k FROM courses WHERE id = ?").bind(id).first<{ k: string | null }>();
+      await ctx.db.batch([ctx.db.prepare("UPDATE courses SET cover_key = NULL, art_version = art_version + 1 WHERE id = ?").bind(id), audit(ctx.db, s.sub, "course.cover_remove", "course", id)]);
       if (old?.k) await ctx.env.MEDIA?.delete(old.k).catch(() => undefined);
       return { ok: true };
     },

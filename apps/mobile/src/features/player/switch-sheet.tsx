@@ -1,10 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText, Button } from "@/ui";
+import { BottomSheet } from "@/ui/bottom-sheet";
 import { SWITCH_COUNTDOWN_SECONDS, switchPromptStore, type SwitchPrompt } from "./switch-prompt";
 
 /**
@@ -19,7 +19,6 @@ export function SwitchSheet() {
 
 function Sheet({ prompt }: { prompt: SwitchPrompt }) {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
   const [left, setLeft] = useState(SWITCH_COUNTDOWN_SECONDS);
 
   useEffect(() => {
@@ -31,11 +30,7 @@ function Sheet({ prompt }: { prompt: SwitchPrompt }) {
   }, [left, prompt]);
 
   return (
-    <Modal transparent animationType="slide" onRequestClose={() => prompt.resolve(false)} statusBarTranslucent>
-      <View style={styles.backdrop}>
-        <Pressable style={StyleSheet.absoluteFill} accessibilityLabel="關閉" onPress={() => prompt.resolve(false)} />
-        <View style={[styles.sheet, { backgroundColor: c.surface, paddingBottom: space.lg + insets.bottom }]} accessibilityViewIsModal>
-          <View style={[styles.handle, { backgroundColor: c.border }]} />
+    <BottomSheet onClose={() => prompt.resolve(false)}>
           <AppText variant="title">要改播這一堂嗎？</AppText>
           <View style={[styles.row, { backgroundColor: c.background, borderColor: c.accent }]}>
             <Ionicons name="play-circle" size={24} color={c.accent} />
@@ -57,16 +52,11 @@ function Sheet({ prompt }: { prompt: SwitchPrompt }) {
               <Button label={`確定播放（${Math.max(0, left)}）`} fullWidth onPress={() => prompt.resolve(true)} />
             </View>
           </View>
-        </View>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.45)" },
-  sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: space.lg, gap: space.md },
-  handle: { alignSelf: "center", width: 40, height: 4, borderRadius: 2, marginBottom: space.xs },
   row: { flexDirection: "row", alignItems: "center", gap: space.md, borderWidth: 1, borderRadius: radius.md, padding: space.md, minHeight: minTouch },
   text: { flex: 1, gap: 2 },
   bar: { height: 4, borderRadius: 2, overflow: "hidden" },

@@ -38,6 +38,12 @@ test("完全公開：訪客可看免費且已上架的公開課程與章節；�
   assert.equal(guest.data.enrollment, null);
   assert.equal((await call<Playback>("GET", `/courses/${id}/lessons/${lessonId}/playback`)).status, 200);
 
+  // 完全公開的課程：已登入的會員也不用報名就能看、記錄進度
+  const student = await login("demo-student");
+  const asMember = await call<CourseDetail>("GET", `/courses/${id}`, { token: student });
+  assert.equal(asMember.data.lessons[0]!.locked, false);
+  assert.equal((await call("GET", `/courses/${id}/lessons/${lessonId}/playback`, { token: student })).status, 200);
+  assert.equal((await call("POST", `/courses/${id}/lessons/${lessonId}/complete`, { token: student })).status, 200);
   // 沒有公開的課程：訪客一律 401
   assert.equal((await call("GET", "/courses/share")).status, 401);
   assert.equal((await call("GET", "/courses/share/lessons/share-welcome/playback")).status, 401);

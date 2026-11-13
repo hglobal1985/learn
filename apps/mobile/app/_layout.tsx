@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppGate } from "@/features/app-gate";
+import { ConfirmSheetHost } from "@/features/confirm";
 import { MiniAudioBar } from "@/features/player/audio-bar";
 import { PlayerLayer } from "@/features/player/player-layer";
 import { SwitchSheet } from "@/features/player/switch-sheet";
@@ -54,6 +55,7 @@ export default function RootLayout() {
           <BottomBar />
           <PlayerLayer />
           <SwitchSheet />
+          <ConfirmSheetHost />
           </View>
         </ThemeProvider>
       </SessionProvider>

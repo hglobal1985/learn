@@ -4,12 +4,8 @@ import { api, type CourseComment } from "@/api/client";
 import { dateTime } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
+import { confirmAsk } from "@/features/confirm";
 import { AppText, Button, Card, Field, NoticeBox, Pill, Section } from "@/ui";
-
-function confirm(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(window.confirm(message));
-  return new Promise((r) => Alert.alert("請確認", message, [{ text: "取消", style: "cancel", onPress: () => r(false) }, { text: "確定", onPress: () => r(true) }]));
-}
 
 /** 課程留言板：登入會員可留言；可檢舉、封鎖對方（商店規範要求）；管理員可隱藏。 */
 export function CommentBoard({ courseId }: { courseId: string }) {
@@ -70,11 +66,11 @@ export function CommentBoard({ courseId }: { courseId: string }) {
           <AppText>{c.body}</AppText>
           <View style={styles.row}>
             {c.mine ? (
-              <Button variant="ghost" label="刪除" disabled={busy} onPress={async () => (await confirm("確定刪除這則留言？")) && run(() => api("DELETE", `/comments/${c.id}`))} />
+              <Button variant="ghost" label="刪除" disabled={busy} onPress={async () => (await confirmAsk("請確認", "確定刪除這則留言？")) && run(() => api("DELETE", `/comments/${c.id}`))} />
             ) : (
               <>
-                <Button variant="ghost" label="檢舉" disabled={busy} onPress={async () => (await confirm("檢舉這則留言？管理員會收到通知並處理。")) && run(() => api("POST", `/comments/${c.id}/report`, {}), "已送出檢舉，謝謝你。")} />
-                <Button variant="ghost" label="封鎖此人" disabled={busy} onPress={async () => (await confirm(`封鎖後你將不再看到「${c.authorName}」的留言。`)) && run(() => api("POST", `/comments/${c.id}/block`), "已封鎖。")} />
+                <Button variant="ghost" label="檢舉" disabled={busy} onPress={async () => (await confirmAsk("請確認", "檢舉這則留言？管理員會收到通知並處理。")) && run(() => api("POST", `/comments/${c.id}/report`, {}), "已送出檢舉，謝謝你。")} />
+                <Button variant="ghost" label="封鎖此人" disabled={busy} onPress={async () => (await confirmAsk("請確認", `封鎖後你將不再看到「${c.authorName}」的留言。`)) && run(() => api("POST", `/comments/${c.id}/block`), "已封鎖。")} />
               </>
             )}
             {admin ? <Button variant="ghost" label={c.hidden ? "取消隱藏" : "隱藏"} disabled={busy} onPress={() => run(() => api("PATCH", `/admin/comments/${c.id}`, { hidden: !c.hidden }))} /> : null}

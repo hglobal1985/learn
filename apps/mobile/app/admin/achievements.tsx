@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Alert, Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { ACHIEVEMENT_TYPES, api, type AchievementType, type AdminAchievement, type CourseSummary } from "@/api/client";
+import { confirmAsk } from "@/features/confirm";
 import { BADGE_ICONS, conditionText } from "@/features/achievements/text";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -8,16 +9,6 @@ import { AppText, Button, Card, EmptyState, ErrorView, Field, LoadingView, Notic
 
 type Form = { id: string | null; name: string; description: string; icon: string; type: AchievementType; threshold: string; courseId: string; active: boolean };
 const blank: Form = { id: null, name: "", description: "", icon: "🏅", type: "lessons_completed", threshold: "10", courseId: "", active: true };
-
-const confirm = (title: string, message: string): Promise<boolean> =>
-  Platform.OS === "web"
-    ? Promise.resolve(window.confirm(`${title}\n\n${message}`))
-    : new Promise((resolve) =>
-        Alert.alert(title, message, [
-          { text: "取消", style: "cancel", onPress: () => resolve(false) },
-          { text: "刪除", style: "destructive", onPress: () => resolve(true) },
-        ]),
-      );
 
 /** 超級管理員：設定學習成就徽章（名稱、圖示、要達成什麼條件）。會員達成後自動取得並收到通知。 */
 export default function AdminAchievementsScreen() {
@@ -114,7 +105,7 @@ export default function AdminAchievementsScreen() {
                 label="刪除"
                 icon="trash-outline"
                 disabled={busy}
-                onPress={async () => (await confirm("刪除徽章", `確定刪除「${a.name}」？已取得這枚徽章的會員紀錄也會一併刪除。`)) && run(() => api("DELETE", `/admin/achievements/${a.id}`), "已刪除")}
+                onPress={async () => (await confirmAsk("刪除徽章", `確定刪除「${a.name}」？已取得這枚徽章的會員紀錄也會一併刪除。`)) && run(() => api("DELETE", `/admin/achievements/${a.id}`), "已刪除")}
               />
             </View>
           </Card>

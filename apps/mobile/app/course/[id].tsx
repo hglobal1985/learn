@@ -1,26 +1,21 @@
 import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Alert, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
-import { api, resolveUrl, type CourseDetail, type CourseRun, type Order } from "@/api/client";
+import { Platform, StyleSheet, View } from "react-native";
+import { api, type CourseDetail, type CourseRun, type Order } from "@/api/client";
 import { CommentBoard } from "@/features/comments/comment-board";
-import { CoursePriceTag, UnitTags } from "@/features/courses/course-card";
+import { confirmSheet } from "@/features/confirm";
+import { EdmStage } from "@/features/courses/edm-viewer";
 import { dateTime, eventDays, ntd } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
-import { AppText, Button, Card, CourseCover, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
 const isWeb = Platform.OS === "web";
 
-const confirmCancel = (): Promise<boolean> =>
-  isWeb
-    ? Promise.resolve(window.confirm("確定要取消這筆報名嗎？\n\n取消後可以重新報名。"))
-    : new Promise((resolve) =>
-        Alert.alert("取消報名", "確定要取消這筆報名嗎？取消後可以重新報名。", [
-          { text: "先不要", style: "cancel", onPress: () => resolve(false) },
-          { text: "取消報名", style: "destructive", onPress: () => resolve(true) },
-        ]),
-      );
-
+/**
+ * 課程介紹頁：上方只有 EDM（與上課頁影片區同高、可上下拖曳、點一下放大），下面不再放任何課程說明文字，
+ * 只有報名按鈕（依狀態）、場次與課程章節。標題在上方導覽列。
+ */
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { member, ready, invalidate } = useSession();
@@ -37,10 +32,6 @@ export default function CourseDetailScreen() {
       </Screen>
     );
 
-  const admin = member?.role === "admin";
-  const playable = course.lessons.filter((l) => !l.locked);
-  const nextLesson = playable.find((l) => !l.completed) ?? playable[0];
-
   /** 報名：免費立即開通；付費建立待審核的報名並前往報名明細。 */
   const register = async (run?: CourseRun) => {
     setBusy(run?.id ?? "course");
@@ -48,7 +39,7 @@ export default function CourseDetailScreen() {
     try {
       const [order] = await api<Order[]>("POST", "/orders", { items: [{ courseId: course.id, runId: run?.id ?? "" }] });
       invalidate();
-      if (order.status === "opened") setMessage({ tone: "success", text: "報名成功！課程已開通，可以開始上課了。" });
+      if (order.status === "opened") setMessage({ tone: "success", text: "報名成功！課程已開通，請從下方章節開始上課。" });
       else router.push(`/orders/${order.id}`);
     } catch (e) {
       setMessage({ tone: "danger", text: (e as Error).message });
@@ -57,9 +48,9 @@ export default function CourseDetailScreen() {
     }
   };
 
-  /** 反悔取消報名：審核中、或免費自動開通的都可以取消（已繳費開通的要聯絡窗口）。 */
+  /** 反悔取消報名（只有「審核中」可以；已開通的不提供）。要先從下方彈出確認面板確認。 */
   const cancel = async (run?: CourseRun) => {
-    if (!(await confirmCancel())) return;
+    if (!(await confirmSheet({ title: "取消報名", message: "確定要取消這筆報名嗎？取消後可以重新報名。", confirmLabel: "確定取消", cancelLabel: "先不要", danger: true }))) return;
     setBusy(`cancel-${run?.id ?? "course"}`);
     setMessage(null);
     try {
@@ -72,7 +63,6 @@ export default function CourseDetailScreen() {
       setBusy(null);
     }
   };
-  const cancelButton = (run?: CourseRun) => <Button variant="ghost" label="取消報名" icon="close-circle-outline" loading={busy === `cancel-${run?.id ?? "course"}`} disabled={!!busy} onPress={() => cancel(run)} />;
 
   const registerButton = (free: boolean, key: string, run?: CourseRun) => {
     if (course.priceTba) return <NoticeBox tone="warning" text="這門課程的費用尚未公布，公布後才開放報名。" />;
@@ -83,99 +73,72 @@ export default function CourseDetailScreen() {
     if (!isWeb) return <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
     return <Button label="報名（送出後由窗口審核繳費）" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
   };
-  const pendingBox = (run?: CourseRun) => (
-    <>
-      <NoticeBox tone="warning" text="報名審核中，窗口確認繳費後會通知你。" />
-      {isWeb ? <Button variant="secondary" label="查看我的報名" onPress={() => router.push("/orders")} fullWidth /> : null}
-      {cancelButton(run)}
-    </>
+
+  /** 審核中：同一列兩顆按鈕——「付款審核中（點擊查看）」與「取消」。 */
+  const pendingRow = (run?: CourseRun) => (
+    <View style={styles.pending}>
+      <View style={{ flex: 1 }}>
+        <Button variant="secondary" label="付款審核中（點擊查看）" icon="time-outline" onPress={() => router.push("/orders")} fullWidth />
+      </View>
+      <Button variant="danger" label="取消" loading={busy === `cancel-${run?.id ?? "course"}`} disabled={!!busy} onPress={() => cancel(run)} />
+    </View>
   );
 
   return (
-    <Screen header={false}>
+    <View style={{ flex: 1 }}>
       <Stack.Screen options={{ title: course.title }} />
-      {course.edmUrl ? (
-        <Pressable onPress={() => Linking.openURL(resolveUrl(course.edmUrl!))} accessibilityRole="link" accessibilityLabel="開啟課程海報原圖">
-          <CourseCover theme={course.theme} label={course.category} height={160} edmUrl={course.edmUrl} />
-        </Pressable>
-      ) : (
-        <CourseCover theme={course.theme} label={course.category} height={160} edmUrl={course.edmUrl} />
-      )}
-      <View style={{ gap: space.sm }}>
-        <View style={styles.titleRow}>
-          <AppText variant="display" style={{ flex: 1 }}>
-            {course.title}
-          </AppText>
-          {course.eventStart ? (
-            <AppText variant="callout" tone="muted" style={styles.date}>
-              {eventDays(course.eventStart, course.eventEnd)}
-            </AppText>
-          ) : null}
-        </View>
-        <AppText tone="muted">{course.subtitle}</AppText>
-        <UnitTags course={course} />
-        <View style={styles.row}>
-          <CoursePriceTag course={course} />
-          {course.minRank.order > 10 ? <Pill label={`限 ${course.minRank.name} 以上${course.allowPresident ? "或會長" : ""}`} tone={course.eligible ? "neutral" : "warning"} /> : null}
-          {course.isPublic ? <Pill label="完全公開" tone="accent" /> : null}
-          {course.freeNow && course.freeUntil ? <Pill label={`限時免費至 ${dateTime(course.freeUntil)}`} tone="accent" /> : null}
-        </View>
-        <AppText variant="callout" tone="muted">
-          講師：{course.teacher} · {course.lessonCount} 堂 · 約 {course.totalMinutes} 分鐘
-        </AppText>
-        {course.description ? <AppText>{course.description}</AppText> : null}
-      </View>
-      {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
-      {nextLesson && (course.enrollment === "opened" || admin || (!member && course.isPublic)) ? (
-        <Button label={course.completedLessons ? "繼續上課" : "開始上課"} icon="play" onPress={() => router.push(`/learn/${course.id}/${nextLesson.id}`)} fullWidth />
-      ) : null}
+      <EdmStage course={course} />
+      <Screen header={false}>
+        {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
 
-      {course.hasRuns ? (
-        <Section title="場次">
-          {course.runs.map((run) => (
-            <Card key={run.id}>
-              <View style={styles.row}>
-                <AppText variant="headline" style={{ flex: 1 }}>
-                  {run.title}
+        {course.hasRuns ? (
+          <Section title="場次">
+            {course.runs.map((run) => (
+              <Card key={run.id}>
+                <View style={styles.row}>
+                  <AppText variant="headline" style={{ flex: 1 }}>
+                    {run.title}
+                  </AppText>
+                  {run.enrollment === "opened" ? <Pill label="已開通" tone="success" /> : run.enrollment === "pending" ? <Pill label="審核中" tone="warning" /> : !run.open ? <Pill label="報名已截止" /> : run.free ? <Pill label="免費" tone="accent" /> : run.priceTwd != null ? <Pill label={ntd(run.priceTwd)} /> : null}
+                </View>
+                <AppText variant="callout" tone="muted">
+                  {[run.startsAt ? dateTime(run.startsAt) : "", run.location, run.registerUntil ? `報名至 ${dateTime(run.registerUntil)}` : "", run.remaining != null ? `剩 ${run.remaining} 個名額` : ""].filter(Boolean).join(" · ")}
                 </AppText>
-                {run.enrollment === "opened" ? <Pill label="已開通" tone="success" /> : run.enrollment === "pending" ? <Pill label="審核中" tone="warning" /> : !run.open ? <Pill label="報名已截止" /> : run.free ? <Pill label="免費" tone="accent" /> : run.priceTwd != null ? <Pill label={ntd(run.priceTwd)} /> : null}
-              </View>
-              <AppText variant="callout" tone="muted">
-                {[run.startsAt ? dateTime(run.startsAt) : "", run.location, run.registerUntil ? `報名至 ${dateTime(run.registerUntil)}` : "", run.remaining != null ? `剩 ${run.remaining} 個名額` : ""].filter(Boolean).join(" · ")}
-              </AppText>
-              {run.enrollment === "pending" ? pendingBox(run) : run.enrollment === null && run.open ? registerButton(run.free, run.id, run) : run.enrollment === "opened" && run.free ? cancelButton(run) : null}
-            </Card>
-          ))}
-          {!course.runs.length ? <NoticeBox text="目前沒有開放報名的場次。" /> : null}
-        </Section>
-      ) : course.enrollment === "pending" ? (
-        <View style={{ gap: space.sm }}>{pendingBox()}</View>
-      ) : course.enrollment === null ? (
-        <View style={{ gap: space.sm }}>{registerButton(course.free, "course")}</View>
-      ) : course.enrollment === "opened" && course.free ? (
-        <View style={{ alignItems: "flex-start" }}>{cancelButton()}</View>
-      ) : null}
+                {run.enrollment === "pending" ? pendingRow(run) : run.enrollment === null && run.open && !course.isPublic ? registerButton(run.free, run.id, run) : null}
+              </Card>
+            ))}
+            {!course.runs.length ? <NoticeBox text="目前沒有開放報名的場次。" /> : null}
+          </Section>
+        ) : course.enrollment === "pending" ? (
+          pendingRow()
+        ) : course.enrollment === null && !course.isPublic ? (
+          registerButton(course.free, "course")
+        ) : null}
 
-      <Section title="課程章節">
-        <Card style={{ paddingVertical: 0 }}>
-          {course.lessons.map((lesson) => {
-            const run = lesson.runId ? course.runs.find((r) => r.id === lesson.runId) : null;
-            return (
-              <ListRow
-                key={lesson.id}
-                icon={lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
-                title={`${lesson.position}. ${lesson.title}`}
-                subtitle={`${run ? `${run.title} · ` : ""}${lesson.minutes} 分鐘${lesson.completed ? " · 已完成" : ""}`}
-                right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
-                onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
-              />
-            );
-          })}
-        </Card>
-      </Section>
-      {member ? <CommentBoard courseId={course.id} /> : null}
-    </Screen>
+        <Section title="課程章節">
+          <Card style={{ paddingVertical: 0 }}>
+            {course.lessons.map((lesson) => {
+              const run = lesson.runId ? course.runs.find((r) => r.id === lesson.runId) : null;
+              return (
+                <ListRow
+                  key={lesson.id}
+                  icon={lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
+                  title={`${lesson.position}. ${lesson.title}`}
+                  subtitle={`${run ? `${run.title} · ` : ""}${lesson.minutes ? `${lesson.minutes} 分鐘` : ""}${lesson.completed ? `${lesson.minutes ? " · " : ""}已完成` : ""}` || undefined}
+                  right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
+                  onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
+                />
+              );
+            })}
+          </Card>
+        </Section>
+        {member ? <CommentBoard courseId={course.id} /> : null}
+      </Screen>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({ titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm }, date: { textAlign: "right", flexShrink: 0, paddingTop: 8 }, row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm } });
+const styles = StyleSheet.create({
+  pending: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
+});

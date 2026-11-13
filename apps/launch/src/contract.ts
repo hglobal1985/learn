@@ -69,8 +69,12 @@ export type CourseSummary = {
   hasRuns: boolean;
   enrollment: EnrollmentState;
   completedLessons: number;
-  /** 課程海報 EDM（直式）的公開網址；沒有上傳時為 null。橫幅由畫面把 EDM 模糊放大當底圖，沒有 EDM 時用色塊。 */
+  /** 課程海報 EDM（直式）的公開網址；沒有上傳時為 null。 */
   edmUrl: string | null;
+  /** 從 EDM 裁切出來的 16:9 橫式封面（課程清單縮圖）；沒有時畫面改用色塊。 */
+  coverUrl: string | null;
+  /** EDM 預設停留位置（原圖高度的比例 0～1）。 */
+  edmViewY: number;
 };
 
 export type MediaType = "demo" | "youtube" | "mux" | "audio";

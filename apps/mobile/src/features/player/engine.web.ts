@@ -304,10 +304,16 @@ export const engine = {
   setFullscreenTarget(el: HTMLElement | null) {
     fsTarget = el;
   },
-  canFullscreen: () => typeof document !== "undefined" && !!document.fullscreenEnabled && !!fsTarget,
+  canFullscreen: () => {
+    if (typeof document === "undefined" || !snap.track) return false;
+    if (document.fullscreenEnabled && fsTarget) return true;
+    // iPhone Safari 只允許 <video> 全螢幕（YouTube 的 iframe 不行）。
+    return snap.track.mode === "video" && !!video && typeof (video as unknown as { webkitEnterFullscreen?: unknown }).webkitEnterFullscreen === "function";
+  },
   toggleFullscreen() {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void fsTarget?.requestFullscreen().catch(() => undefined);
+    if (document.fullscreenElement) return void document.exitFullscreen();
+    if (document.fullscreenEnabled && fsTarget) return void fsTarget.requestFullscreen().catch(() => undefined);
+    (video as unknown as { webkitEnterFullscreen?: () => void } | null)?.webkitEnterFullscreen?.();
   },
   /**
    * 課程頁要播放這一堂。同一堂：直接接上（不重新載入）。

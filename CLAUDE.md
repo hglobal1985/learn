@@ -17,6 +17,13 @@
 - 正式站已關閉測試身分登入（`DEMO_LOGIN: off`）；測試請用本機（`wrangler.local.jsonc`，不提交）。
 - 不在對話、程式或 repo 放任何金鑰；機密由業主在 Cloudflare 後台設定。
 
+## 介面規則（業主永久指示，所有畫面一律遵守）
+- **分享**：一律呼叫手機的系統分享選單（網頁用 Web Share、App 用系統 Share）；分享圖示**永遠使用各平台系統預設圖案**——iOS＝方框加向上箭頭、Android＝三個圓點相連。一律使用 `ShareIcon`（`src/ui/share-icon.tsx`）與 `shareLink`（`src/lib/share.ts`），不要自己畫別的。
+- **需要使用者確認的動作**（取消報名、刪除、中斷播放…）：一律從螢幕下方向上彈出「**底部確認面板**」（Bottom Sheet），不使用瀏覽器或系統內建對話框。左邊「取消／關閉」、右邊主要動作。外框統一用 `BottomSheet`（`src/ui/bottom-sheet.tsx`），確認用 `confirmSheet()`／`confirmAsk()`（`src/features/confirm.tsx`）。業主口語稱呼：「底部彈出確認視窗」。
+- **播放控制列**：Mux 影片、YouTube、純音檔三種模式的時間軸／播放控制**共用同一個元件** `PlayerControls`（`src/features/player/player-controls.tsx`，時間軸本身是 `seek-bar.tsx`），位置在影片外面下方；要改設計只改這兩個檔案。
+- **上方舞台高度**：課程介紹頁的 EDM 區與上課頁的影片區都用 `StageFrame`（`src/ui/stage-frame.tsx`，16:9），高度永遠一致，下方版面不會跳動。
+- 課程介紹頁上方只放 EDM（可上下拖曳、點一下放大）；EDM 下方不放課程說明文字。已報名／已開通的課程不放「開始上課」與「取消報名」按鈕（取消報名只在「審核中」提供）。完全公開（免費）的課程不需要報名按鈕。
+
 ## 開發
 - 後端：`apps/launch`（Cloudflare Worker `learn` + D1 `learn-v2`），測試 `npm test -w @learn/launch`。
 - App：`apps/mobile`（Expo），型別檢查 `npm run typecheck -w @learn/mobile`。

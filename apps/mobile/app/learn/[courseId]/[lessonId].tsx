@@ -10,7 +10,7 @@ import { buildTrack } from "@/features/player/engine.types";
 import { LessonPlayer } from "@/features/player/lesson-player";
 import { PlayerSlot } from "@/features/player/player-slot";
 import { usePlayer } from "@/features/player/use-player";
-import { YouTubeControls } from "@/features/player/youtube-controls";
+import { PlayerControls } from "@/features/player/player-controls";
 import { useApi, useSession } from "@/state/session";
 import { maxContentWidth, space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
@@ -69,7 +69,7 @@ export default function LessonScreen() {
 
   const segmentDone = legacyYoutube ? legacyDone : player.track?.key === track?.key && player.segmentEnded;
   const engineError = track && player.track?.key === track.key ? player.error : null;
-  const picture = track && track.mode !== "audio" && claimed === track.key;
+  const pinned = !!track && claimed === track.key;
 
   const complete = async () => {
     setSaving(true);
@@ -86,31 +86,33 @@ export default function LessonScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 影片釘在上方不隨內容捲動，往下看附件與進度時也看得到畫面；離開本頁後縮成可拖曳的小視窗。 */}
-      {picture ? (
-        <View style={styles.pinned}>
-          <View style={styles.pinnedInner}>
-            <PlayerSlot trackKey={track.key} />
-            {track.mode === "youtube" ? <YouTubeControls /> : null}
-          </View>
+      {/* 影片（或純音檔的控制列）釘在上方不隨內容捲動；播放控制列在影片外面下方，三種模式共用同一個元件。離開本頁後縮成可拖曳的小視窗。 */}
+      {pinned ? (
+        <View>
+          {track.mode === "audio" ? (
+            <InlineAudio trackKey={track.key} />
+          ) : (
+            <>
+              <PlayerSlot trackKey={track.key} />
+              <PlayerControls />
+            </>
+          )}
         </View>
       ) : null}
     <Screen header={false}>
       <Stack.Screen options={{ title: c.title }} />
       {legacyYoutube && playback ? (
         <LessonPlayer playback={playback} onSegmentEnd={() => setLegacyDone(true)} />
-      ) : track?.mode === "audio" && claimed === track.key ? (
-        <InlineAudio trackKey={track.key} />
       ) : playError ? (
         <NoticeBox tone="danger" text={playError} />
-      ) : !picture && !track ? (
+      ) : !pinned && !track ? (
         <LoadingView />
       ) : null}
       {engineError ? <NoticeBox tone="danger" text={engineError} /> : null}
       {playback?.kind === "demo" ? <Pill label={playback.label} tone="warning" /> : null}
       <View style={{ gap: space.xs }}>
         <AppText variant="caption" tone="muted">
-          第 {lesson.position} 堂 · {lesson.minutes} 分鐘
+          第 {lesson.position} 堂{lesson.minutes ? ` · 約 ${lesson.minutes} 分鐘` : ""}
         </AppText>
         <View style={styles.titleRow}>
           <AppText variant="title" style={{ flex: 1 }}>
@@ -149,7 +151,7 @@ export default function LessonScreen() {
               key={l.id}
               icon={l.completed ? "checkmark-circle" : l.id === lesson.id ? "play-circle" : "play-circle-outline"}
               title={`${l.position}. ${l.title}`}
-              subtitle={l.id === lesson.id ? "正在觀看" : `${l.minutes} 分鐘`}
+              subtitle={l.id === lesson.id ? "正在觀看" : l.minutes ? `約 ${l.minutes} 分鐘` : undefined}
               right={l.eventDate ? <AppText variant="callout" tone="muted">{eventDays(l.eventDate, null)}</AppText> : undefined}
               onPress={l.id === lesson.id || l.locked ? undefined : () => router.replace(`/learn/${c.id}/${l.id}`)}
             />
@@ -164,6 +166,4 @@ export default function LessonScreen() {
 const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  pinned: { backgroundColor: "#000", alignItems: "center" },
-  pinnedInner: { width: "100%", maxWidth: maxContentWidth },
 });

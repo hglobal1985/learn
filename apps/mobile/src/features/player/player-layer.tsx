@@ -11,7 +11,9 @@ import { usePlayer } from "./use-player";
 
 const MARGIN = 8;
 const BAR = 64; // 底部分頁列大約高度
-const CIRCLE = 60;
+const CIRCLE = 84;
+const GOLD = "#f2c063"; // 網站色系的金色外框（原生版沒有漸層元件，用金色框加綠色光暈近似網頁版的反光外框）
+const GREEN = "#0c603c";
 
 /**
  * 手機 App 的浮動小視窗：離開課程頁後，影片縮成可任意拖曳的小視窗（與課程頁共用同一個播放器，進度同步）。
@@ -106,7 +108,7 @@ export function PlayerLayer() {
       <Pressable accessibilityLabel="關閉播放" onPress={() => engine.close()} style={[styles.btn, { top: 4, right: 4 }]} hitSlop={8}>
         <Ionicons name="close" size={20} color="#fff" />
       </Pressable>
-      <Pressable accessibilityLabel="縮小成小圓圖" onPress={() => resize(true)} style={[styles.btn, { top: 4, right: 48 }]} hitSlop={8}>
+      <Pressable accessibilityLabel="縮小成小圓圖" onPress={() => resize(true)} style={[styles.btn, { top: 48, right: 4 }]} hitSlop={8}>
         <Ionicons name="remove" size={22} color="#fff" />
       </Pressable>
       <View style={styles.center} pointerEvents="box-none">
@@ -119,9 +121,9 @@ export function PlayerLayer() {
 }
 
 const styles = StyleSheet.create({
-  win: { position: "absolute", left: 0, top: 0, borderRadius: 12, overflow: "hidden", backgroundColor: "#000", zIndex: 1000, elevation: 12 },
-  circle: { position: "absolute", left: 0, top: 0, width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, overflow: "hidden", backgroundColor: "#000", zIndex: 1000, elevation: 12 },
-  art: { width: CIRCLE, height: CIRCLE },
+  win: { position: "absolute", left: 0, top: 0, borderRadius: 14, overflow: "hidden", backgroundColor: "#000", borderWidth: 3, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
+  circle: { position: "absolute", left: 0, top: 0, width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, overflow: "hidden", backgroundColor: "#000", borderWidth: 3, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
+  art: { width: CIRCLE - 6, height: CIRCLE - 6 },
   dim: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.35)" },
   center: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   btn: { position: "absolute", width: 40, height: 40, borderRadius: 26, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },

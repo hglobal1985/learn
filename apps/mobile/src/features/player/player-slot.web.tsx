@@ -1,10 +1,11 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, type ElementRef } from "react";
-import { StyleSheet, View } from "react-native";
+import type { View } from "react-native";
+import { StageFrame } from "@/ui/stage-frame";
 import { engine } from "./engine.web";
 
 /**
- * 課程頁釘在上方的影片區塊（Web）：只是一個佔位的黑色 16:9 方塊，把位置告訴全站播放器；
+ * 課程頁釘在上方的影片區塊（Web）：只是一個佔位的 16:9 黑色舞台，把位置告訴全站播放器；
  * 真正的 <video>／iframe 由 PlayerLayer 疊在這個位置上，所以離開頁面不會被銷毀。
  */
 export function PlayerSlot({ trackKey }: { trackKey: string }) {
@@ -16,7 +17,5 @@ export function PlayerSlot({ trackKey }: { trackKey: string }) {
       return () => engine.clearSlot(trackKey);
     }, [trackKey]),
   );
-  return <View ref={ref} style={styles.frame} />;
+  return <StageFrame ref={ref} />;
 }
-
-const styles = StyleSheet.create({ frame: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000" } });

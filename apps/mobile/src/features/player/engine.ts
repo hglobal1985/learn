@@ -1,4 +1,4 @@
-import { createVideoPlayer, type VideoPlayer } from "expo-video";
+import { createVideoPlayer, type VideoPlayer, type VideoView } from "expo-video";
 import { resolveUrl } from "@/api/client";
 import { EMPTY, segmentOf, type Snapshot, type Track } from "./engine.types";
 import { askSwitch } from "./switch-prompt";
@@ -17,6 +17,7 @@ const emit = (patch: Partial<Snapshot>) => {
 };
 
 let player: VideoPlayer | null = null;
+let fsView: VideoView | null = null;
 let endedFlag = false;
 let subs: { remove(): void }[] = [];
 
@@ -72,9 +73,13 @@ export const engine = {
   setSlot(key: string | null, _node?: unknown) {
     if (snap.slotKey !== key) emit({ slotKey: key });
   },
-  setFullscreenTarget(_el: unknown) {},
-  canFullscreen: () => false,
-  toggleFullscreen() {},
+  setFullscreenTarget(view: VideoView | null) {
+    fsView = view;
+  },
+  canFullscreen: () => !!fsView,
+  toggleFullscreen() {
+    void fsView?.enterFullscreen();
+  },
   setCollapsed(collapsed: boolean) {
     if (snap.collapsed !== collapsed) emit({ collapsed });
   },

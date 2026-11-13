@@ -6,6 +6,7 @@ import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText } from "@/ui";
 import { engine } from "./engine";
+import { PlayerControls } from "./player-controls";
 import { formatClock, segmentOf } from "./engine.types";
 import { SeekBar } from "./seek-bar";
 import { usePlayer } from "./use-player";
@@ -75,7 +76,7 @@ export function InlineAudio({ trackKey }: { trackKey: string }) {
       return () => engine.clearSlot(trackKey);
     }, [trackKey]),
   );
-  return <AudioBar />;
+  return <PlayerControls />;
 }
 
 /** 離開課程頁後，音檔以底部細條呈現（在底部分頁列正上方）。 */

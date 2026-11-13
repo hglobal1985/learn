@@ -3,6 +3,7 @@ import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, HQ_UNIT, type CourseDeleteImpact, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
+import { confirmAsk } from "@/features/confirm";
 import { EdmManager } from "@/features/admin/edm-manager";
 import { ntd, parseLocal, toLocal } from "@/features/format";
 import { canManageCourses } from "@/lib/roles";
@@ -14,11 +15,6 @@ import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyStat
 
 type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
 const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
-
-function confirm(title: string, message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-  return new Promise((r) => Alert.alert(title, message, [{ text: "取消", style: "cancel", onPress: () => r(false) }, { text: "確定", style: "destructive", onPress: () => r(true) }]));
-}
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -108,7 +104,7 @@ export default function CourseEditScreen() {
         setBusy(null);
         return;
       }
-      if (!(await confirm("刪除課程", `確定刪除「${form.title}」？章節與音檔會一併刪除，無法復原。`))) return setBusy(null);
+      if (!(await confirmAsk("刪除課程", `確定刪除「${form.title}」？章節與音檔會一併刪除，無法復原。`))) return setBusy(null);
       await api("DELETE", `/admin/courses/${id}`);
       invalidate();
       router.replace("/admin/courses");
@@ -153,7 +149,7 @@ export default function CourseEditScreen() {
     <Screen header={false}>
       <Stack.Screen options={{ title: id ? "編輯課程" : "新增課程" }} />
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
-      <CourseCover theme={form.theme} label={form.category || "分類"} edmUrl={course.data?.edmUrl ?? null} height={course.data?.edmUrl ? 180 : 120} />
+      <CourseCover theme={form.theme} label={form.category || "分類"} imageUrl={course.data?.coverUrl ?? null} />
       <Card>
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}

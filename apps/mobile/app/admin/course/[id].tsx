@@ -1,10 +1,12 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type CourseRun, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
 import { AttachmentManager } from "@/features/attachments";
 import { RunsEditor } from "@/features/admin/runs-editor";
+import { confirmAsk } from "@/features/confirm";
+import { detectYoutubeSeconds } from "@/features/admin/youtube-duration";
 import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -34,11 +36,6 @@ const formatDuration = (sec: number) => {
   return h ? `${h} 小時 ${m} 分 ${s} 秒` : `${m} 分 ${s} 秒`;
 };
 
-function confirm(title: string, message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-  return new Promise((r) => Alert.alert(title, message, [{ text: "取消", style: "cancel", onPress: () => r(false) }, { text: "確定", style: "destructive", onPress: () => r(true) }]));
-}
-
 /** 管理員：章節管理（新增、改名、排序、刪除）與每堂的影片／音檔、時間軸區間。 */
 export default function LessonManagerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -46,6 +43,34 @@ export default function LessonManagerScreen() {
   const { member, invalidate } = useSession();
   const isAdmin = canManageCourses(member);
   const course = useApi<CourseDetail>(isAdmin ? `/courses/${id}` : null);
+  // YouTube 影片沒有長度時（章節顯示 0 分鐘），自動偵測並寫回，課程與章節就能顯示預估分鐘數（只有網頁版的管理員頁面做）。
+  const [detecting, setDetecting] = useState(false);
+  const detected = useRef(new Set<string>());
+  useEffect(() => {
+    const lessons = course.data?.lessons ?? [];
+    const todo = lessons.filter((l) => l.media?.type === "youtube" && l.media.ref && l.minutes === 0 && !detected.current.has(l.id));
+    if (!todo.length || !isAdmin) return;
+    let alive = true;
+    setDetecting(true);
+    (async () => {
+      let changed = false;
+      for (const l of todo) {
+        detected.current.add(l.id);
+        const secs = await detectYoutubeSeconds(l.media!.ref!);
+        if (!alive || !secs) continue;
+        const len = l.end != null ? l.end - (l.start ?? 0) : secs - (l.start ?? 0);
+        if (len > 0) {
+          await api("PATCH", `/admin/lessons/${l.id}`, { minutes: Math.max(1, Math.ceil(len / 60)) }).catch(() => undefined);
+          changed = true;
+        }
+      }
+      if (alive) setDetecting(false);
+      if (changed && alive) invalidate();
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [course.data, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newTitle, setNewTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -74,6 +99,7 @@ export default function LessonManagerScreen() {
 
   return (
     <Screen header={false}>
+      {detecting ? <NoticeBox text="正在偵測 YouTube 影片長度（讓課程顯示預估分鐘數）…" /> : null}
       <Stack.Screen options={{ title: course.data.title }} />
       <View style={styles.row}>
         <Button variant="secondary" label="課程資料" icon="create-outline" onPress={() => router.push({ pathname: "/admin/course-edit", params: { id } })} />
@@ -92,7 +118,7 @@ export default function LessonManagerScreen() {
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
           onDown={i < lessons.length - 1 ? () => move(i, i + 1) : undefined}
           onDelete={async () => {
-            if (await confirm("刪除章節", `確定刪除「${l.title}」？`)) await run(() => api("DELETE", `/admin/lessons/${l.id}`));
+            if (await confirmAsk("刪除章節", `確定刪除「${l.title}」？`)) await run(() => api("DELETE", `/admin/lessons/${l.id}`));
           }}
           disabled={busy}
         />

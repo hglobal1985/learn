@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { confirmAsk } from "@/features/confirm";
 import { openAccountCenter } from "@/features/account-link";
 import type { Achievement, AppConfig, Member } from "@/api/client";
 import { canManageCourses } from "@/lib/roles";
@@ -8,17 +9,6 @@ import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, ListRow, LoadingView, NoticeBox, Pill, SandboxBanner, Screen, Section } from "@/ui";
-
-function confirm(title: string, message: string, ok: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-  return new Promise((resolve) =>
-    Alert.alert(title, message, [
-      { text: "取消", style: "cancel", onPress: () => resolve(false) },
-      { text: ok, style: "destructive", onPress: () => resolve(true) },
-    ]),
-  );
-}
-
 
 /**
  * 頁尾：與寰宇中央會員網站的頁尾相同（淡色小字：左邊「隱私權政策」連結、右邊設計者署名）。
@@ -62,7 +52,7 @@ export default function MeScreen() {
   };
   const removeAccount = async () => {
     const central = !member?.demo;
-    const ok = await confirm(
+    const ok = await confirmAsk(
       "刪除帳號",
       central
         ? "將刪除你在本 App 的所有資料（學習紀錄、報名紀錄、徽章、通知）並登出，接著帶你前往會員中心刪除會員帳號。此操作無法復原。"
