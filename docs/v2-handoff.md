@@ -330,3 +330,4 @@
 - EDM 放大檢視：按鈕 50px；提示文字與下載／分享同一排（左提示、右按鈕），太擠自動換行。
 - **移除「場次」功能**（業主 2026-11-14）：刪除場次編輯器（runs-editor）、場次 API（/admin/courses/:id/runs、/admin/runs/*）、報名選場次、章節綁場次、「報名已截止」緞帶、「分場次報名」標籤、nextRunAt／hasRuns／registrationOpen 欄位；報名與開通改為只以課程為單位。正式站 course_runs 沒有任何資料。資料庫的 course_runs 資料表與 lessons／order_items／enrollments 的 run_id 欄位**刻意保留不刪**（D1 難以改 PK／外鍵，刪表會讓 lessons.run_id 的外鍵出錯；欄位預設空字串，程式已完全不用）。
 - 編輯課程：「費用尚未公布」勾選與費用輸入框同一列（勾選時輸入框變灰不可輸入）。
+- 沒有 EDM／封面的課程：CourseCover 由程式依「課程名稱＋分類」自動排版（主題色底、分類標籤、大標題，字級依長度自動縮放 fitFontSize，非 AI）；用於課程介紹頁上方、課程卡、首頁輪播、編輯課程預覽。

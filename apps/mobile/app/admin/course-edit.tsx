@@ -152,7 +152,7 @@ export default function CourseEditScreen() {
     <Screen header={false}>
       <Stack.Screen options={{ title: id ? "編輯課程" : "新增課程" }} />
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
-      <CourseCover theme={form.theme} label={form.category || "分類"} imageUrl={course.data?.coverUrl ?? null} />
+      <CourseCover theme={form.theme} label={form.category} title={form.title || "課程名稱"} imageUrl={course.data?.coverUrl ?? null} height={160} />
       <Card>
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}

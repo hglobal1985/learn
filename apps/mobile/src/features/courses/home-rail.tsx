@@ -4,8 +4,8 @@ import { Animated, Easing, Image, PanResponder, Platform, Pressable, StyleSheet,
 import { resolveUrl, type CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
-import { courseThemes, radius, space } from "@/theme/tokens";
-import { AppText, Icon, type IconName } from "@/ui";
+import { radius, space } from "@/theme/tokens";
+import { AppText, CourseCover, Icon, type IconName } from "@/ui";
 import { CoursePriceTag } from "./course-card";
 
 /** EDM 填滿整個框（不留空白）、靠上對齊：先依寬度放大，不夠高再依高度放大；只會裁到下方與左右，不會裁到上方文字。 */
@@ -29,23 +29,11 @@ function TopFillImage({ uri, w, h }: { uri: string; w: number; h: number }) {
 }
 
 function Slide({ course, w, h }: { course: CourseSummary; w: number; h: number }) {
-  const { scheme } = useTheme();
-  const [bg, fg] = (courseThemes[course.theme] ?? courseThemes.sage)[scheme];
   return course.edmUrl ? (
     <TopFillImage uri={resolveUrl(course.edmUrl)} w={w} h={h} />
   ) : (
-    <View style={{ width: w, height: h, borderRadius: radius.md, backgroundColor: bg, padding: space.md, justifyContent: "center", alignItems: "center", gap: space.md, overflow: "hidden" }}>
-      <View style={{ position: "absolute", right: -w * 0.25, top: -w * 0.25, width: w * 0.8, height: w * 0.8, borderRadius: w * 0.4, borderWidth: w * 0.1, borderColor: fg, opacity: 0.18 }} />
-      <View style={{ position: "absolute", left: -w * 0.3, bottom: -w * 0.3, width: w * 0.7, height: w * 0.7, borderRadius: w * 0.35, backgroundColor: fg, opacity: 0.1 }} />
-      <Icon name="school-outline" size={30} color={fg} />
-      <AppText variant="headline" numberOfLines={6} style={{ color: fg, fontWeight: "800", textAlign: "center" }}>
-        {course.title}
-      </AppText>
-      {course.category ? (
-        <AppText variant="caption" style={{ color: fg, opacity: 0.8, letterSpacing: 1 }}>
-          {course.category}
-        </AppText>
-      ) : null}
+    <View style={{ width: w, height: h, borderRadius: radius.md, overflow: "hidden" }}>
+      <CourseCover theme={course.theme} label={course.category} title={course.title} fill />
     </View>
   );
 }

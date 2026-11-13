@@ -17,7 +17,7 @@ export function EdmStage({ course }: { course: CourseSummary }) {
   const [open, setOpen] = useState(false);
   return (
     <StageFrame>
-      {course.edmUrl ? <EdmPan uri={resolveUrl(course.edmUrl)} viewY={course.edmViewY} onOpen={() => setOpen(true)} /> : <CourseCover theme={course.theme} label={course.category} fill />}
+      {course.edmUrl ? <EdmPan uri={resolveUrl(course.edmUrl)} viewY={course.edmViewY} onOpen={() => setOpen(true)} /> : <CourseCover theme={course.theme} label={course.category} title={course.title} fill />}
       {course.edmUrl && open ? <EdmLightbox uri={course.edmUrl} title={course.title} onClose={() => setOpen(false)} /> : null}
     </StageFrame>
   );

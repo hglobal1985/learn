@@ -19,7 +19,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
       <View style={styles.coverWrap}>
-        <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
+        <CourseCover theme={course.theme} label={course.category} title={course.title} imageUrl={course.coverUrl} height={160} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
