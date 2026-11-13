@@ -126,6 +126,12 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
+      {member && isWeb ? (
+        <Card style={{ paddingVertical: 0 }}>
+          <ListRow icon="document-text-outline" title="訂單紀錄" onPress={() => router.push("/orders")} />
+        </Card>
+      ) : null}
+
       {member ? (
         <Card style={{ paddingVertical: 0 }}>
           <ListRow
@@ -152,14 +158,6 @@ export default function MeScreen() {
             {member.titles.includes("超級管理員") ? <ListRow icon="pricetags-outline" title="關鍵字管理" subtitle="集中新增、改名、刪除課程的分類、系列、場地" onPress={() => router.push("/admin/keywords")} /> : null}
             {member.titles.includes("超級管理員") ? <ListRow icon="trophy-outline" title="學習成就徽章設定" subtitle="設定要達成什麼條件才能獲得徽章" onPress={() => router.push("/admin/achievements")} /> : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
-          </Card>
-        </Section>
-      ) : null}
-
-      {member && isWeb ? (
-        <Section title="報名">
-          <Card style={{ paddingVertical: 0 }}>
-            <ListRow icon="document-text-outline" title="我的報名" onPress={() => router.push("/orders")} />
           </Card>
         </Section>
       ) : null}
