@@ -158,16 +158,25 @@ export default function CourseEditScreen() {
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}
         {field("講師／主辦", "teacher", { placeholder: "例如：寰宇總部" })}
         {field("分類", "category", { placeholder: "例如：系列課程" })}
-        {form.priceTba ? null : field("報名費用（新台幣，0 為免費）", "priceTwd", { numeric: true })}
-        <Pressable
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: form.priceTba }}
-          onPress={() => setForm((f) => ({ ...f, priceTba: !f.priceTba }))}
-          style={styles.check}
-        >
-          <Ionicons name={form.priceTba ? "checkbox" : "square-outline"} size={28} color={form.priceTba ? c.accent : c.textMuted} />
-          <AppText variant="body">尚未公布</AppText>
-        </Pressable>
+        <View style={{ gap: space.xs }}>
+          <AppText variant="callout" tone="muted">
+            報名費用（新台幣，0 為免費）
+          </AppText>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+            <TextInput
+              value={form.priceTwd}
+              onChangeText={set("priceTwd")}
+              editable={!form.priceTba}
+              keyboardType="number-pad"
+              accessibilityLabel="報名費用"
+              style={[styles.input, type.body, { flex: 1, color: c.text, borderColor: c.border, backgroundColor: c.surface, opacity: form.priceTba ? 0.5 : 1 }]}
+            />
+            <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.priceTba }} onPress={() => setForm((f) => ({ ...f, priceTba: !f.priceTba }))} style={styles.check}>
+              <Ionicons name={form.priceTba ? "checkbox" : "square-outline"} size={28} color={form.priceTba ? c.accent : c.textMuted} />
+              <AppText variant="body">尚未公布</AppText>
+            </Pressable>
+          </View>
+        </View>
         {form.priceTba ? <Pill label="費用尚未公布：課程頁顯示「費用尚未公布」，暫不開放報名" tone="warning" /> : price === 0 ? <Pill label="免費課程：報名後立即開通" tone="accent" /> : <Pill label="付費課程：報名後需審核繳費才開通" tone="warning" />}
         <View style={{ gap: space.xs }}>
           <AppText variant="callout" tone="muted">
