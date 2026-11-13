@@ -325,3 +325,11 @@ export type AdminAchievement = {
   active: boolean;
   earnedCount: number;
 };
+
+/** 申請人顯示名稱：本名＋暱稱同時顯示，例如「王小明（小明）」；兩者相同或只有一個時只顯示一個。 */
+export function applicantLabel(legalName: string | null | undefined, nickname: string | null | undefined): string {
+  const legal = (legalName ?? "").trim();
+  const nick = (nickname ?? "").trim();
+  if (legal && nick && legal !== nick) return `${legal}（${nick}）`;
+  return legal || nick;
+}

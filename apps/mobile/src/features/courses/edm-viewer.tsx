@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveUrl, type CourseSummary } from "@/api/client";
-import { downloadImage, shareLink } from "@/lib/share";
+import { downloadImage, shareImage } from "@/lib/share";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, ShareIcon, StageFrame } from "@/ui";
@@ -85,74 +85,73 @@ function EdmPan({ uri, viewY, onOpen }: { uri: string; viewY: number; onOpen: ()
   );
 }
 
-/** 站內小視窗：可放大縮小 EDM，有下載與分享（分享一律叫出系統的分享選單、使用系統預設分享圖示）。 */
+/**
+ * 站內小視窗：視窗大小剛好貼合圖片（沒有標題、沒有多餘留白），放大縮小、下載、分享按鈕都疊在圖片上。
+ * 分享會呼叫系統分享選單，直接把「圖片」傳出去（圖示用系統預設的 ShareIcon）。
+ */
 function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onClose: () => void }) {
-  const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
   const [scale, setScale] = useState(1);
   const [msg, setMsg] = useState<string | null>(null);
-  const cardW = Math.min(win.width - 24, 560);
-  const cardH = Math.min(win.height - insets.top - insets.bottom - 48, 760);
+  const [ratio, setRatio] = useState(0.7); // 寬 / 高
   const full = resolveUrl(uri);
-  const [ratio, setRatio] = useState(0.7);
   useEffect(() => {
     Image.getSize(full, (w, h) => h && setRatio(w / h), () => undefined);
   }, [full]);
-  const imgW = (cardW - 24) * scale;
+  const maxW = Math.min(win.width - 24, 560);
+  const maxH = win.height - insets.top - insets.bottom - 40;
+  const frameW = Math.min(maxW, maxH * ratio);
+  const frameH = frameW / ratio;
   const zoom = (d: number) => setScale((s) => Math.min(4, Math.max(1, Math.round((s + d) * 10) / 10)));
-  const act = useMemo(
-    () => ({
-      share: async () => {
-        const r = await shareLink(title, uri);
-        if (r === "copied") setMsg("已複製連結");
-      },
-      download: async () => {
-        try {
-          await downloadImage(uri, `${title}.jpg`);
-        } catch {
-          setMsg("下載失敗，請稍後再試");
-        }
-      },
-    }),
-    [title, uri],
-  );
-  const btn = (name: React.ComponentProps<typeof Ionicons>["name"], label: string, onPress: () => void, disabled?: boolean) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={[styles.tool, { backgroundColor: c.surface, borderColor: c.border, opacity: disabled ? 0.4 : 1 }]}>
-      <Ionicons name={name} size={22} color={c.text} />
+  const share = async () => {
+    const r = await shareImage(title, uri, `${title}.jpg`);
+    if (r === "copied") setMsg("已複製連結");
+  };
+  const download = async () => {
+    try {
+      await downloadImage(uri, `${title}.jpg`);
+    } catch {
+      setMsg("下載失敗，請稍後再試");
+    }
+  };
+  const tool = (label: string, onPress: () => void, child: React.ReactNode, disabled?: boolean) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled} style={[styles.tool, { opacity: disabled ? 0.4 : 1 }]}>
+      {child}
     </Pressable>
   );
   return (
     <Modal transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="關閉" />
-        <View style={[styles.card, { width: cardW, height: cardH, backgroundColor: c.surface, borderColor: c.border }]}>
-          <View style={styles.bar}>
-            <AppText variant="headline" numberOfLines={1} style={{ flex: 1 }}>
-              {title}
-            </AppText>
-            <Pressable accessibilityRole="button" accessibilityLabel="關閉" onPress={onClose} style={styles.close}>
-              <Ionicons name="close" size={26} color={c.text} />
-            </Pressable>
-          </View>
-          <ScrollView style={{ flex: 1, backgroundColor: c.surfaceMuted, borderRadius: radius.sm }} contentContainerStyle={{ alignItems: "center" }} maximumZoomScale={4} minimumZoomScale={1}>
-            <ScrollView horizontal contentContainerStyle={{ minWidth: cardW - 24, justifyContent: "center" }} showsHorizontalScrollIndicator={scale > 1}>
-              <Image source={{ uri: full }} resizeMode="stretch" style={{ width: imgW, height: imgW / ratio }} accessibilityIgnoresInvertColors />
+        <View style={[styles.frame, { width: frameW, height: frameH }]}>
+          <ScrollView style={StyleSheet.absoluteFill} contentContainerStyle={{ width: frameW * scale, height: frameH * scale }} maximumZoomScale={4} minimumZoomScale={1} bounces={false} showsVerticalScrollIndicator={false}>
+            <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={false} contentContainerStyle={{ width: frameW * scale, height: frameH * scale }}>
+              <Image source={{ uri: full }} resizeMode="stretch" style={{ width: frameW * scale, height: frameH * scale }} accessibilityIgnoresInvertColors />
             </ScrollView>
           </ScrollView>
-          {msg ? <AppText variant="caption" tone="muted" style={{ textAlign: "center" }}>{msg}</AppText> : null}
-          <View style={styles.tools}>
-            {btn("remove", "縮小", () => zoom(-0.5), scale <= 1)}
-            <AppText variant="callout" tone="muted" style={{ minWidth: 48, textAlign: "center" }}>
-              {Math.round(scale * 100)}%
-            </AppText>
-            {btn("add", "放大", () => zoom(0.5), scale >= 4)}
-            <View style={{ flex: 1 }} />
-            {btn("download-outline", "下載", act.download)}
-            <Pressable accessibilityRole="button" accessibilityLabel="分享" onPress={act.share} style={[styles.tool, { backgroundColor: c.surface, borderColor: c.border }]}>
-              <ShareIcon size={22} color={c.text} />
-            </Pressable>
+          <View style={styles.topRight} pointerEvents="box-none">
+            {tool("關閉", onClose, <Ionicons name="close" size={24} color="#fff" />)}
           </View>
+          <View style={styles.bottom} pointerEvents="box-none">
+            {tool("縮小", () => zoom(-0.5), <Ionicons name="remove" size={24} color="#fff" />, scale <= 1)}
+            <View style={styles.pct} pointerEvents="none">
+              <AppText variant="caption" style={{ color: "#fff", fontWeight: "700" }}>
+                {Math.round(scale * 100)}%
+              </AppText>
+            </View>
+            {tool("放大", () => zoom(0.5), <Ionicons name="add" size={24} color="#fff" />, scale >= 4)}
+            <View style={{ flex: 1 }} />
+            {tool("下載", download, <Ionicons name="download-outline" size={22} color="#fff" />)}
+            {tool("分享", share, <ShareIcon size={22} color="#fff" />)}
+          </View>
+          {msg ? (
+            <View style={styles.toast} pointerEvents="none">
+              <AppText variant="caption" style={{ color: "#fff" }}>
+                {msg}
+              </AppText>
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -161,10 +160,11 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
 
 const styles = StyleSheet.create({
   hint: { position: "absolute", bottom: 8, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  backdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.6)" },
-  card: { borderRadius: radius.lg, borderWidth: 1, padding: space.sm, gap: space.sm },
-  bar: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  close: { width: minTouch, height: minTouch, alignItems: "center", justifyContent: "center" },
-  tools: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  tool: { width: minTouch, height: minTouch, borderRadius: minTouch / 2, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  backdrop: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.72)" },
+  frame: { overflow: "hidden", borderRadius: radius.md, backgroundColor: "#000" },
+  topRight: { position: "absolute", top: space.xs, right: space.xs },
+  bottom: { position: "absolute", left: space.xs, right: space.xs, bottom: space.xs, flexDirection: "row", alignItems: "center", gap: space.xs },
+  tool: { width: minTouch - 4, height: minTouch - 4, borderRadius: (minTouch - 4) / 2, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
+  pct: { paddingHorizontal: 8, height: 28, borderRadius: 14, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center" },
+  toast: { position: "absolute", alignSelf: "center", top: "45%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.7)" },
 });

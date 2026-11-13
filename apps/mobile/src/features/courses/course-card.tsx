@@ -14,12 +14,15 @@ export function CourseCard({ course }: { course: CourseSummary }) {
   // 緞帶：訪客看到完全公開的課程 → 「免費公開」；其餘尚未開始的課程 → 「剩餘 X 天」。
   const days = daysUntilStart(course);
   const ribbon = !member && course.isPublic ? { label: "免費公開", tone: "accent" as const } : days != null ? { label: `剩餘 ${days} 天`, tone: "warning" as const } : null;
+  // 登入會員但獎銜不符、又還沒報名：右上角另外顯示紅色「獎銜不符」。
+  const ineligible = !!member && !course.eligible && course.enrollment === null && course.status === "published";
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
       <View style={styles.coverWrap}>
         <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
         {ribbon ? <CornerRibbon label={ribbon.label} tone={ribbon.tone} /> : null}
+        {ineligible ? <CornerRibbon label="獎銜不符" tone="danger" side="right" /> : null}
       </View>
       <View style={styles.titleRow}>
         <AppText variant="headline" style={{ flex: 1 }}>

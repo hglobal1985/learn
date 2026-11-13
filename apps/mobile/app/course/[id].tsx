@@ -1,5 +1,6 @@
 import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Platform, StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type CourseRun, type Order } from "@/api/client";
 import { CommentBoard } from "@/features/comments/comment-board";
@@ -84,6 +85,10 @@ export default function CourseDetailScreen() {
     </View>
   );
 
+  // 還不能看（尚未報名、不符資格…）：整個章節區蓋一層灰色遮罩加大鎖頭，章節完全不能點。
+  const allLocked = course.lessons.length > 0 && course.lessons.every((l) => l.locked);
+  const lockedText = course.priceTba ? "費用尚未公布，暫不開放" : member && !course.eligible ? "獎銜不符，目前無法報名" : "報名後才能觀看";
+
   return (
     <View style={{ flex: 1 }}>
       <Stack.Screen options={{ title: course.title }} />
@@ -116,7 +121,8 @@ export default function CourseDetailScreen() {
         ) : null}
 
         <Section title="課程章節">
-          <Card style={{ paddingVertical: 0 }}>
+          <View>
+          <Card style={{ paddingVertical: 0, ...(allLocked ? { minHeight: 170 } : {}) }}>
             {course.lessons.map((lesson) => {
               const run = lesson.runId ? course.runs.find((r) => r.id === lesson.runId) : null;
               return (
@@ -131,6 +137,15 @@ export default function CourseDetailScreen() {
               );
             })}
           </Card>
+          {allLocked ? (
+            <View style={styles.mask} accessibilityRole="alert" accessibilityLabel={lockedText}>
+              <Ionicons name="lock-closed" size={48} color="#fff" />
+              <AppText variant="title" style={{ color: "#fff", textAlign: "center" }}>
+                {lockedText}
+              </AppText>
+            </View>
+          ) : null}
+          </View>
         </Section>
         {member ? <CommentBoard courseId={course.id} /> : null}
       </Screen>
@@ -139,6 +154,7 @@ export default function CourseDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  mask: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 16, backgroundColor: "rgba(70,76,72,0.72)", alignItems: "center", justifyContent: "center", gap: space.sm, padding: space.md },
   pending: { flexDirection: "row", alignItems: "center", gap: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
 });

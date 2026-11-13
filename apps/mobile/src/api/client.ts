@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import type { ApiError } from "../../../launch/src/contract";
-export { ACHIEVEMENT_TYPES, DUTY_LABELS, HQ_UNIT, REVIEW_REASONS } from "../../../launch/src/contract";
+export { ACHIEVEMENT_TYPES, applicantLabel, DUTY_LABELS, HQ_UNIT, REVIEW_REASONS } from "../../../launch/src/contract";
 import { centralToken, refresh as refreshCentral } from "./central";
 
 export type {

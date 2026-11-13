@@ -3,6 +3,7 @@ import {
   HQ_UNIT,
   REVIEW_REASONS,
   ACHIEVEMENT_TYPES,
+  applicantLabel,
   type AchievementType,
   type AdminAchievement,
   type CourseComment,
@@ -801,7 +802,7 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     } else {
       statements.push(
         notify(ctx.db, { sub: s.sub }, "報名已送出，等待審核", title, `/orders/${id}`),
-        ...(await reviewerNotices(ctx, { id, centerKey: s.center?.key ?? null, hglobal: s.hglobal, groupId: c.review_group_id }, "有新的報名待審核", `${s.name}｜${title}｜NT$${price.toLocaleString("en-US")}`)),
+        ...(await reviewerNotices(ctx, { id, centerKey: s.center?.key ?? null, hglobal: s.hglobal, groupId: c.review_group_id }, "有新的報名待審核", `${applicantLabel(legal, s.name)}｜${title}｜NT$${price.toLocaleString("en-US")}`)),
       );
     }
   }

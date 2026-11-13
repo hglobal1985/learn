@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native";
-import type { Order } from "@/api/client";
+import { applicantLabel, type Order } from "@/api/client";
 import { dateTime, ntd, orderStatus, payMethodLabel } from "@/features/format";
 import { space } from "@/theme/tokens";
 import { AppText, Card, Pill } from "@/ui";
@@ -16,8 +16,7 @@ export function OrderCard({ order, onPress, showMember }: { order: Order; onPres
       </View>
       {showMember ? (
         <View style={styles.head}>
-          <AppText variant="headline">{order.memberName}</AppText>
-          {order.legalName ? <AppText variant="callout" tone="muted">真實姓名：{order.legalName}</AppText> : null}
+          <AppText variant="headline">{applicantLabel(order.legalName, order.memberName)}</AppText>
           {order.memberSub ? <AppText variant="caption" tone="muted" selectable>會員 ID：{order.memberSub}</AppText> : null}
           {order.centerLabel ? <Pill label={order.centerLabel} tone="accent" /> : null}
           {!order.hglobal ? <Pill label="非寰宇系統" tone="warning" /> : null}

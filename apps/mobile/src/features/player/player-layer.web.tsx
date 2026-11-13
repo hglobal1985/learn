@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, type CSSProperties, type PointerEvent }
 import { createPortal } from "react-dom";
 import { useSession } from "@/state/session";
 import { engine } from "./engine.web";
+import { IDENTITY, clampZoom, zoomAt, type Zoom } from "./zoom-math";
 import { usePlayer } from "./use-player";
 
 const POS_KEY = "hglobal:learn:mini-pos";
@@ -39,6 +40,11 @@ export function PlayerLayer() {
   const hostRef = useRef<HTMLDivElement>(null);
   const pos = useRef<Pos | null>(null);
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null);
+  const zoomLayer = useRef<HTMLDivElement>(null);
+  const gesture = useRef<HTMLDivElement>(null);
+  const zoom = useRef<Zoom>(IDENTITY);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null);
   const t = s.track;
   const isAudio = t?.mode === "audio";
   const inlineSlot = !!t && s.slotKey === t.key;
@@ -47,6 +53,61 @@ export function PlayerLayer() {
   const floating = !!t && !inlineSlot && (!isAudio || s.collapsed);
   const circle = floating && s.collapsed;
   const windowed = floating && !s.collapsed;
+
+  // 影片放大：雙指（手機）或滾輪（電腦）放大縮小，縮小不低於 100%；放大後按住拖曳查看其他區域。只用在 Mux／示範影片，在課程頁內嵌時才有。
+  const canZoom = inline && t?.mode === "video";
+  const applyZoom = (z: Zoom) => {
+    zoom.current = z;
+    if (hostRef.current) hostRef.current.style.transform = z.s === 1 ? "none" : `translate(${z.x}px, ${z.y}px) scale(${z.s})`;
+  };
+  const boxSize = () => {
+    const r = zoomLayer.current?.getBoundingClientRect();
+    return { w: r?.width ?? 1, h: r?.height ?? 1, left: r?.left ?? 0, top: r?.top ?? 0 };
+  };
+  useEffect(() => {
+    applyZoom(IDENTITY); // 換一堂或離開課程頁就還原
+  }, [t?.key, canZoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const el = gesture.current;
+    if (!canZoom || !el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const b = boxSize();
+      applyZoom(zoomAt(zoom.current, zoom.current.s * Math.exp(-e.deltaY * 0.002), e.clientX - b.left, e.clientY - b.top, b.w, b.h));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [canZoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zDown = (e: PointerEvent<HTMLDivElement>) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { dist: Math.hypot(a!.x - b!.x, a!.y - b!.y), mx: (a!.x + b!.x) / 2, my: (a!.y + b!.y) / 2 };
+    }
+  };
+  const zMove = (e: PointerEvent<HTMLDivElement>) => {
+    const prev = pointers.current.get(e.pointerId);
+    if (!prev) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const b = boxSize();
+    if (pointers.current.size >= 2 && pinch.current) {
+      const [p1, p2] = [...pointers.current.values()];
+      const dist = Math.hypot(p1!.x - p2!.x, p1!.y - p2!.y);
+      const mx = (p1!.x + p2!.x) / 2;
+      const my = (p1!.y + p2!.y) / 2;
+      let z = zoomAt(zoom.current, zoom.current.s * (dist / (pinch.current.dist || dist)), mx - b.left, my - b.top, b.w, b.h);
+      z = clampZoom({ ...z, x: z.x + (mx - pinch.current.mx), y: z.y + (my - pinch.current.my) }, b.w, b.h); // 兩指一起移動也會平移
+      applyZoom(z);
+      pinch.current = { dist, mx, my };
+    } else if (zoom.current.s > 1) {
+      applyZoom(clampZoom({ ...zoom.current, x: zoom.current.x + (e.clientX - prev.x), y: zoom.current.y + (e.clientY - prev.y) }, b.w, b.h));
+    }
+  };
+  const zUp = (e: PointerEvent<HTMLDivElement>) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  };
 
   useEffect(() => {
     hostRef.current?.appendChild(engine.element());
@@ -191,7 +252,10 @@ export function PlayerLayer() {
     <div ref={boxRef} style={{ position: "fixed", left: 0, top: 0, display: "none", zIndex: 1000, overflow: "hidden", background: "#000" }}>
       <style>{"@keyframes hg-spin{to{transform:rotate(360deg)}}@keyframes hg-sheen{0%{background-position:0% 50%}100%{background-position:300% 50%}}"}</style>
       <div style={{ position: "absolute", inset: "var(--pad, 0px)", borderRadius: "inherit", overflow: "hidden", background: "#000" }}>
-      <div ref={hostRef} style={{ position: "absolute", inset: 0, display: yt ? "none" : "block" }} />
+      <div ref={zoomLayer} style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        <div ref={hostRef} style={{ position: "absolute", inset: 0, display: yt ? "none" : "block", transformOrigin: "0 0" }} />
+      </div>
+      {canZoom ? <div ref={gesture} onPointerDown={zDown} onPointerMove={zMove} onPointerUp={zUp} onPointerCancel={zUp} style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} aria-label="影片（雙指或滾輪放大縮小）" /> : null}
       {yt ? (
         <iframe
           key={t!.key}
