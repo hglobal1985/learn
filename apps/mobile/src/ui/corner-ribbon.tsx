@@ -9,8 +9,8 @@ export function CornerRibbon({ label, bg, fg, side = "left" }: { label: string; 
   const right = side === "right";
   return (
     <View style={[styles.box, right ? { left: "auto", right: 0 } : null]} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={[styles.band, right ? { left: "auto", right: -40, transform: [{ rotate: "45deg" }] } : null, { backgroundColor: bg }]}>
-        <AppText variant="caption" style={[styles.text, { color: fg }]} numberOfLines={1}>
+      <View style={[styles.band, right ? { left: "auto", right: -42, transform: [{ rotate: "45deg" }] } : null, { backgroundColor: bg }]}>
+        <AppText variant="callout" style={[styles.text, { color: fg }]} numberOfLines={1}>
           {label}
         </AppText>
       </View>
@@ -19,7 +19,7 @@ export function CornerRibbon({ label, bg, fg, side = "left" }: { label: string; 
 }
 
 const styles = StyleSheet.create({
-  box: { position: "absolute", left: 0, top: 0, width: 96, height: 96, overflow: "hidden" },
-  band: { position: "absolute", left: -40, top: 12, width: 160, paddingVertical: 3, transform: [{ rotate: "-45deg" }], alignItems: "center", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  box: { position: "absolute", left: 0, top: 0, width: 128, height: 128, overflow: "hidden" },
+  band: { position: "absolute", left: -42, top: 24, width: 172, paddingVertical: 6, transform: [{ rotate: "-45deg" }], alignItems: "center", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
   text: { fontWeight: "800", letterSpacing: 1 },
 });
