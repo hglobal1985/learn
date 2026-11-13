@@ -322,3 +322,4 @@
 - Cloudflare 區塊擴充：帳戶層（Workers、R2、Web Analytics RUM）與網域層（httpRequestsAdaptiveGroups：國家、裝置、瀏覽器、OS、路徑、狀態碼、機房…），各合併成一次 GraphQL（避免被限流）。網域層需權杖加「區域→Analytics→讀取」，CF_ZONE_ID 在 wrangler.jsonc。停留時間 Cloudflare 沒有，不做。
 - 排序分組新增 eligible_tba「符合資格、尚未報名・費用尚未公布」（第 3 組，舊設定自動插在 eligible_upcoming 後面）。
 - EDM 放大檢視：自製拖曳（上下左右）、按鈕不透明度 0.85 且放大到 56px、按著圖片時按鈕暫時隱藏；課程頁 EDM 下方提示按著時也隱藏。未在實機驗證。
+- EDM 放大檢視：移除 ＋／－／百分比；改兩指捏合縮放（以中心為基準，兩指移動也可平移）與滑鼠滾輪；其餘按鈕縮為 44px。

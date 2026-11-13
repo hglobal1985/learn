@@ -131,21 +131,50 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
     setScale(next);
     place(w / 2 - cx * next, h / 2 - cy * next);
   };
-  const zoom = (d: number) => zoomTo(Math.min(4, Math.max(1, Math.round((live.current.scale + d) * 10) / 10)));
+  const clampScale = (v: number) => Math.min(4, Math.max(1, v));
+  const pinch = useRef<{ dist: number; scale: number; mx: number; my: number } | null>(null);
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         start.current = { ...off.current };
+        pinch.current = null;
         setTouching(true);
       },
-      onPanResponderMove: (_e, g) => place(start.current.x + g.dx, start.current.y + g.dy),
-      onPanResponderRelease: () => setTouching(false),
-      onPanResponderTerminate: () => setTouching(false),
+      onPanResponderMove: (e, g) => {
+        const t = e.nativeEvent.touches;
+        if (t && t.length >= 2) {
+          // 兩指：捏合放大縮小（以畫面中心為基準），兩指一起移動也會平移。
+          const a = t[0]!;
+          const b = t[1]!;
+          const dist = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+          const mx = (a.pageX + b.pageX) / 2;
+          const my = (a.pageY + b.pageY) / 2;
+          if (!pinch.current) pinch.current = { dist: dist || 1, scale: live.current.scale, mx, my };
+          const p = pinch.current;
+          zoomTo(clampScale(p.scale * (dist / p.dist)));
+          place(off.current.x + (mx - p.mx), off.current.y + (my - p.my));
+          pinch.current = { ...p, mx, my };
+          return;
+        }
+        if (pinch.current) {
+          pinch.current = null; // 兩指變一指：以目前位置重新計算拖曳的起點
+          start.current = { x: off.current.x - g.dx, y: off.current.y - g.dy };
+        }
+        place(start.current.x + g.dx, start.current.y + g.dy);
+      },
+      onPanResponderRelease: () => {
+        pinch.current = null;
+        setTouching(false);
+      },
+      onPanResponderTerminate: () => {
+        pinch.current = null;
+        setTouching(false);
+      },
     }),
   ).current;
-  const wheel = Platform.OS === "web" ? { onWheel: (e: { deltaY: number }) => zoom(e.deltaY < 0 ? 0.25 : -0.25) } : {};
+  const wheel = Platform.OS === "web" ? { onWheel: (e: { deltaY: number }) => zoomTo(clampScale(live.current.scale * Math.exp(-e.deltaY * 0.002))) } : {};
 
   const share = async () => {
     const r = await shareImage(title, uri, `${title}.jpg`);
@@ -173,19 +202,12 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
           </View>
           <View style={[StyleSheet.absoluteFill, { opacity: touching ? 0 : 1 }]} pointerEvents={touching ? "none" : "box-none"}>
             <View style={styles.topRight} pointerEvents="box-none">
-              {tool("關閉", onClose, <Ionicons name="close" size={30} color="#fff" />)}
+              {tool("關閉", onClose, <Ionicons name="close" size={24} color="#fff" />)}
             </View>
             <View style={styles.bottom} pointerEvents="box-none">
-              {tool("縮小", () => zoom(-0.5), <Ionicons name="remove" size={30} color="#fff" />, scale <= 1)}
-              <View style={styles.pct} pointerEvents="none">
-                <AppText variant="callout" style={{ color: "#fff", fontWeight: "800" }}>
-                  {Math.round(scale * 100)}%
-                </AppText>
-              </View>
-              {tool("放大", () => zoom(0.5), <Ionicons name="add" size={30} color="#fff" />, scale >= 4)}
               <View style={{ flex: 1 }} />
-              {tool("下載", download, <Ionicons name="download-outline" size={28} color="#fff" />)}
-              {tool("分享", share, <ShareIcon size={28} color="#fff" />)}
+              {tool("下載", download, <Ionicons name="download-outline" size={22} color="#fff" />)}
+              {tool("分享", share, <ShareIcon size={22} color="#fff" />)}
             </View>
           </View>
           {msg ? (
@@ -207,7 +229,7 @@ const styles = StyleSheet.create({
   frame: { overflow: "hidden", borderRadius: radius.md, backgroundColor: "#000" },
   topRight: { position: "absolute", top: space.xs, right: space.xs },
   bottom: { position: "absolute", left: space.xs, right: space.xs, bottom: space.xs, flexDirection: "row", alignItems: "center", gap: space.xs },
-  tool: { width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(0,0,0,0.85)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
+  tool: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.85)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
   pct: { paddingHorizontal: 12, height: 40, borderRadius: 20, backgroundColor: "rgba(0,0,0,0.85)", borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", alignItems: "center", justifyContent: "center" },
   toast: { position: "absolute", alignSelf: "center", top: "45%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.7)" },
 });
