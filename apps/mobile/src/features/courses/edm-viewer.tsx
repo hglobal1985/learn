@@ -202,20 +202,17 @@ function EdmLightbox({ uri, title, onClose }: { uri: string; title: string; onCl
           </View>
           <View style={[StyleSheet.absoluteFill, { opacity: touching ? 0 : 1 }]} pointerEvents={touching ? "none" : "box-none"}>
             <View style={styles.topRight} pointerEvents="box-none">
-              {tool("關閉", onClose, <Ionicons name="close" size={32} color="#fff" />)}
+              {tool("關閉", onClose, <Ionicons name="close" size={26} color="#fff" />)}
             </View>
-            <View style={styles.helpRow} pointerEvents="none">
-              <View style={styles.help}>
+            <View style={styles.bottom} pointerEvents="box-none">
+              <View style={styles.help} pointerEvents="none">
                 <Ionicons name="move" size={18} color="#fff" />
-                <AppText variant="callout" style={{ color: "#fff", fontWeight: "700" }}>
+                <AppText variant="caption" style={{ color: "#fff", fontWeight: "700", flexShrink: 1 }}>
                   可拖曳移動、兩指放大縮小
                 </AppText>
               </View>
-            </View>
-            <View style={styles.bottom} pointerEvents="box-none">
-              <View style={{ flex: 1 }} />
-              {tool("下載", download, <Ionicons name="download-outline" size={30} color="#fff" />)}
-              {tool("分享", share, <ShareIcon size={30} color="#fff" />)}
+              {tool("下載", download, <Ionicons name="download-outline" size={24} color="#fff" />)}
+              {tool("分享", share, <ShareIcon size={24} color="#fff" />)}
             </View>
           </View>
           {msg ? (
@@ -237,8 +234,7 @@ const styles = StyleSheet.create({
   frame: { overflow: "hidden", borderRadius: radius.md, backgroundColor: "#000" },
   topRight: { position: "absolute", top: 16, right: 16 },
   bottom: { position: "absolute", left: 16, right: 16, bottom: 16, flexDirection: "row", alignItems: "center", gap: space.xs },
-  tool: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
-  helpRow: { position: "absolute", left: 16, right: 16, bottom: 16 + 64 + 10, alignItems: "center" },
-  help: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, height: 36, borderRadius: 18, backgroundColor: "#000" },
+  tool: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#000", alignItems: "center", justifyContent: "center" },
+  help: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, minHeight: 36, borderRadius: 18, backgroundColor: "#000" },
   toast: { position: "absolute", alignSelf: "center", top: "45%", paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.7)" },
 });
