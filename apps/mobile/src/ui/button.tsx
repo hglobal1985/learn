@@ -47,7 +47,7 @@ export function Button({
     >
       <View style={styles.row}>
         {loading ? <ActivityIndicator color={look.fg} /> : icon ? <Icon name={icon} color={look.fg} size={18} /> : null}
-        <AppText variant="headline" style={{ color: look.fg }}>
+        <AppText variant="headline" numberOfLines={1} style={{ color: look.fg }}>
           {label}
         </AppText>
       </View>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { api, type Order } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
-import { ntd, orderStatus } from "@/features/format";
+import { ntd } from "@/features/format";
 import { MoneyArt } from "@/features/orders/money-art";
 import { PaymentForm } from "@/features/orders/payment-form";
 import { OrderTimeline } from "@/features/orders/timeline";
@@ -12,7 +12,7 @@ import { WebOnly } from "@/features/web-only";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
-import { AppText, Button, Card, ErrorView, LoadingView, NoticeBox, Pill, Screen } from "@/ui";
+import { AppText, Button, Card, ErrorView, LoadingView, NoticeBox, Screen } from "@/ui";
 import { showToast } from "@/ui/toast";
 
 /** 報名明細：金額（超大）、狀態、取消按鈕（第一個畫面就看得到）、審核人員與收費窗口、處理紀錄與留言（直接展開）。付款代碼還沒串金流，先不顯示。 */
@@ -24,7 +24,6 @@ function OrderDetail() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!data) return <Screen header={false}>{loading ? <LoadingView /> : <ErrorView message={error ?? "找不到這筆報名"} onRetry={reload} />}</Screen>;
-  const st = orderStatus(data);
   const cancel = async () => {
     if (!(await confirmSheet({ title: "取消報名", message: "確定要取消這筆報名嗎？取消後可以重新報名。", confirmLabel: "確定取消", cancelLabel: "先不要", danger: true }))) return;
     setBusy(true);
@@ -58,11 +57,8 @@ function OrderDetail() {
         <AppText style={[styles.amount, { color: c.text }]} accessibilityLabel={`金額 ${total} 元`} adjustsFontSizeToFit numberOfLines={1}>
           {total ? ntd(total) : "免費"}
         </AppText>
-        <View style={{ alignSelf: "center" }}>
-          <Pill label={st.label} tone={st.tone} />
-        </View>
       </Card>
-      {data.status === "pending" ? <PaymentForm order={data} onDone={reload} leftAction={<Button variant="danger" label="取消報名" icon="close-circle-outline" loading={busy} disabled={busy} onPress={cancel} fullWidth />} /> : null}
+      {data.status === "pending" ? <PaymentForm order={data} onDone={reload} leftAction={<Button variant="danger" label="取消報名" loading={busy} disabled={busy} onPress={cancel} fullWidth />} /> : null}
       {data.status === "opened" ? <Button label="前往學習中的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
       {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
 
@@ -72,27 +68,27 @@ function OrderDetail() {
       {err ? <NoticeBox tone="danger" text={err} /> : null}
 
 
-      {data.reviewers?.length || data.collectors?.length ? (
+      {data.status === "pending" ? (
         <Card>
-          {data.reviewers?.length ? (
+          {true ? (
             <View style={styles.person}>
               <Ionicons name="shield-checkmark-outline" size={22} color={c.accentText} />
               <AppText variant="callout" tone="muted">
                 審核人員
               </AppText>
               <AppText variant="headline" style={{ flex: 1 }}>
-                {data.reviewers.join("、")}
+                {data.reviewers?.length ? data.reviewers.join("、") : "總部（尚未指定）"}
               </AppText>
             </View>
           ) : null}
-          {data.collectors?.length ? (
+          {true ? (
             <View style={styles.person}>
               <Ionicons name="wallet-outline" size={22} color={c.accentText} />
               <AppText variant="callout" tone="muted">
                 收費窗口
               </AppText>
               <AppText variant="headline" style={{ flex: 1 }}>
-                {data.collectors.join("、")}
+                {data.collectors?.length ? data.collectors.join("、") : "總部（尚未指定）"}
               </AppText>
             </View>
           ) : null}

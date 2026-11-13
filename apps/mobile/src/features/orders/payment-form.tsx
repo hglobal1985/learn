@@ -69,7 +69,7 @@ export function PaymentForm({ order, onDone, leftAction }: { order: Order; onDon
   const ready = method === "cash" || (method === "transfer" && /^\d{5}$/.test(last5.trim())) || (method === "linepay" && !!date) || (method === "friend" && !!friend.trim());
 
   return (
-    <Section title="繳費方式">
+    <View>
       <Card>
         <View style={styles.grid}>
           {PAYMENT_METHODS.map((m) => {
@@ -129,7 +129,7 @@ export function PaymentForm({ order, onDone, leftAction }: { order: Order; onDon
           </View>
         </View>
       </Card>
-    </Section>
+    </View>
   );
 }
 
