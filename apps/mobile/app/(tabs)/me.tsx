@@ -140,6 +140,7 @@ export default function MeScreen() {
       {member && (member.reviewer || member.role === "admin" || canManageCourses(member) || member.canViewStats) ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
+            {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
             {member.titles.includes("超級管理員") ? <ListRow icon="chatbubble-ellipses-outline" title="編輯學習金句" subtitle="首頁「繼續學習」下方的金句" onPress={() => router.push("/admin/quotes")} /> : null}
             {member.role === "admin" ? <ListRow icon="megaphone-outline" title="跑馬燈公告" subtitle="首頁公告：自動輪播、排序、停用" onPress={() => router.push("/admin/announcements")} /> : null}
             {isWeb && member.reviewer ? <ListRow icon="receipt-outline" title="報名審核" subtitle="確認繳費後開通、匯出對帳報表" onPress={() => router.push("/admin/orders")} /> : null}
@@ -151,7 +152,6 @@ export default function MeScreen() {
             {member.titles.includes("超級管理員") ? <ListRow icon="pricetags-outline" title="關鍵字管理" subtitle="集中新增、改名、刪除課程的分類、系列、場地" onPress={() => router.push("/admin/keywords")} /> : null}
             {member.titles.includes("超級管理員") ? <ListRow icon="trophy-outline" title="學習成就徽章設定" subtitle="設定要達成什麼條件才能獲得徽章" onPress={() => router.push("/admin/achievements")} /> : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
-            {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
         </Section>
       ) : null}
