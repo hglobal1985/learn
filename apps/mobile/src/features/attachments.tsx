@@ -1,6 +1,5 @@
 import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useState } from "react";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";

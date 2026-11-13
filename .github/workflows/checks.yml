@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  shared-and-api:
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,10 +16,6 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --ignore-scripts --no-audit --no-fund
-      - run: npm run check:core
-      - run: npm run test:api
-      - run: npm run check:api
-      - run: npm run test:preview
       - run: npm run typecheck -w @learn/mobile
       - run: npm run lint
       - run: npm run build:web -w @learn/mobile

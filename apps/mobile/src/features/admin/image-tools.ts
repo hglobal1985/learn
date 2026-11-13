@@ -61,14 +61,6 @@ function canvasOf(w: number, h: number) {
   return { c, ctx };
 }
 
-/** 等比縮到長邊不超過 maxSide（不放大），輸出 JPEG。 */
-export async function compress(img: HTMLImageElement, maxSide: number, quality = 0.88): Promise<Blob> {
-  const s = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-  const { c, ctx } = canvasOf(Math.max(1, Math.round(img.naturalWidth * s)), Math.max(1, Math.round(img.naturalHeight * s)));
-  ctx.drawImage(img, 0, 0, c.width, c.height);
-  return toBlob(c, quality);
-}
-
 /** 取圖片的 crop 區域（原圖像素；null＝整張），等比縮到長邊不超過 maxSide，輸出 JPEG。 */
 export async function cropCompress(img: HTMLImageElement, crop: Rect | null, maxSide: number, quality = 0.9): Promise<Blob> {
   const src = crop ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };

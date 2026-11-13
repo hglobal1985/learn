@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { api, type Order } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
 import { eventDays, ntd } from "@/features/format";
@@ -13,7 +13,6 @@ import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, LoadingView, NoticeBox, Screen } from "@/ui";
-import { showToast } from "@/ui/toast";
 
 /** 報名明細：金額（超大）、狀態、取消按鈕（第一個畫面就看得到）、審核人員與收費窗口、處理紀錄與留言（直接展開）。付款代碼還沒串金流，先不顯示。 */
 function OrderDetail() {
@@ -35,14 +34,6 @@ function OrderDetail() {
     } catch (e) {
       setErr((e as Error).message);
       setBusy(false);
-    }
-  };
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(data.payRef ?? "");
-      showToast("已複製付款代碼");
-    } catch {
-      showToast("請長按代碼複製");
     }
   };
   const total = data.items.reduce((n, i) => n + i.priceTwd, 0);

@@ -476,8 +476,6 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const completed = new Set(done.results.map((r) => r.lesson_id));
   const summaryNow = summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code, DIAMOND]));
   const watchFree = summaryNow.watchFree;
-  const freeNow = row.price_twd > 0 && inFreeWindow(row);
-  const web = ctx.platform === "web";
   const admin = !!s && managesCourse(s, row.host_center_key);
   return {
     ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code, DIAMOND])),
@@ -1751,7 +1749,7 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/complete$/,
     async (ctx, [courseId, lessonId]) => {
       const s = requireMember(ctx);
-      const target = await lessonOf(ctx, courseId, lessonId);
+      await lessonOf(ctx, courseId, lessonId); // 找不到章節時會丟錯
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       if (lessonId.startsWith(FULL_PREFIX)) return { ok: true }; // 完整版影片不計入章節進度
       await ensureFreeEnrollment(ctx, courseId);
@@ -2214,7 +2212,7 @@ const routes: [string, RegExp, Handler][] = [
     "GET",
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/attachments$/,
     async (ctx, [courseId, lessonId]) => {
-      const lesson = await lessonOf(ctx, courseId, lessonId);
+      await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       const { results } = await ctx.db.prepare(`SELECT ${ATTACH_COLS} FROM lesson_attachments WHERE lesson_id = ? ORDER BY created_at`).bind(lessonId).all<AttachmentRow>();
       return Promise.all(results.map((r) => attachmentOut(ctx.env, r, true)));
@@ -2558,7 +2556,7 @@ const routes: [string, RegExp, Handler][] = [
   [
     "DELETE",
     /^\/admin\/courses\/([\w-]+)\/edm$/,
-    async (ctx, [id, part]) => {
+    async (ctx, [id, _part]) => {
       const s = requireMember(ctx);
       await requireCourseArt(ctx, s, id);
       const old = await ctx.db.prepare("SELECT edm_key AS k FROM courses WHERE id = ?").bind(id).first<{ k: string | null }>();

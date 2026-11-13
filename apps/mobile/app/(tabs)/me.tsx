@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useState } from "react";
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { confirmAsk } from "@/features/confirm";
 import { MemberHeader } from "@/features/member-header";
 import { openAccountCenter } from "@/features/account-link";

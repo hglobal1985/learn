@@ -1,6 +1,6 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
 import { AttachmentManager } from "@/features/attachments";
@@ -10,7 +10,7 @@ import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, Chips, DateSelect, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen, todayStr } from "@/ui";
+import { AppText, Button, Card, DateSelect, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen, todayStr } from "@/ui";
 
 const kinds: { key: MediaType; label: string }[] = [
   { key: "demo", label: "示範短片" },

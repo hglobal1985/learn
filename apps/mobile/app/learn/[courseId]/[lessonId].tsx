@@ -14,8 +14,8 @@ import { PlayerSlot } from "@/features/player/player-slot";
 import { usePlayer } from "@/features/player/use-player";
 import { PlayerControls } from "@/features/player/player-controls";
 import { useApi, useSession } from "@/state/session";
-import { maxContentWidth, space } from "@/theme/tokens";
-import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { space } from "@/theme/tokens";
+import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen } from "@/ui";
 
 export default function LessonScreen() {
   const { courseId, lessonId } = useLocalSearchParams<{ courseId: string; lessonId: string }>();
@@ -92,7 +92,6 @@ export default function LessonScreen() {
   const next = c.lessons[index + 1];
   if (!lesson) return <Screen header={false}><ErrorView message="找不到這個章節" /></Screen>;
 
-  const segmentDone = legacyYoutube ? legacyDone : player.track?.key === track?.key && player.segmentEnded;
   const engineError = track && player.track?.key === track.key ? player.error : null;
   const pinned = !!track && claimed === track.key;
 

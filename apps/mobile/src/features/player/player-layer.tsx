@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { VideoView } from "expo-video";
 import { useEffect, useRef } from "react";
-import { Animated, Easing, Image, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Animated, Easing, PanResponder, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveUrl } from "@/api/client";
 import { useSession } from "@/state/session";

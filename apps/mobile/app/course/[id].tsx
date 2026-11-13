@@ -7,10 +7,10 @@ import { CommentBoard } from "@/features/comments/comment-board";
 import { confirmSheet } from "@/features/confirm";
 import { EdmStage } from "@/features/courses/edm-viewer";
 import { HeaderShare } from "@/features/share-button";
-import { dateTime, eventDays, ntd } from "@/features/format";
+import { eventDays } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
-import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Screen, Section } from "@/ui";
 
 const isWeb = Platform.OS === "web";
 

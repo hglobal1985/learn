@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, PAYMENT_METHODS, type Order, type PaymentMethodKey } from "@/api/client";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, DateSelect, NoticeBox, Section, Select, todayStr } from "@/ui";
+import { AppText, Button, Card, DateSelect, NoticeBox, Select, todayStr } from "@/ui";
 import { showToast } from "@/ui/toast";
 
 const pad = (n: number) => String(n).padStart(2, "0");

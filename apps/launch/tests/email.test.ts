@@ -54,7 +54,7 @@ test("通知設定：驗證格式、可關閉 Email、刪除資料時一併刪�
 });
 
 test("Email 通知：依設定寄給學員與總部，關閉者不寄；沒綁定寄信時不寄", async () => {
-  const { call, login, sent, env } = setup();
+  const { call, login, sent } = setup();
   const lookups: string[][] = [];
   fakeCentral(new Map([["demo-admin", "hq@example.com"], ["demo-student", "stu@example.com"], ["demo-outsider", "out@example.com"]]), lookups);
   const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));

@@ -409,3 +409,10 @@
 - 2026-11-14 設定頁：移除姓名下方的卡片框，身分／中心標籤置中放在姓名下方；登出按鈕移到頁面底部（帳號區塊之後、頁尾之前）。未實機驗證。
 - 2026-11-14 網頁：影片進入系統浮動視窗（PiP）時，頁面內的迷你播放器隱藏（player-layer.web.tsx，tick 內判斷 engine.isPip()），避免兩個小視窗；PiP 結束後自動恢復。Android Chrome 實測：全螢幕＋回桌面可浮出（Chrome 自己會跳全螢幕退出提示，網頁無法關閉）；縮小後通知欄播放控制正常。
 - 2026-11-14 修正：在系統浮動視窗按 ✕ 關閉後，不再改由通知欄音訊接手（engine.web.ts pipActive／pipLeftAt，intent=false）。未實機驗證。
+
+## 程式清理（2026-11-14，業主睡覺時授權）
+- 移除 V1 舊程式（git 歷史可找回）：`apps/api`、`apps/preview`、`packages/shared`、`apps/mobile/legacy-app`、`apps/mobile/src/components`、`src/platform`、`src/lib/{api,session,demo,central-auth,theme}.ts`。這些沒有任何地方引用。根目錄 `package.json` workspaces 只剩 `apps/launch`、`apps/mobile`；CI（`.github/workflows/checks.yml`）移除對應步驟。
+- 清掉未使用的 import／變數／函式（`tsc --noUnusedLocals` 零錯誤；`image-tools.compress` 刪除；api.ts 未使用變數）。
+- ESLint 重新可用（`npm run lint`）：補一個空的 react-hooks 規則定義、關閉對本專案刻意寫法的幾條規則；目前 0 錯誤 0 警告。
+- 加強：`ui-config` 回傳格式不對時不覆蓋預設值（避免課程頁當掉）。
+- 驗證：型別檢查、後端 76 項測試、ESLint 都通過；網頁用模擬手機載入 5 個頁面無錯誤。

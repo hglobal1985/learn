@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { api, type CourseComment } from "@/api/client";
 import { dateTime } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
