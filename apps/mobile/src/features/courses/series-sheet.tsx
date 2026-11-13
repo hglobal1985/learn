@@ -4,9 +4,11 @@ import type { CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
-import { AppText, Button, Pill } from "@/ui";
+import { AppText, Button } from "@/ui";
 import { BottomSheet } from "@/ui/bottom-sheet";
-import { dateState } from "./ribbons";
+import { ribbonsFor } from "./ribbons";
+import { useSession } from "@/state/session";
+import { useUiConfig } from "@/state/ui-config";
 import { startOf } from "./sort";
 import { todayStr } from "@/ui/date-select";
 
@@ -28,13 +30,20 @@ function byNearest(items: CourseSummary[]): CourseSummary[] {
   });
 }
 
-function statusPill(c: CourseSummary) {
-  if (c.enrollment === "opened") return <Pill label="已開通" tone="success" />;
-  if (c.enrollment === "pending") return <Pill label="審核中" tone="warning" />;
-  const ds = dateState(c);
-  if (ds === "ended") return <Pill label="已結束" />;
-  if (ds === "running") return <Pill label="進行中" tone="accent" />;
-  return <Pill label={c.priceTba ? "費用尚未公布" : "尚未開始"} tone={c.priceTba ? "warning" : "neutral"} />;
+/** 狀態標籤：與課程卡左邊緞帶同步的文字與顏色；沒有左緞帶時用右邊緞帶（倒數、進行中…）。 */
+function StatusChip({ course }: { course: CourseSummary }) {
+  const { member } = useSession();
+  const { config } = useUiConfig();
+  const r = ribbonsFor(course, member, config);
+  const rb = r.left ?? r.right;
+  if (!rb) return null;
+  return (
+    <View style={[styles.chip, { backgroundColor: rb.bg }]}>
+      <AppText variant="caption" style={{ color: rb.fg, fontWeight: "800" }} numberOfLines={1}>
+        {rb.label}
+      </AppText>
+    </View>
+  );
 }
 
 /** 「還有 N 個梯次」：從下方彈出，列出同系列所有梯次（日期＋狀態），點一列進入那一場的課程頁。 */
@@ -64,7 +73,7 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
                 {x.title}
               </AppText>
             </View>
-            {statusPill(x)}
+            <StatusChip course={x} />
             <AppText tone="muted">›</AppText>
           </Pressable>
         ))}
@@ -75,5 +84,6 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
 }
 
 const styles = StyleSheet.create({
+  chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, maxWidth: 120 },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, borderTopWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
 });
