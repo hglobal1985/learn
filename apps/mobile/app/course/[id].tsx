@@ -73,7 +73,7 @@ export default function CourseDetailScreen() {
     if (free) return <Button label="免費報名" icon="gift-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
     // iOS/Android：依商店規範不顯示付費報名方式，只說明尚未開通。
     if (!isWeb) return <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
-    return <Button label="按此報名＋繳費審核" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
+    return <Button label="按此報名＋審核繳費" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
   };
 
   /** 審核中：同一列兩顆按鈕——「付款審核中（點擊查看）」與「取消」。 */

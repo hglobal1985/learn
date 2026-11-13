@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { useEffect, useRef, useState, type ElementRef } from "react";
-import { Image, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Image, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
 import { resolveUrl, type CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
@@ -58,14 +58,51 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
   const { c } = useTheme();
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [page, setPage] = useState(0);
-  const scroller = useRef<ElementRef<typeof ScrollView>>(null);
   const cur = courses[Math.min(page, Math.max(0, courses.length - 1))];
-  const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => box.w && setPage(Math.round(e.nativeEvent.contentOffset.x / box.w));
-  /** 點圓點直接跳到那一張（電腦版用滑鼠、手機用手指都可以）。 */
-  const goTo = (i: number) => {
+  const x = useRef(new Animated.Value(0)).current;
+  const live = useRef({ page: 0, w: 0, n: 0 });
+  live.current = { page, w: box.w, n: courses.length };
+  const slideTo = (i: number) => {
+    const { w } = live.current;
     setPage(i);
-    scroller.current?.scrollTo({ x: i * box.w, animated: true });
+    Animated.timing(x, { toValue: -i * w, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: Platform.OS !== "web" }).start();
   };
+  // 資料或寬度變動時，回到合法的頁面。
+  useEffect(() => {
+    const i = Math.min(page, Math.max(0, courses.length - 1));
+    if (i !== page) setPage(i);
+    x.setValue(-i * box.w);
+  }, [box.w, courses.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 手指左右滑：不管拖多大力、多快，放手後最多只翻一張（往左滑＝下一張、往右滑＝上一張）。
+  const pan = useMemo(() => {
+    let start = 0;
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.2,
+      onPanResponderGrant: () => {
+        x.stopAnimation((v) => (start = v));
+      },
+      onPanResponderMove: (_e, g) => {
+        const { w, n } = live.current;
+        const min = -(n - 1) * w;
+        let v = start + g.dx;
+        if (v > 0) v *= 0.3;
+        if (v < min) v = min + (v - min) * 0.3;
+        // 一次最多拖一張的距離
+        const base = -live.current.page * w;
+        v = Math.max(base - w, Math.min(base + w, v));
+        x.setValue(v);
+      },
+      onPanResponderRelease: (_e, g) => {
+        const { w, n, page: p } = live.current;
+        let next = p;
+        if (g.dx < -w * 0.18 || g.vx < -0.4) next = p + 1;
+        else if (g.dx > w * 0.18 || g.vx > 0.4) next = p - 1;
+        slideTo(Math.max(0, Math.min(n - 1, next)));
+      },
+      onPanResponderTerminate: () => slideTo(live.current.page),
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const goTo = (i: number) => slideTo(i);
   const [bg, fg] = tone === "green" ? [c.accentSoft, c.accentText] : [c.warningSoft, c.warning];
   return (
     <View style={styles.col}>
@@ -81,28 +118,15 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
       <View style={styles.stage} onLayout={(e) => setBox({ w: Math.floor(e.nativeEvent.layout.width), h: Math.floor(e.nativeEvent.layout.height) })}>
         {box.w > 0 && box.h > 0 ? (
           courses.length ? (
-            <ScrollView
-              ref={scroller}
-              horizontal
-              pagingEnabled
-              // 一次最多只翻一張：輕輕一滑不會連跳 2～3 張（手機用 snapToInterval＋停用慣性，網頁用 scroll-snap-stop）。
-              snapToInterval={box.w}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              disableIntervalMomentum
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={onEnd}
-              onScroll={onEnd}
-              scrollEventThrottle={64}
-              nestedScrollEnabled
-              style={{ width: box.w, height: box.h }}
-            >
-              {courses.map((course) => (
-                <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={course.title} style={[{ width: box.w, height: box.h }, SNAP_STOP]}>
-                  <Slide course={course} w={box.w} h={box.h} />
-                </Pressable>
-              ))}
-            </ScrollView>
+            <View style={{ width: box.w, height: box.h, overflow: "hidden", ...(Platform.OS === "web" ? ({ touchAction: "pan-y", userSelect: "none" } as object) : {}) }} {...pan.panHandlers}>
+              <Animated.View style={{ flexDirection: "row", width: box.w * courses.length, height: box.h, transform: [{ translateX: x }] }}>
+                {courses.map((course) => (
+                  <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={course.title} style={{ width: box.w, height: box.h }}>
+                    <Slide course={course} w={box.w} h={box.h} />
+                  </Pressable>
+                ))}
+              </Animated.View>
+            </View>
           ) : (
             <View style={{ width: box.w, height: box.h, borderRadius: radius.md, backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderStyle: "dashed", padding: space.sm, justifyContent: "center", alignItems: "center", gap: space.sm }}>
               <Icon name={icon} size={34} color={c.textMuted} />
@@ -150,16 +174,13 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
   );
 }
 
-/** 網頁：滑動時每一張都要停住（輕滑不會一次跳過好幾張）。 */
-const SNAP_STOP = (Platform.OS === "web" ? { scrollSnapStop: "always" } : {}) as object;
-
 const styles = StyleSheet.create({
   col: { flex: 1, minWidth: 0, gap: space.xs, alignItems: "stretch" },
   pill: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs, minHeight: 36, paddingHorizontal: space.sm, borderRadius: radius.pill },
   note: { textAlign: "center", minHeight: 32 },
   stage: { flex: 1, minHeight: 120 },
   dots: { flexDirection: "row", justifyContent: "center", alignItems: "center", height: 26 },
-  dotHit: { width: 22, height: 26, alignItems: "center", justifyContent: "center", ...(Platform.OS === "web" ? ({ cursor: "pointer" } as object) : {}) },
+  dotHit: { width: 16, height: 26, alignItems: "center", justifyContent: "center", ...(Platform.OS === "web" ? ({ cursor: "pointer" } as object) : {}) },
   dot: { width: 11, height: 11, borderRadius: 6 },
   info: { gap: 2, alignItems: "center", minHeight: 112 },
 });

@@ -297,6 +297,7 @@ type CourseRow = {
   event_end: string | null;
   is_public: number;
   price_tba: number;
+  hide_home: number;
   open_runs: number;
   cover_key: string | null;
   edm_view_y: number;
@@ -307,7 +308,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, (SELECT COUNT(*) FROM course_runs r2 WHERE r2.course_id = c.id AND r2.status = 'open' AND (r2.register_until IS NULL OR r2.register_until > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS open_runs, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, (SELECT COUNT(*) FROM course_runs r2 WHERE r2.course_id = c.id AND r2.status = 'open' AND (r2.register_until IS NULL OR r2.register_until > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS open_runs, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -377,6 +378,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     isPublic: row.is_public === 1,
     pendingOrderId: state.pendingOrder.get(row.id) ?? null,
     priceTba: row.price_tba === 1,
+    hideFromHome: row.hide_home === 1,
     registrationOpen: row.run_count === 0 || row.open_runs > 0,
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
@@ -1106,6 +1108,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (body.allowPresident !== undefined) sets.push(["allow_president", body.allowPresident === true ? 1 : 0]);
   if (body.isPublic !== undefined) sets.push(["is_public", body.isPublic === true ? 1 : 0]);
   if (body.priceTba !== undefined) sets.push(["price_tba", body.priceTba === true ? 1 : 0]);
+  if (body.hideFromHome !== undefined) sets.push(["hide_home", body.hideFromHome === true ? 1 : 0]);
   if (body.edmViewY !== undefined) {
     const y = Number(body.edmViewY);
     if (!Number.isFinite(y) || y < 0 || y > 1) fail(400, "invalid_view", "EDM 預設位置不正確");

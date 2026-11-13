@@ -65,6 +65,7 @@ export type CourseSummary = {
   pendingOrderId: string | null;
   /** 費用尚未公布：顯示「費用尚未公布」、暫不開放報名。 */
   priceTba: boolean;
+  hideFromHome: boolean;
   /** 目前開放報名（沒有場次＝true；有場次＝至少一個場次尚未截止）。額滿與否要進介紹頁才知道。 */
   registrationOpen: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */

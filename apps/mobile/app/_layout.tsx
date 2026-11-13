@@ -35,8 +35,8 @@ export default function RootLayout() {
           <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerBackButtonDisplayMode: "minimal", contentStyle: { backgroundColor: c.background } }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "寰宇行動大學" }} />
-            <Stack.Screen name="course/[id]" options={{ title: "課程介紹" }} />
-            <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課" }} />
+            <Stack.Screen name="course/[id]" options={{ title: "課程介紹", headerStyle: { height: 44 } as object }} />
+            <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課", headerStyle: { height: 44 } as object }} />
             <Stack.Screen name="admin/list-rules" options={{ title: "課程排序與條件" }} />
             <Stack.Screen name="admin/stats" options={{ title: "統計分析" }} />
             <Stack.Screen name="achievements" options={{ title: "學習成就" }} />

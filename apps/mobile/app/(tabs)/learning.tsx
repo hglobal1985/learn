@@ -1,15 +1,23 @@
 import { router } from "expo-router";
-import { useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
+import { loadLastLesson, type LastLesson } from "@/lib/last-lesson";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { CourseCard } from "@/features/courses/course-card";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
-import { Button, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, Section, Select } from "@/ui";
+import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, Section, Select } from "@/ui";
 
 export default function LearningScreen() {
   const { member } = useSession();
   const { data, error, loading, reload } = useApi<CourseSummary[]>(member ? "/courses" : null);
+  const [last, setLast] = useState<LastLesson | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (member) loadLastLesson(member.sub).then(setLast);
+    }, [member?.sub]), // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const [kind, setKind] = useState("");
   const [unit, setUnit] = useState("");
   const enrolled = useMemo(() => (data ?? []).filter((c) => c.enrollment === "opened" || c.enrollment === "pending"), [data]);
@@ -19,6 +27,7 @@ export default function LearningScreen() {
   const pending = shown.filter((c) => c.enrollment === "pending");
   const inProgress = mine.filter((c) => c.completedLessons < c.lessonCount);
   const finished = mine.filter((c) => c.lessonCount > 0 && c.completedLessons >= c.lessonCount);
+  const resume = last && mine.some((c) => c.id === last.courseId) ? last : null;
   if (!member)
     return (
       <Screen title="學習中">
@@ -49,6 +58,13 @@ export default function LearningScreen() {
           body="到課程頁挑一門免費課程，報名後立刻就能開始。"
           action={<Button label="去找課程" onPress={() => router.navigate("/courses")} />}
         />
+      ) : null}
+      {resume ? (
+        <Card>
+          <AppText variant="caption" tone="muted">{resume.courseTitle}</AppText>
+          <AppText variant="callout" numberOfLines={2} style={{ fontWeight: "700" }}>{resume.lessonTitle}</AppText>
+          <Button label="回到剛才的學習" icon="play-circle-outline" onPress={() => router.push(`/learn/${resume.courseId}/${resume.lessonId}`)} fullWidth />
+        </Card>
       ) : null}
       {inProgress.length ? (
         <View style={styles.list}>

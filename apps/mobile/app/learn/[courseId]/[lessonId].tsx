@@ -1,5 +1,6 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
+import { saveLastLesson } from "@/lib/last-lesson";
 import { Platform, StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type Playback } from "@/api/client";
 import { AttachmentList } from "@/features/attachments";
@@ -46,6 +47,9 @@ export default function LessonScreen() {
     () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: c.edmUrl }) : null),
     [playback, c?.id, c?.title, lessonRow?.id, lessonRow?.title, legacyYoutube],
   );
+  useEffect(() => {
+    if (member && c && lessonRow) saveLastLesson(member.sub, { courseId: c.id, lessonId: lessonRow.id, lessonTitle: lessonRow.title, courseTitle: c.title });
+  }, [member?.sub, c?.id, lessonRow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // 要播這一堂：同一堂直接接上；另一堂正在播放就詢問是否中斷，選「繼續原本的」就回到原本那一堂。
   useEffect(() => {
     if (legacyYoutube) engine.close();

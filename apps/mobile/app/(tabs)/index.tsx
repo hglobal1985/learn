@@ -48,7 +48,7 @@ export default function HomeScreen() {
     .filter((x) => x.enrollment === "opened")
     .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
   // 會員：符合獎銜、尚未報名的課程；訪客：完全公開的課程。
-  const recommended = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && (member ? x.eligible : x.isPublic));
+  const recommended = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && !x.hideFromHome && (member ? x.eligible && !x.isPublic : x.isPublic));
   return (
     <>
     {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} initial={member.profileForm ?? null} /> : null}

@@ -44,6 +44,8 @@ export function PlayerLayer() {
   const zoomLayer = useRef<HTMLDivElement>(null);
   const gesture = useRef<HTMLDivElement>(null);
   const lastTap = useRef({ t: 0, x: 0, y: 0 });
+  const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapInfo = useRef<{ x: number; y: number; t: number; multi: boolean } | null>(null);
   const [showHint, setShowHint] = useState(false);
   const justSwitched = () => engine.recentlySwitched();
   const zoom = useRef<Zoom>(IDENTITY);
@@ -88,10 +90,13 @@ export function PlayerLayer() {
     const now = Date.now();
     const lt = lastTap.current;
     if (pointers.current.size === 0 && now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 40) {
+      if (tapTimer.current) clearTimeout(tapTimer.current); // 點兩下是還原大小，不算「點一下播放／暫停」
+      tapTimer.current = null;
       applyZoom(IDENTITY);
       lastTap.current = { t: 0, x: 0, y: 0 };
     } else lastTap.current = { t: now, x: e.clientX, y: e.clientY };
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tapInfo.current = pointers.current.size === 1 ? { x: e.clientX, y: e.clientY, t: now, multi: false } : { ...(tapInfo.current ?? { x: 0, y: 0, t: now }), multi: true };
     e.currentTarget.setPointerCapture(e.pointerId);
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -117,8 +122,19 @@ export function PlayerLayer() {
     }
   };
   const zUp = (e: PointerEvent<HTMLDivElement>) => {
+    const had = pointers.current.has(e.pointerId);
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
+    // 點一下（沒拖曳、沒雙指）＝播放／暫停；稍等一下確認不是「點兩下」。
+    const ti = tapInfo.current;
+    if (had && e.type === "pointerup" && ti && !ti.multi && pointers.current.size === 0 && Date.now() - ti.t < 400 && Math.hypot(e.clientX - ti.x, e.clientY - ti.y) < 10 && !justSwitched()) {
+      if (tapTimer.current) clearTimeout(tapTimer.current);
+      tapTimer.current = setTimeout(() => {
+        tapTimer.current = null;
+        engine.toggle();
+      }, 300);
+    }
+    if (pointers.current.size === 0) tapInfo.current = null;
   };
 
   // 操作提示：進入影片、觸摸影片、拖曳時間軸時顯示，3.5 秒沒操作就自動消失。
