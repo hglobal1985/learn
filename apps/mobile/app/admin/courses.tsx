@@ -35,8 +35,8 @@ export default function AdminCoursesScreen() {
 
   const sorted = useMemo(() => sortCourses(courses.data ?? [], member, config.sortGroups), [courses.data, member, config.sortGroups]);
   const categories = useMemo(() => [...new Set(sorted.flatMap((x) => x.category.split("、")).filter(Boolean))], [sorted]);
-  const units = useMemo(() => [...new Set(sorted.flatMap((x) => [x.guidanceUnit, ...x.hostUnit.split("、")]).filter(Boolean))], [sorted]);
-  const list = sorted.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit.split("、").includes(unit)));
+  const units = useMemo(() => [...new Set(sorted.flatMap((x) => x.hostUnit.split("、")).filter(Boolean))], [sorted]);
+  const list = sorted.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.hostUnit.split("、").includes(unit)));
 
   // 同系列合併成一張，從「還有 N 個梯次」選擇要管理哪一梯（選了之後這張卡就換成那一梯）。
   const entries = useMemo(
@@ -122,7 +122,7 @@ export default function AdminCoursesScreen() {
       <Button label="新增課程" icon="add-circle-outline" onPress={() => router.push("/admin/course-edit")} fullWidth />
       <View style={styles.filters}>
         <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
-        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
+        {units.length ? <Select label="主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
       </View>
       <AppText variant="caption" tone="muted">
         共 {entries.length} 門課程（同系列已合併）。點「還有 N 個梯次」選擇要管理哪一梯；下方按鈕用來編輯、上下架、管理章節，點課程卡可以預覽課程頁。

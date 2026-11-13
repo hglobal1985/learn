@@ -21,8 +21,8 @@ export default function CoursesScreen() {
   const { config } = useUiConfig();
   const courses = useMemo(() => sortCourses(data ?? [], member, config.sortGroups), [data, member, config.sortGroups]);
   const categories = useMemo(() => [...new Set(courses.flatMap((x) => x.category.split("、")).filter(Boolean))], [courses]);
-  const units = useMemo(() => [...new Set(courses.flatMap((x) => [x.guidanceUnit, ...x.hostUnit.split("、")]).filter(Boolean))], [courses]);
-  const list = courses.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit.split("、").includes(unit)));
+  const units = useMemo(() => [...new Set(courses.flatMap((x) => x.hostUnit.split("、")).filter(Boolean))], [courses]);
+  const list = courses.filter((x) => (category === ALL || x.category.split("、").includes(category)) && (unit === ALL || x.hostUnit.split("、").includes(unit)));
   const groups = useMemo(() => groupBySeries(list, courses), [list, courses]);
   // 一排放幾張：手機 2 張，寬一點的畫面 3 張，同一頁容納更多。
   const cols = boxW >= 520 ? 3 : 2;
@@ -31,7 +31,7 @@ export default function CoursesScreen() {
     <Screen title="全部課程" subtitle={data ? `共 ${groups.length} 個課程系列` : undefined}>
       <View style={styles.filters}>
         <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
-        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
+        {units.length ? <Select label="主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} /> : null}
       </View>
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
