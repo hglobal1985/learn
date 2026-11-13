@@ -35,7 +35,11 @@ async function block(id: string, title: string, level: StatBlock["level"], data:
 }
 
 /** 影片傳輸量（Video API delivery-usage）：近 N 天，依影片加總的秒數。 */
-async function deliveryUsage(env: Env, from: Date, to: Date): Promise<Obj[]> {
+async function deliveryUsage(env: Env, from0: Date, to0: Date): Promise<Obj[]> {
+  // Mux 規定結束時間至少要在 12 小時前（最新半天的資料尚未結算）；月初資料未結算時回傳空。
+  const to = new Date(to0.getTime() - 13 * 3600_000);
+  const from = from0;
+  if (from.getTime() >= to.getTime() - 3600_000) return []; // 月初資料還沒結算：視為 0，不往上個月借
   const out: Obj[] = [];
   for (let page = 1; page <= 10; page++) {
     const q = `/video/v1/delivery-usage?limit=100&page=${page}&timeframe[]=${Math.floor(from.getTime() / 1000)}&timeframe[]=${Math.floor(to.getTime() / 1000)}`;
