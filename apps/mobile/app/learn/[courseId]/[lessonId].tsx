@@ -23,7 +23,6 @@ export default function LessonScreen() {
   const course = useApi<CourseDetail>(`/courses/${courseId}`);
   const [playback, setPlayback] = useState<Playback | null>(null);
   const [playError, setPlayError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const player = usePlayer();
   // 手機 App 的 YouTube 仍在課程頁內嵌播放（WebView 無法跨頁保留）；其餘一律交給全站單一播放器。
   const legacyYoutube = Platform.OS !== "web" && playback?.kind === "youtube";
@@ -66,6 +65,21 @@ export default function LessonScreen() {
     };
   }, [track, legacyYoutube]);
 
+  // 沒有「完成」按鈕了：這一堂播放到結尾，自動記錄完成。（Hook 必須放在所有提前 return 之前）
+  const autoDone = useRef<string | null>(null);
+  const curLesson = c?.lessons.find((l) => l.id === lessonId);
+  const finished = legacyYoutube ? legacyDone : !!track && player.track?.key === track.key && player.segmentEnded;
+  useEffect(() => {
+    if (!c || !curLesson || !member || !finished || curLesson.completed || autoDone.current === curLesson.id) return;
+    autoDone.current = curLesson.id;
+    api("POST", `/courses/${c.id}/lessons/${curLesson.id}/complete`)
+      .then(() => {
+        invalidate();
+        course.reload();
+      })
+      .catch((e: Error) => setPlayError(e.message));
+  }, [finished, member?.sub, curLesson?.id, curLesson?.completed]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!c) return <Screen header={false}>{course.loading ? <LoadingView /> : <ErrorView message={course.error ?? "找不到課程"} onRetry={course.reload} />}</Screen>;
   const index = c.lessons.findIndex((l) => l.id === lessonId);
   const lesson = c.lessons[index];
@@ -75,28 +89,6 @@ export default function LessonScreen() {
   const segmentDone = legacyYoutube ? legacyDone : player.track?.key === track?.key && player.segmentEnded;
   const engineError = track && player.track?.key === track.key ? player.error : null;
   const pinned = !!track && claimed === track.key;
-
-  // 沒有「完成」按鈕了：這一堂播放到結尾，自動記錄完成。
-  const autoDone = useRef<string | null>(null);
-  useEffect(() => {
-    if (member && segmentDone && !lesson.completed && autoDone.current !== lesson.id) {
-      autoDone.current = lesson.id;
-      complete();
-    }
-  }, [segmentDone, member?.sub, lesson.id, lesson.completed]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const complete = async () => {
-    setSaving(true);
-    try {
-      await api("POST", `/courses/${c.id}/lessons/${lesson.id}/complete`);
-      invalidate();
-      course.reload();
-    } catch (e) {
-      setPlayError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <View style={{ flex: 1 }}>
