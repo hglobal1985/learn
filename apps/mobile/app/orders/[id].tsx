@@ -62,7 +62,7 @@ function OrderDetail() {
           <Pill label={st.label} tone={st.tone} />
         </View>
       </Card>
-      {data.status === "pending" ? <Button variant="danger" label="取消報名" icon="close-circle-outline" loading={busy} disabled={busy} onPress={cancel} fullWidth /> : null}
+      {data.status === "pending" ? <PaymentForm order={data} onDone={reload} leftAction={<Button variant="danger" label="取消報名" icon="close-circle-outline" loading={busy} disabled={busy} onPress={cancel} fullWidth />} /> : null}
       {data.status === "opened" ? <Button label="前往學習中的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
       {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
 
@@ -98,7 +98,7 @@ function OrderDetail() {
           ) : null}
         </Card>
       ) : null}
-      {data.status === "pending" ? <PaymentForm order={data} onDone={reload} /> : null}
+      
       <OrderTimeline order={data} canDeletePayments={data.status === "pending"} />
     </Screen>
   );

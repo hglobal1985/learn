@@ -33,7 +33,7 @@ const toIso = (date: string, hour: string, minute: string) => {
 };
 
 /** 繳費方式：點選方式、依方式填欄位、按送出。送出後紀錄出現在下方（PaymentRecords）。全部放在同一頁，不收合。 */
-export function PaymentForm({ order, onDone }: { order: Order; onDone: () => void }) {
+export function PaymentForm({ order, onDone, leftAction }: { order: Order; onDone: () => void; leftAction?: React.ReactNode }) {
   const { c } = useTheme();
   const now = new Date();
   const [method, setMethod] = useState<PaymentMethodKey | null>(null);
@@ -122,7 +122,12 @@ export function PaymentForm({ order, onDone }: { order: Order; onDone: () => voi
         ) : null}
 
         {err ? <NoticeBox tone="danger" text={err} /> : null}
-        <Button label="送出" icon="send-outline" loading={busy} disabled={busy || !ready} onPress={submit} fullWidth />
+        <View style={styles.actions}>
+          {leftAction ? <View style={{ flex: 1 }}>{leftAction}</View> : null}
+          <View style={{ flex: 1 }}>
+            <Button label="送出" icon="send-outline" loading={busy} disabled={busy || !ready} onPress={submit} fullWidth />
+          </View>
+        </View>
       </Card>
     </Section>
   );
@@ -132,5 +137,6 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   method: { flexGrow: 1, flexBasis: "45%", flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, paddingHorizontal: space.sm, borderWidth: 1.5, borderRadius: radius.md },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
+  actions: { flexDirection: "row", gap: space.sm },
   pair: { flexDirection: "row", gap: space.sm },
 });
