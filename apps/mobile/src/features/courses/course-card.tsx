@@ -11,7 +11,7 @@ import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 
-export function CourseCard({ course, siblings = [] }: { course: CourseSummary; siblings?: CourseSummary[] }) {
+export function CourseCard({ course, siblings = [], footer, onPress }: { course: CourseSummary; siblings?: CourseSummary[]; footer?: React.ReactNode; onPress?: () => void }) {
   const { c } = useTheme();
   const [sheet, setSheet] = useState(false);
   const { member } = useSession();
@@ -20,7 +20,7 @@ export function CourseCard({ course, siblings = [] }: { course: CourseSummary; s
   const ribbons = ribbonsFor(course, member, config);
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
-    <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={course.title}>
+    <Card onPress={onPress ?? (() => router.push(`/course/${course.id}`))} accessibilityLabel={course.title}>
       <View style={styles.coverWrap}>
         <CourseCover theme={course.theme} label={course.category} title={course.title} imageUrl={course.coverUrl} height={160} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
@@ -55,6 +55,7 @@ export function CourseCard({ course, siblings = [] }: { course: CourseSummary; s
           <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
         </View>
       ) : null}
+      {footer}
       {siblings.length ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`還有 ${siblings.length} 個梯次，點開查看`} onPress={() => setSheet(true)} style={[styles.more, { borderColor: c.accent }]}>
           <AppText variant="callout" style={{ color: c.accent, fontWeight: "700", flex: 1 }}>
