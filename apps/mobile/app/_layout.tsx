@@ -15,7 +15,7 @@ import { installNoPageZoom } from "@/lib/no-page-zoom";
 import { SessionProvider } from "@/state/session";
 import { UiConfigProvider } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
-import { BottomBar, HeaderShadow } from "@/ui";
+import { BottomBar, HeaderBack, HeaderShadow } from "@/ui";
 
 export default function RootLayout() {
   const { scheme, c } = useTheme();
@@ -37,6 +37,7 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerBackButtonDisplayMode: "minimal",
+              headerLeft: () => <HeaderBack />, // 有標題列就一定有返回鍵
               contentStyle: { backgroundColor: c.background },
               // 上方標題列與下方主選單同高（barHeight），兩者都有陰影。
               headerShadowVisible: false,

@@ -24,3 +24,4 @@ export { StageFrame } from "./stage-frame";
 export { ShareIcon, isApplePlatform } from "./share-icon";
 export { ToastHost, showToast } from "./toast";
 export { HeaderShadow } from "./header-shadow";
+export { HeaderBack } from "./header-back";
