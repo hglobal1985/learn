@@ -6,6 +6,7 @@ import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
 import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 import { BottomSheet } from "@/ui/bottom-sheet";
+import { SeriesEdm } from "@/features/admin/series-edm";
 import { useApi, useSession } from "@/state/session";
 
 const KINDS: KeywordKind[] = ["category", "series", "location"];
@@ -90,6 +91,7 @@ export default function KeywordsScreen() {
                         <View style={styles.tags}>
                           <Pill label={item.count ? `${item.count} 門課程使用` : "尚未使用"} tone={item.count ? "accent" : "neutral"} />
                         </View>
+                        {kind === "series" ? <SeriesEdm series={item.value} edmUrl={item.edmUrl} onChanged={() => { invalidate(); reload(); }} /> : null}
                       </View>
                       <Button variant="secondary" label="改名" disabled={busy} onPress={() => setRename({ kind, from: item.value, to: item.value })} />
                       <Button variant="danger" label="刪除" disabled={busy} onPress={() => remove(kind, item)} />

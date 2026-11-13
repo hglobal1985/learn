@@ -7,7 +7,10 @@ import { downloadImage, shareImage } from "@/lib/share";
 import { displayName } from "./sort";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
-import { AppText, CourseCover, ShareIcon, StageFrame } from "@/ui";
+import { useSession } from "@/state/session";
+import { useUiConfig } from "@/state/ui-config";
+import { AppText, CornerRibbon, CourseCover, ShareIcon, StageFrame } from "@/ui";
+import { ribbonsFor } from "./ribbons";
 
 /**
  * 課程介紹頁上方的 EDM：圖片寬度自動符合畫面最大寬度，只能上下拖曳（滑鼠或手指，禁止左右），
@@ -16,9 +19,14 @@ import { AppText, CourseCover, ShareIcon, StageFrame } from "@/ui";
  */
 export function EdmStage({ course }: { course: CourseSummary }) {
   const [open, setOpen] = useState(false);
+  const { member } = useSession();
+  const { config } = useUiConfig();
+  const ribbons = ribbonsFor(course, member, config);
   return (
     <StageFrame>
       {course.edmUrl ? <EdmPan uri={resolveUrl(course.edmUrl)} viewY={course.edmViewY} onOpen={() => setOpen(true)} /> : <CourseCover theme={course.theme} label={course.category} title={displayName(course)} fill />}
+      {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
+      {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       {course.edmUrl && open ? <EdmLightbox uri={course.edmUrl} title={course.title} onClose={() => setOpen(false)} /> : null}
     </StageFrame>
   );

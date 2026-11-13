@@ -67,6 +67,8 @@ export type CourseSummary = {
   /** 這門課「鑽石免費」（鑽石以上獎銜的會員報名免費）；diamondFreeNow＝對目前登入的這位會員已生效。 */
   /** 系列名稱（空字串＝不合併）：同系列的課，全部課程清單只顯示最近的一場。 */
   series: string;
+  /** 系列專屬 EDM 網址（沒上傳為 null）。 */
+  seriesEdmUrl: string | null;
   diamondFree: boolean;
   diamondFreeNow: boolean;
   /** 早鳥優惠（null＝沒有設定）：until 為截止日（含當天，台灣時間）；active＝現在還在優惠期間。priceTwd 在 App 為 null。 */
@@ -411,7 +413,7 @@ export type MuxStats = { generatedAt: string; freeMinutes: number; blocks: StatB
 
 // ---------- 關鍵字管理（超級管理員）----------
 export type KeywordKind = "category" | "series" | "location";
-export type KeywordItem = { value: string; count: number; preset: boolean };
+export type KeywordItem = { value: string; count: number; preset: boolean; edmUrl?: string | null };
 export type KeywordLists = Record<KeywordKind, KeywordItem[]>;
 export const KEYWORD_INFO: Record<KeywordKind, { title: string; hint: string }> = {
   category: { title: "分類", hint: "課程的分類，例如：達標班、會議" },

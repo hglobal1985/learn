@@ -300,6 +300,8 @@ type CourseRow = {
   hide_home: number;
   diamond_free: number;
   series: string;
+  series_edm_key: string | null;
+  series_art_version: number | null;
   early_bird: number;
   early_price_twd: number | null;
   early_until: string | null;
@@ -313,7 +315,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
@@ -379,6 +381,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     priceTba: row.price_tba === 1,
     hideFromHome: row.hide_home === 1,
     series: row.series,
+    seriesEdmUrl: row.series_edm_key ? pubUrl(row.series_edm_key, row.series_art_version ?? 1) : null,
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
     earlyBird: row.early_bird === 1 && row.early_price_twd != null && !!row.early_until ? { priceTwd: web ? row.early_price_twd : null, until: row.early_until, active: earlyNow } : null,
@@ -1187,7 +1190,7 @@ async function rewriteCategories(ctx: Ctx, fn: (list: string[]) => string): Prom
   });
 }
 
-type KeywordItem = { value: string; count: number; preset: boolean };
+type KeywordItem = { value: string; count: number; preset: boolean; edmUrl?: string | null };
 async function listKeywords(ctx: Ctx): Promise<Record<KeywordKind, KeywordItem[]>> {
   const out = {} as Record<KeywordKind, KeywordItem[]>;
   for (const kind of Object.keys(KEYWORD_COLUMN) as KeywordKind[]) {
@@ -1201,6 +1204,13 @@ async function listKeywords(ctx: Ctx): Promise<Record<KeywordKind, KeywordItem[]
       for (const v of kind === "category" ? splitCats(r.v) : [r.v]) map.set(v, { value: v, count: (map.get(v)?.count ?? 0) + r.n, preset: false });
     }
     for (const r of preset.results) map.set(r.v, { value: r.v, count: map.get(r.v)?.count ?? 0, preset: true });
+    if (kind === "series") {
+      const art = await ctx.db.prepare("SELECT series, edm_key, art_version FROM series_art").all<{ series: string; edm_key: string; art_version: number }>();
+      for (const a of art.results) {
+        const it = map.get(a.series) ?? { value: a.series, count: 0, preset: true };
+        map.set(a.series, { ...it, edmUrl: pubUrl(a.edm_key, a.art_version) });
+      }
+    }
     out[kind] = [...map.values()].sort((a, b) => a.value.localeCompare(b.value, "zh-Hant"));
   }
   return out;
@@ -2326,8 +2336,8 @@ const routes: [string, RegExp, Handler][] = [
       // 課程封面與 EDM 是公開圖片（課程列表本來就要顯示；EDM 開放下載）。只服務資料庫裡仍在使用的檔案。
       const key = ctx.url.searchParams.get("k") ?? "";
       const bucket = ctx.env.MEDIA;
-      if (!bucket || !/^(edm|cover)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
-      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ?").bind(key, key).first();
+      if (!bucket || !/^(edm|cover|series)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
+      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ? UNION SELECT 1 FROM series_art WHERE edm_key = ?").bind(key, key, key).first();
       const obj = used ? await bucket.get(key) : null;
       if (!obj) return new Response("Not found", { status: 404 });
       return new Response(obj.body, {
@@ -2512,6 +2522,7 @@ const routes: [string, RegExp, Handler][] = [
         ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = ? WHERE ${col} = ?`).bind(to, from)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, from),
         ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES (?, ?)").bind(kind, to),
+        ...(kind === "series" ? [ctx.db.prepare("UPDATE OR REPLACE series_art SET series = ? WHERE series = ?").bind(to, from)] : []),
         audit(ctx.db, s.sub, "keyword.rename", "keyword", kind, `${from} → ${to}`),
       ]);
       return listKeywords(ctx);
@@ -2527,12 +2538,52 @@ const routes: [string, RegExp, Handler][] = [
       const value = keywordText(body.value);
       const col = KEYWORD_COLUMN[kind];
       const catUpdates = kind === "category" ? await rewriteCategories(ctx, (list) => joinCats(list.filter((x) => x !== value))) : [];
+      const artKey = kind === "series" ? (await ctx.db.prepare("SELECT edm_key AS k FROM series_art WHERE series = ?").bind(value).first<{ k: string }>())?.k : undefined;
+      if (kind === "series") await ctx.db.prepare("DELETE FROM series_art WHERE series = ?").bind(value).run();
+      if (artKey) await ctx.env.MEDIA?.delete(artKey).catch(() => undefined);
       await ctx.db.batch([
         ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = '' WHERE ${col} = ?`).bind(value)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, value),
         audit(ctx.db, s.sub, "keyword.remove", "keyword", kind, value),
       ]);
       return listKeywords(ctx);
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/series\/edm$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const series = keywordText(ctx.url.searchParams.get("series"));
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "圖片儲存空間尚未啟用");
+      const data = new Uint8Array(await ctx.req.arrayBuffer());
+      const max = 8 * 1024 * 1024;
+      if (!data.byteLength || data.byteLength > max) fail(413, "invalid_size", `圖片大小需在 ${max / 1024 / 1024}MB 以內（上傳時會自動壓縮）`);
+      const img = sniffImage(data) ?? fail(400, "invalid_image", "請上傳 JPG、PNG 或 WebP 圖片");
+      const old = await ctx.db.prepare("SELECT edm_key AS k FROM series_art WHERE series = ?").bind(series).first<{ k: string }>();
+      const key = `series/${crypto.randomUUID().slice(0, 8)}/${crypto.randomUUID()}.${img.ext}`;
+      await bucket.put(key, data.buffer as ArrayBuffer, { httpMetadata: { contentType: img.type } });
+      await ctx.db.batch([
+        ctx.db
+          .prepare("INSERT INTO series_art (series, edm_key) VALUES (?, ?) ON CONFLICT(series) DO UPDATE SET edm_key = excluded.edm_key, art_version = art_version + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+          .bind(series, key),
+        ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES ('series', ?)").bind(series),
+        audit(ctx.db, s.sub, "series.edm_upload", "series", series, key),
+      ]);
+      if (old?.k) await bucket.delete(old.k).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/series\/edm$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const series = keywordText(ctx.url.searchParams.get("series"));
+      const old = await ctx.db.prepare("SELECT edm_key AS k FROM series_art WHERE series = ?").bind(series).first<{ k: string }>();
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM series_art WHERE series = ?").bind(series), audit(ctx.db, s.sub, "series.edm_remove", "series", series)]);
+      if (old?.k) await ctx.env.MEDIA?.delete(old.k).catch(() => undefined);
+      return { ok: true };
     },
   ],
   [

@@ -56,3 +56,38 @@ export function collapseSeries(list: CourseSummary[], all: CourseSummary[]): Ser
 
 /** 課程在卡片、封面、首頁上顯示的名稱：有系列就顯示系列名稱，沒有系列才顯示課程名稱。 */
 export const displayName = (c: { series: string; title: string }): string => c.series || c.title;
+
+/** 一群梯次裡「日期最近」的那一場：還沒結束的取最近的，都結束了取最近結束的；沒有日期的最後才用。緞帶文字以它為準。 */
+export function nearestOf(list: CourseSummary[]): CourseSummary {
+  const today = todayStr();
+  const key = (c: CourseSummary): [number, string] => {
+    const d = startOf(c);
+    if (!d) return [2, ""];
+    return (c.eventEnd ?? d) >= today ? [0, d] : [1, d];
+  };
+  return [...list].sort((a, b) => {
+    const [ra, da] = key(a);
+    const [rb, db] = key(b);
+    if (ra !== rb) return ra - rb;
+    return ra === 0 ? da.localeCompare(db) : db.localeCompare(da);
+  })[0]!;
+}
+
+export type SeriesGroup = { key: string; nearest: CourseSummary; sessions: CourseSummary[] };
+
+/**
+ * 「全部課程」用：同系列合成一組（沒有系列的課各自一組）。順序依該組在 list 裡第一次出現的位置；
+ * sessions＝同系列的全部梯次（從 all 找，不受篩選影響）；nearest＝日期最近的梯次（緞帶判斷用）。
+ */
+export function groupBySeries(list: CourseSummary[], all: CourseSummary[]): SeriesGroup[] {
+  const seen = new Set<string>();
+  const out: SeriesGroup[] = [];
+  for (const c of list) {
+    const key = c.series ? `s:${c.series}` : `c:${c.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const sessions = c.series ? all.filter((x) => x.series === c.series) : [c];
+    out.push({ key, nearest: nearestOf(sessions), sessions });
+  }
+  return out;
+}

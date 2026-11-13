@@ -400,3 +400,35 @@ test("學習金句：內建 20 句、隨機取一則、只有超級管理員可�
   assert.equal((await call("PATCH", "/admin/quotes/nope", { token: admin, body: { text: "x" } })).status, 404);
   assert.equal((await call("DELETE", `/admin/quotes/${list[1].id}`, { token: admin })).status, 200);
 });
+
+test("系列專屬 EDM：只有超級管理員上傳、課程摘要帶網址、換圖刪舊檔、改名跟著走、刪除系列清檔", async () => {
+  const r2 = fakeR2();
+  const { call, raw, login } = setup({ MEDIA: r2, MEDIA_URL_SECRET: "s" });
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array.from({ length: n + 10 }, (_, i) => i % 256)]);
+  const put = (token: string, series: string, bytes: Uint8Array) => call<Record<string, unknown>>("PUT", `/admin/series/edm?series=${encodeURIComponent(series)}`, { token, bytes });
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { series: "新手系列" } });
+  assert.equal((await put(student, "新手系列", jpeg(10))).status, 403);
+  assert.equal((await put(admin, "新手系列", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))).status, 400, "不是圖片");
+  assert.equal((await put(admin, "新手系列", jpeg(100))).status, 200);
+  await put(admin, "新手系列", jpeg(120));
+  assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("series/")).length, 1, "舊圖已刪");
+  const sum = (await call<{ id: string; seriesEdmUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
+  assert.ok(decodeURIComponent(sum.seriesEdmUrl ?? "").startsWith("/api/v2/media/pub?k=series/"));
+  assert.equal((await raw("GET", sum.seriesEdmUrl!)).status, 200, "公開可讀");
+  // 改名：圖跟著走
+  await call("PATCH", "/admin/keywords", { token: admin, body: { kind: "series", from: "新手系列", to: "新手入門系列" } });
+  const renamed = (await call<{ id: string; series: string; seriesEdmUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
+  assert.equal(renamed.series, "新手入門系列");
+  assert.ok(renamed.seriesEdmUrl);
+  const kw = (await call<{ series: { value: string; edmUrl?: string | null }[] }>("GET", "/admin/keywords", { token: admin })).data;
+  assert.ok(kw.series.find((k) => k.value === "新手入門系列")?.edmUrl);
+  // 刪除系列：圖也刪
+  await call("POST", "/admin/keywords/remove", { token: admin, body: { kind: "series", value: "新手入門系列" } });
+  assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("series/")).length, 0);
+  // 只移除圖
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { series: "A 系列" } });
+  await put(admin, "A 系列", jpeg(30));
+  assert.equal((await call("DELETE", `/admin/series/edm?series=${encodeURIComponent("A 系列")}`, { token: admin })).status, 200);
+  assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("series/")).length, 0);
+});
