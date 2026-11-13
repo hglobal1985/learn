@@ -64,6 +64,9 @@ export type CourseSummary = {
   /** 費用尚未公布：顯示「費用尚未公布」、暫不開放報名。 */
   priceTba: boolean;
   hideFromHome: boolean;
+  /** 這門課「鑽石免費」（鑽石以上獎銜的會員報名免費）；diamondFreeNow＝對目前登入的這位會員已生效。 */
+  diamondFree: boolean;
+  diamondFreeNow: boolean;
   /** 上課地點；locationNone 為 true 時公開卡片不顯示。 */
   location: string;
   locationNone: boolean;

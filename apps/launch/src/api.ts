@@ -298,6 +298,7 @@ type CourseRow = {
   is_public: number;
   price_tba: number;
   hide_home: number;
+  diamond_free: number;
   location: string;
   location_none: number;
   cover_key: string | null;
@@ -308,7 +309,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
@@ -328,6 +329,9 @@ async function memberCourseState(db: D1Database, sub: string | undefined) {
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
+/** 「鑽石免費」判斷用的獎銜代碼：鑽石（含）以上。 */
+const DIAMOND = "diamond";
+
 /** 「會長也可報名」：課程開啟此條件時，會長不受獎銜限制。 */
 const byPresident = (s: Session | null, c: { allow_president: number }) => c.allow_president === 1 && !!s?.roles.includes("president");
 
@@ -337,7 +341,8 @@ const inFreeWindow = (row: { free_from: string | null; free_until: string | null
 function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: MemberState, eligibility: Map<string, boolean>): CourseSummary {
   const minRank = rankMap.get(row.min_rank_code) ?? { code: row.min_rank_code, name: row.min_rank_code, order: 9999 };
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
-  const price = freeNow ? 0 : row.price_twd;
+  const diamondNow = row.diamond_free === 1 && row.price_twd > 0 && eligibility.get(DIAMOND) === true;
+  const price = freeNow || diamondNow ? 0 : row.price_twd;
   const web = ctx.platform === "web";
   return {
     id: row.id,
@@ -364,6 +369,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     pendingOrderId: state.pendingOrder.get(row.id) ?? null,
     priceTba: row.price_tba === 1,
     hideFromHome: row.hide_home === 1,
+    diamondFree: row.diamond_free === 1,
+    diamondFreeNow: diamondNow,
     location: row.location,
     locationNone: row.location_none === 1,
     lessonCount: row.lesson_count,
@@ -384,7 +391,7 @@ async function listCourses(ctx: Ctx, all: boolean, manager?: Session): Promise<C
     ranks(ctx.db),
     memberCourseState(ctx.db, ctx.session?.sub),
   ]);
-  const eligibility = await eligibilityFor(ctx.session, rankMap, results.map((r) => r.min_rank_code));
+  const eligibility = await eligibilityFor(ctx.session, rankMap, [...results.map((r) => r.min_rank_code), DIAMOND]);
   return results.map((r) => summarize(r, ctx, rankMap, state, eligibility));
 }
 
@@ -412,7 +419,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
   const web = ctx.platform === "web";
   const admin = !!s && managesCourse(s, row.host_center_key);
   return {
-    ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code])),
+    ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code, DIAMOND])),
     description: row.description ?? "",
     lessons: lessons.results.map((l) => ({
       id: l.id,
@@ -694,15 +701,15 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
   const marks = ids.map(() => "?").join(",");
   const [{ results: courses }, rankMap, state] = await Promise.all([
     ctx.db
-      .prepare(`SELECT id, title, price_twd, price_tba, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
+      .prepare(`SELECT id, title, price_twd, price_tba, diamond_free, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
       .bind(...ids)
-      .all<{ id: string; title: string; price_twd: number; price_tba: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
+      .all<{ id: string; title: string; price_twd: number; price_tba: number; diamond_free: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
   ]);
   if (courses.length !== ids.length) fail(409, "unavailable", "課程已下架或不存在，請重新確認");
   if (courses.some((c) => c.price_tba === 1)) fail(409, "price_tba", "這門課程的費用尚未公布，暫不開放報名");
-  const eligibility = await eligibilityFor(s, rankMap, courses.map((c) => c.min_rank_code));
+  const eligibility = await eligibilityFor(s, rankMap, [...courses.map((c) => c.min_rank_code), DIAMOND]);
   if (courses.some((c) => eligibility.get(c.min_rank_code) !== true && !byPresident(s, c))) fail(403, "rank_required", "此課程需要符合資格才能報名");
 
   const now = new Date();
@@ -713,7 +720,7 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     const c = courses.find((x) => x.id === item.courseId)!;
     const key = c.id;
     if (state.enrolled.has(key) || state.pending.has(key)) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
-    const price = inFreeWindow(c, iso(now)) ? 0 : c.price_twd;
+    const price = inFreeWindow(c, iso(now)) || (c.diamond_free === 1 && eligibility.get(DIAMOND) === true) ? 0 : c.price_twd;
     const isFree = price === 0;
     if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
     // 付費課程：對帳需要真實姓名，報名當下讀取會員中心的 legal_name 存成快照（免費課程不存）。
@@ -1026,6 +1033,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   const loc = text(body.location, 100);
   if (loc !== undefined) sets.push(["location", loc]);
   if (body.locationNone !== undefined) sets.push(["location_none", body.locationNone === true ? 1 : 0]);
+  if (body.diamondFree !== undefined) sets.push(["diamond_free", body.diamondFree === true ? 1 : 0]);
   if (body.hideFromHome !== undefined) sets.push(["hide_home", body.hideFromHome === true ? 1 : 0]);
   if (body.edmViewY !== undefined) {
     const y = Number(body.edmViewY);

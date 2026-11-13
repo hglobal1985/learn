@@ -64,9 +64,10 @@ export function CoursePriceTag({ course }: { course: CourseSummary }) {
   if (course.enrollment === "opened") return <Pill label="已開通" tone="success" />;
   if (course.enrollment === "pending") return <Pill label="待審核" tone="warning" />;
   if (course.priceTba) return <Pill label="費用尚未公布" tone="warning" />;
+  if (course.diamondFreeNow) return <Pill label="鑽石免費" tone="accent" />;
   if (course.freeNow) return <Pill label="限時免費" tone="accent" />;
   if (course.free) return <Pill label="免費" tone="accent" />;
-  if (course.priceTwd !== null) return <Pill label={`NT$${course.priceTwd.toLocaleString()}`} />;
+  if (course.priceTwd !== null) return <Pill label={`NT$${course.priceTwd.toLocaleString()}${course.diamondFree ? "・鑽石免費" : ""}`} />;
   return <Pill label="學員專屬" />;
 }
 

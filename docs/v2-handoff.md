@@ -333,3 +333,4 @@
 - 沒有 EDM／封面的課程：CourseCover 由程式依「課程名稱＋分類」自動排版（主題色底、分類標籤、大標題，字級依長度自動縮放 fitFontSize，非 AI）；用於課程介紹頁上方、課程卡、首頁輪播、編輯課程預覽。
 - 自動標題封面：分類標籤與標題置中（避免被左上角緞帶遮住）。
 - 日期顯示一律不補 0（format.ts：dateTime／dateOnly／plainDate／eventDays；分隔符統一為 /；分鐘保留兩位數）。輸入欄位（toLocal）與 CSV 維持原格式。
+- 課程新增「鑽石免費」（migration 0026 diamond_free）：鑽石（含）以上獎銜報名費用為 0（自動開通），其他獎銜原價；編輯頁勾選位於費用輸入框右側、在「尚未公布」下方。欄位 diamondFree／diamondFreeNow。

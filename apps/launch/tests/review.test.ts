@@ -130,3 +130,16 @@ test("限時免費：期間內付費課程免費且自動開通；過期恢復�
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { freeUntil: "2001-01-01T00:00:00Z" } });
   assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.priceTwd, 1280);
 });
+
+test("鑽石免費：鑽石以上免費自動開通，其他獎銜照原價待審核", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { diamondFree: true } });
+  const asDiamond = (await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data;
+  assert.equal(asDiamond.diamondFree, true);
+  assert.deepEqual([asDiamond.diamondFreeNow, asDiamond.priceTwd, asDiamond.free], [true, 0, true]);
+  const asPlatinum = (await call<CourseDetail>("GET", "/courses/lead", { token: student })).data;
+  assert.deepEqual([asPlatinum.diamondFree, asPlatinum.diamondFreeNow, asPlatinum.priceTwd], [true, false, 1280]);
+  assert.equal((await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data[0].status, "pending");
+  assert.equal((await call<Order[]>("POST", "/orders", { token: admin, body: { courseIds: ["lead"] } })).data[0].status, "opened");
+});
