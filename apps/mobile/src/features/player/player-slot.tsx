@@ -94,7 +94,7 @@ export function PlayerSlot({ trackKey }: { trackKey: string }) {
       <View style={StyleSheet.absoluteFill} onLayout={(e) => (size.current = { w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} {...pan.panHandlers}>
         {p ? (
           <View style={[StyleSheet.absoluteFill, { transformOrigin: "0% 0%", transform: [{ translateX: z.x }, { translateY: z.y }, { scale: z.s }] }]}>
-            <VideoView ref={view} player={p} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" allowsPictureInPicture />
+            <VideoView ref={view} player={p} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" allowsPictureInPicture startsPictureInPictureAutomatically />
           </View>
         ) : null}
       </View>

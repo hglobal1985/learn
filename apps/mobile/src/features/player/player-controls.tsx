@@ -35,6 +35,11 @@ export function PlayerControls() {
           {formatClock(at)}
           {total ? ` / ${formatClock(total)}` : ""}
         </AppText>
+        {t.mode === "video" && engine.canPip() ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="浮動小視窗" onPress={() => engine.togglePip()} style={styles.btn}>
+            <Ionicons name="albums-outline" size={22} color={c.text} />
+          </Pressable>
+        ) : null}
         {t.mode !== "audio" && engine.canFullscreen() ? (
           <Pressable accessibilityRole="button" accessibilityLabel="全螢幕" onPress={() => engine.toggleFullscreen()} style={styles.btn}>
             <Ionicons name="expand" size={22} color={c.text} />

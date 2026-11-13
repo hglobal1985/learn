@@ -80,6 +80,9 @@ export const engine = {
     fsView = view;
   },
   canFullscreen: () => !!fsView,
+  /** App 版：離開 App 時由系統自動變成浮動小視窗（VideoView 已設定），不需要按鈕。 */
+  canPip: () => false,
+  togglePip() {},
   toggleFullscreen() {
     void fsView?.enterFullscreen();
   },

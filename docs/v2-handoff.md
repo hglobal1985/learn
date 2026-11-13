@@ -397,3 +397,9 @@
 - 修正：管理員看課程頁／上課頁也會看到「完整版」（原本只給學員）；管理員的章節編輯清單由前端濾掉 full。完整版的鎖定規則與一般章節一致（含設定免費直接看）。
 - 「完整版」名稱改為「完整版(含主持/串場/影片)」（區塊標題與項目名稱）。
 - 課程設定新增「顯示完整版」勾選（courses.show_full，預設勾選；migration 0034；摘要 showFull；複製課程帶過去）。關閉時課程頁／上課頁不出現完整版區塊。
+
+## 背景播放與浮動小視窗（2026-11-14）
+- 網頁：縮小／切到背景時不再立刻暫停影片；400ms 後若瀏覽器自己把影片暫停了，才改由隱藏的 `<audio>` 接手（`engine.web.ts` `onHidden`/`toBackground`）。已進入浮動小視窗（PiP）時不接手。
+- 浮動小視窗：`PlayerControls` 影片模式新增按鈕（`engine.canPip()/togglePip()`），MediaSession 登記 `enterpictureinpicture`（支援的瀏覽器縮小時自動浮出）。YouTube 內嵌無法做。
+- App：`VideoView` 加 `startsPictureInPictureAutomatically`；需重新打包 App 才生效（背景播放與 PiP 權限 app.json 本來就開了）。
+- 尚未實機驗證。

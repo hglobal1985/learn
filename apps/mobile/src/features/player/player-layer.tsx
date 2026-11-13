@@ -104,7 +104,7 @@ export function PlayerLayer() {
     );
   return (
     <Animated.View style={[styles.win, { width: w, height: h, transform: pan.getTranslateTransform() }]} {...responder.panHandlers}>
-      <VideoView player={p!} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" allowsPictureInPicture />
+      <VideoView player={p!} style={StyleSheet.absoluteFill} nativeControls={false} contentFit="contain" allowsPictureInPicture startsPictureInPictureAutomatically />
       <Pressable accessibilityLabel="關閉播放" onPress={() => !engine.recentlySwitched() && engine.close()} style={[styles.btn, { top: 4, right: 4 }]} hitSlop={8}>
         <Ionicons name="close" size={20} color="#fff" />
       </Pressable>
