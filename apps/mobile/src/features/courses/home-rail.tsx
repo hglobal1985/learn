@@ -143,7 +143,7 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
           ) : null}
           {cur.eventStart ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
-              日期：{eventDays(cur.eventStart, cur.eventEnd)}
+              {eventDays(cur.eventStart, cur.eventEnd)}
             </AppText>
           ) : null}
           {placeText(cur) ? (
