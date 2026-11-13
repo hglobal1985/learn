@@ -1,5 +1,5 @@
 import { Stack, router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { saveLastLesson } from "@/lib/last-lesson";
 import { Platform, StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type Playback } from "@/api/client";
@@ -76,12 +76,21 @@ export default function LessonScreen() {
   const engineError = track && player.track?.key === track.key ? player.error : null;
   const pinned = !!track && claimed === track.key;
 
+  // 沒有「完成」按鈕了：這一堂播放到結尾，自動記錄完成。
+  const autoDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (member && segmentDone && !lesson.completed && autoDone.current !== lesson.id) {
+      autoDone.current = lesson.id;
+      complete();
+    }
+  }, [segmentDone, member?.sub, lesson.id, lesson.completed]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const complete = async () => {
     setSaving(true);
     try {
       await api("POST", `/courses/${c.id}/lessons/${lesson.id}/complete`);
       invalidate();
-      if (next) router.replace(`/learn/${c.id}/${next.id}`);
+      course.reload();
     } catch (e) {
       setPlayError((e as Error).message);
     } finally {
@@ -123,6 +132,7 @@ export default function LessonScreen() {
           <AppText variant="title" style={{ flex: 1 }}>
             {lesson.title}
           </AppText>
+          {member ? <AttachmentList courseId={c.id} lessonId={lesson.id} /> : null}
           {lesson.eventDate ? (
             <AppText variant="callout" tone="muted" style={{ textAlign: "right", flexShrink: 0, paddingTop: 4 }}>
               {eventDays(lesson.eventDate, null)}
@@ -130,8 +140,6 @@ export default function LessonScreen() {
           ) : null}
         </View>
       </View>
-      {member ? <AttachmentList courseId={c.id} lessonId={lesson.id} /> : null}
-      {segmentDone && !lesson.completed ? <NoticeBox tone="success" text="這一堂播放完畢，按「完成」記錄進度。" /> : null}
       <View style={styles.row}>
         {!member ? (
           <>
@@ -145,9 +153,7 @@ export default function LessonScreen() {
           ) : (
             <NoticeBox tone="success" text="恭喜！你已完成這門課程的最後一堂。" />
           )
-        ) : (
-          <Button label={next ? "完成，下一堂" : "完成這堂課"} icon="checkmark" loading={saving} onPress={complete} />
-        )}
+        ) : null}
       </View>
       <Section title={`課程進度 ${c.completedLessons}/${c.lessonCount}`}>
         <Card style={{ paddingVertical: 0 }}>

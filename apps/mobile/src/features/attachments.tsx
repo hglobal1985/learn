@@ -1,6 +1,9 @@
 import * as DocumentPicker from "expo-document-picker";
 import { useCallback, useEffect, useState } from "react";
-import { Linking } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { useTheme } from "@/theme/theme";
+import { space } from "@/theme/tokens";
 import { api, resolveUrl, type Attachment } from "@/api/client";
 import { AppText, Button, Card, Field, ListRow, NoticeBox, Section, type IconName } from "@/ui";
 
@@ -31,6 +34,7 @@ const subtitleOf = (a: Attachment) => `${TYPE_INFO[a.type].label}${a.kind === "f
 
 /** 學員：上課頁的附件教材（只有已開通學員拿得到連結）。沒有附件時不顯示。 */
 export function AttachmentList({ courseId, lessonId }: { courseId: string; lessonId: string }) {
+  const { c } = useTheme();
   const [items, setItems] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -41,23 +45,33 @@ export function AttachmentList({ courseId, lessonId }: { courseId: string; lesso
       .catch(() => undefined);
   }, [courseId, lessonId]);
   if (!items.length) return null;
+  // 只顯示圖示＋下方的標題（自訂標題，沒自訂就是類型名稱），靠右對齊，與章節標題同一列。
   return (
-    <Section title="附件教材">
-      <Card style={{ paddingVertical: 0 }}>
-        {items.map((a) => (
-          <ListRow
-            key={a.id}
-            icon={TYPE_INFO[a.type].icon}
-            title={a.name}
-            subtitle={subtitleOf(a)}
-            onPress={a.url ? () => Linking.openURL(a.kind === "link" ? a.url! : resolveUrl(a.url!)).catch(() => setError("無法開啟連結")) : undefined}
-          />
-        ))}
-      </Card>
-      {error ? <NoticeBox tone="danger" text={error} /> : null}
-    </Section>
+    <View style={styles.wrap}>
+      {items.map((a) => (
+        <Pressable
+          key={a.id}
+          accessibilityRole="link"
+          accessibilityLabel={a.name}
+          disabled={!a.url}
+          onPress={() => Linking.openURL(a.kind === "link" ? a.url! : resolveUrl(a.url!)).catch(() => setError("無法開啟連結"))}
+          style={styles.item}
+        >
+          <Ionicons name={TYPE_INFO[a.type].icon} size={30} color={c.accent} />
+          <AppText variant="caption" numberOfLines={1} style={{ color: c.text, fontSize: 11, lineHeight: 14, textAlign: "center" }}>
+            {a.name}
+          </AppText>
+        </Pressable>
+      ))}
+      {error ? <AppText variant="caption" style={{ color: c.danger }}>{error}</AppText> : null}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  wrap: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space.sm, flexShrink: 0, maxWidth: "55%" },
+  item: { width: 64, minHeight: 56, alignItems: "center", justifyContent: "center", gap: 2 },
+});
 
 /** 管理員：在章節編輯卡片新增網址附件、上傳檔案、改標題、刪除。標題自訂；類型自動判斷。 */
 export function AttachmentManager({ lessonId }: { lessonId: string }) {
