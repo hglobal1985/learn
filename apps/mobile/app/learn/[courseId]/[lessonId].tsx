@@ -147,7 +147,7 @@ export default function LessonScreen() {
       </View>
       <View>
         <Card style={{ paddingVertical: 0 }}>
-          {c.lessons.map((l) => (
+          {c.lessons.filter((l) => !l.full).map((l) => (
             <ListRow
               key={l.id}
               icon={l.completed ? "checkmark-circle" : l.id === lesson.id ? "play-circle" : "play-circle-outline"}
@@ -163,6 +163,28 @@ export default function LessonScreen() {
           ))}
         </Card>
       </View>
+      {c.lessons.some((l) => l.full) ? (
+        <View style={{ gap: space.xs }}>
+          <AppText variant="headline">完整版</AppText>
+          <Card style={{ paddingVertical: 0 }}>
+            {c.lessons
+              .filter((l) => l.full)
+              .map((l) => (
+                <ListRow
+                  key={l.id}
+                  icon={l.id === lesson.id ? "play-circle" : "play-circle-outline"}
+                  title={l.title}
+                  subtitle={l.id === lesson.id ? "正在觀看" : l.minutes ? `約 ${l.minutes} 分鐘` : undefined}
+                  highlight={l.id === lesson.id}
+                  onPress={l.id === lesson.id || l.locked ? undefined : () => {
+                    engine.expectSwitch();
+                    router.replace(`/learn/${c.id}/${l.id}`);
+                  }}
+                />
+              ))}
+          </Card>
+        </View>
+      ) : null}
     </Screen>
     </View>
   );

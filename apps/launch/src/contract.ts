@@ -115,6 +115,8 @@ export type Lesson = {
   end: number | null;
   /** locked＝尚未報名（或不符資格），不能觀看。 */
   locked: boolean;
+  /** 「完整版」（同一支影片被裁成多段時自動多出的整支播放區塊），不列入章節總數與學習進度。 */
+  full?: boolean;
   /** 只有管理員會拿到（編輯影片來源用）。 */
   media?: { type: MediaType; ref: string | null };
 };

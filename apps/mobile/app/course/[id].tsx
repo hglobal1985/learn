@@ -116,7 +116,7 @@ export default function CourseDetailScreen() {
             {course.lessons.length === 0 || !anyReady ? (
               <ListRow icon="hourglass-outline" title="敬請期待" subtitle="課程內容準備中" />
             ) : (
-              course.lessons.map((lesson) => {
+              course.lessons.filter((l) => !l.full).map((lesson) => {
                 const soon = !lesson.ready;
                 return (
                   <ListRow
@@ -146,6 +146,23 @@ export default function CourseDetailScreen() {
           ) : null}
           </View>
         </Section>
+        {course.lessons.some((l) => l.full) ? (
+          <Section title="完整版">
+            <Card style={{ paddingVertical: 0 }}>
+              {course.lessons
+                .filter((l) => l.full)
+                .map((lesson) => (
+                  <ListRow
+                    key={lesson.id}
+                    icon={lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
+                    title={lesson.title}
+                    subtitle={lesson.minutes ? `${lesson.minutes} 分鐘` : undefined}
+                    onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
+                  />
+                ))}
+            </Card>
+          </Section>
+        ) : null}
         {member ? <CommentBoard courseId={course.id} /> : null}
       </Screen>
     </View>
