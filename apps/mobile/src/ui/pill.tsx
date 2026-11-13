@@ -24,5 +24,5 @@ export function Pill({ label, tone = "neutral" }: { label: string; tone?: PillTo
 }
 
 const styles = StyleSheet.create({
-  pill: { alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: space.sm + 2, paddingVertical: 3 },
+  pill: { alignSelf: "flex-start", borderRadius: radius.pill, paddingHorizontal: space.sm, paddingVertical: 3 },
 });

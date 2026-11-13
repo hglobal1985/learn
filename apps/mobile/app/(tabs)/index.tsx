@@ -1,8 +1,9 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Announcement, type CourseSummary } from "@/api/client";
+import { MemberHeader } from "@/features/member-header";
 import { ProfilePrompt } from "@/features/profile-prompt";
 import { HomeRail } from "@/features/courses/home-rail";
 import { collapseSeries } from "@/features/courses/sort";
@@ -19,10 +20,9 @@ import { AppText, BrandTitle, Button, ErrorView, HomeRailsSkeleton, Ticker } fro
 let promptedFor: string | null = null;
 
 export default function HomeScreen() {
-  const { c, scheme } = useTheme();
+  const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const { member } = useSession();
-  const [avatarFailed, setAvatarFailed] = useState(false);
   const { data, error, reload } = useApi<CourseSummary[]>("/courses");
   const [quote, setQuote] = useState<string | null>(null);
   const [noticeClosed, setNoticeClosed] = useState(false);
@@ -60,33 +60,7 @@ export default function HomeScreen() {
         <View style={styles.head}>
           <BrandTitle />
           {member ? (
-            <Pressable
-              onPress={member.demo ? undefined : () => setPromptOpen(true)}
-              disabled={member.demo}
-              accessibilityRole="button"
-              accessibilityLabel={`${member.name}，完善與編輯會員基本資料`}
-              style={styles.who}
-            >
-              {member.avatarUrl && !avatarFailed ? (
-                <Image source={{ uri: member.avatarUrl }} onError={() => setAvatarFailed(true)} style={[styles.avatar, { backgroundColor: c.surfaceMuted }]} accessibilityIgnoresInvertColors />
-              ) : (
-                <View style={[styles.avatar, { backgroundColor: c.accentSoft, alignItems: "center", justifyContent: "center" }]}>
-                  <AppText variant="title" style={{ color: c.accentText }}>
-                    {member.name.trim().slice(0, 1) || "?"}
-                  </AppText>
-                </View>
-              )}
-              <AppText variant="title" numberOfLines={1} style={{ flexShrink: 1, fontWeight: "400" }}>
-                {member.name}
-              </AppText>
-              {member.rankLabel ? (
-                <View style={[styles.rank, scheme === "dark" && { borderColor: "#6b5424", backgroundColor: "#3a2e17" }]}>
-                  <AppText variant="callout" style={{ color: scheme === "dark" ? "#f0a050" : "#cc6c0c", fontWeight: "700", lineHeight: 20 }}>
-                    {member.rankLabel}
-                  </AppText>
-                </View>
-              ) : null}
-            </Pressable>
+            <MemberHeader member={member} onPress={member.demo ? undefined : () => setPromptOpen(true)} />
           ) : (
             <View style={styles.loginBtn}>
               <Button label="前往登入" icon="log-in-outline" onPress={() => router.navigate("/me")} fullWidth />
@@ -145,12 +119,9 @@ const styles = StyleSheet.create({
   page: { flex: 1, alignItems: "center", paddingHorizontal: space.md, overflow: "hidden" },
   inner: { width: "100%", maxWidth: maxContentWidth, gap: space.md, flex: 1 },
   head: { alignItems: "center", gap: space.sm },
-  who: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.md, minHeight: 56, maxWidth: "100%" },
   brand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },
   logo: { width: 44, height: 44 },
-  rank: { borderWidth: 1, borderColor: "#e6c48c", backgroundColor: "#fdf0e3", borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 },
   loginBtn: { width: "100%", maxWidth: 420, minHeight: 56, justifyContent: "center" },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
   rails: { flex: 1, flexDirection: "row", gap: space.md, alignItems: "stretch" },
   middle: { flex: 1, paddingBottom: space.sm },
 });
