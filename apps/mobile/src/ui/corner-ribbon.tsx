@@ -20,6 +20,6 @@ export function CornerRibbon({ label, bg, fg, side = "left" }: { label: string; 
 
 const styles = StyleSheet.create({
   box: { position: "absolute", left: 0, top: 0, width: 128, height: 128, overflow: "hidden" },
-  band: { position: "absolute", left: -42, top: 12, width: 172, paddingVertical: 6, transform: [{ rotate: "-45deg" }], alignItems: "center", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  band: { position: "absolute", left: -42, top: 24, width: 172, paddingVertical: 6, transform: [{ rotate: "-45deg" }], alignItems: "center", shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
   text: { fontWeight: "800", letterSpacing: 1 },
 });
