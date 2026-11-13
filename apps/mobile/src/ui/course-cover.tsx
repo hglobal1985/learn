@@ -67,7 +67,7 @@ export function CourseCover({ theme, label, title, height = 120, imageUrl, fill 
       {hasTitle ? (
         <View style={styles.titleBox}>
           {fs ? (
-            <AppText style={{ color: fg, fontSize: fs, lineHeight: Math.round(fs * 1.18), fontWeight: "900" }}>
+            <AppText style={{ color: fg, fontSize: fs, lineHeight: Math.round(fs * 1.18), fontWeight: "900", textAlign: "center" }}>
               {title}
             </AppText>
           ) : null}
@@ -81,6 +81,6 @@ const styles = StyleSheet.create({
   cover: { borderRadius: radius.md, padding: space.md, overflow: "hidden", gap: 6 },
   ring: { position: "absolute", right: -24, top: -24, width: 110, height: 110, borderRadius: 55, borderWidth: 14, opacity: 0.25 },
   ring2: { position: "absolute", left: -40, bottom: -40, width: 120, height: 120, borderRadius: 60, opacity: 0.1 },
-  tag: { alignSelf: "flex-start", borderWidth: 1.5, borderRadius: radius.pill, paddingHorizontal: 10, height: 26, justifyContent: "center" },
-  titleBox: { flex: 1, justifyContent: "center" },
+  tag: { alignSelf: "center", borderWidth: 1.5, borderRadius: radius.pill, paddingHorizontal: 10, height: 26, justifyContent: "center" },
+  titleBox: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
