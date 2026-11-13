@@ -37,7 +37,10 @@ export function PlayerControls() {
         </AppText>
         {t.mode === "video" && engine.canPip() ? (
           <Pressable accessibilityRole="button" accessibilityLabel="浮動小視窗" onPress={() => engine.togglePip()} style={styles.btn}>
-            <Ionicons name="albums-outline" size={22} color={c.text} />
+            <Ionicons name="albums-outline" size={20} color={engine.isPip() ? c.accentText : c.text} />
+            <AppText variant="caption" tone="muted" style={styles.pipLabel} numberOfLines={1}>
+              小視窗
+            </AppText>
           </Pressable>
         ) : null}
         {t.mode !== "audio" && engine.canFullscreen() ? (
@@ -55,5 +58,6 @@ const styles = StyleSheet.create({
   box: { flexDirection: "row", alignItems: "center", paddingHorizontal: space.sm, minHeight: minTouch, width: "100%", maxWidth: maxContentWidth },
   btn: { width: minTouch, height: minTouch, alignItems: "center", justifyContent: "center" },
   bar: { flex: 1 },
+  pipLabel: { fontSize: 10, lineHeight: 12 },
   time: { minWidth: 70, textAlign: "right" },
 });

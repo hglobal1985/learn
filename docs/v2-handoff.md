@@ -403,3 +403,4 @@
 - 浮動小視窗：`PlayerControls` 影片模式新增按鈕（`engine.canPip()/togglePip()`），MediaSession 登記 `enterpictureinpicture`（支援的瀏覽器縮小時自動浮出）。YouTube 內嵌無法做。
 - App：`VideoView` 加 `startsPictureInPictureAutomatically`；需重新打包 App 才生效（背景播放與 PiP 權限 app.json 本來就開了）。
 - 尚未實機驗證。
+- 2026-11-14 補：iPhone Safari 專用浮動小視窗寫法（webkitSetPresentationMode，`iosPipOk`）；按鈕下方加「小視窗」文字、啟用中圖示變綠（`engine.isPip()`）。網頁已上線；App 端 PiP 需重新打包（尚未打包）。未實機驗證。

@@ -165,6 +165,14 @@ function teardownMedia() {
 // ---- 背景播放：離開瀏覽器時，聲音交給 <audio>；回來時影像接回去 ----
 let bgTimer: ReturnType<typeof setTimeout> | null = null;
 /** 縮小／切到背景：先不動它（桌機瀏覽器本來就會繼續播）；稍後若影片被瀏覽器暫停了，才改由 <audio> 接手。 */
+type IosVideo = { webkitSupportsPresentationMode?: (m: string) => boolean; webkitSetPresentationMode?: (m: string) => void; webkitPresentationMode?: string };
+function iosPipOk() {
+  const v = video as unknown as IosVideo | null;
+  return !!v && typeof v.webkitSetPresentationMode === "function" && !!v.webkitSupportsPresentationMode?.("picture-in-picture");
+}
+function iosPresentation() {
+  return (video as unknown as IosVideo | null)?.webkitPresentationMode;
+}
 function onHidden() {
   if (bgTimer) clearTimeout(bgTimer);
   bgTimer = setTimeout(() => {
@@ -175,7 +183,7 @@ function onHidden() {
 function toBackground() {
   const t = snap.track;
   if (bg || !t || t.mode !== "video" || !intent || !video) return;
-  if (document.pictureInPictureElement === video) return; // 已經是浮動小視窗，影片自己會繼續播
+  if (document.pictureInPictureElement === video || iosPresentation() === "picture-in-picture") return; // 已經是浮動小視窗，影片自己會繼續播
   const pos = video.currentTime;
   const a = audioElement();
   bg = true; // 先切換旗標，之後 video 的暫停事件才不會被當成使用者暫停
@@ -335,12 +343,17 @@ export const engine = {
     return snap.track.mode === "video" && !!video && typeof (video as unknown as { webkitEnterFullscreen?: unknown }).webkitEnterFullscreen === "function";
   },
   /** 浮動小視窗（子母畫面）：只有影片模式、瀏覽器支援才可用。 */
-  canPip: () => typeof document !== "undefined" && !!snap.track && snap.track.mode === "video" && !!video && !bg && !!document.pictureInPictureEnabled,
-  isPip: () => typeof document !== "undefined" && !!video && document.pictureInPictureElement === video,
+  canPip: () => typeof document !== "undefined" && !!snap.track && snap.track.mode === "video" && !!video && !bg && (!!document.pictureInPictureEnabled || iosPipOk()),
+  isPip: () => typeof document !== "undefined" && !!video && (document.pictureInPictureElement === video || iosPresentation() === "picture-in-picture"),
   togglePip() {
     if (!video) return;
-    if (document.pictureInPictureElement) return void document.exitPictureInPicture().catch(() => undefined);
-    void video.requestPictureInPicture().catch(() => undefined);
+    if (document.pictureInPictureEnabled) {
+      if (document.pictureInPictureElement) return void document.exitPictureInPicture().catch(() => undefined);
+      return void video.requestPictureInPicture().catch(() => undefined);
+    }
+    // iPhone Safari 專用寫法
+    const v = video as unknown as IosVideo;
+    if (iosPipOk()) v.webkitSetPresentationMode?.(iosPresentation() === "picture-in-picture" ? "inline" : "picture-in-picture");
   },
   toggleFullscreen() {
     if (document.fullscreenElement) return void document.exitFullscreen();
