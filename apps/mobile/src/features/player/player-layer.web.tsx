@@ -211,7 +211,8 @@ export function PlayerLayer() {
         if (tr.mode !== "audio" && slot && slot.isConnected) {
           const r = slot.getBoundingClientRect();
           if (r.width > 0) css = `${r.left}|${r.top}|${r.width}|${r.height}|0`;
-        } else if (sn.slotKey !== tr.key && (tr.mode !== "audio" || sn.collapsed)) {
+        } else if (sn.slotKey !== tr.key && (tr.mode !== "audio" || sn.collapsed) && !engine.isPip()) {
+          // 影片已經浮到手機桌面（系統浮動視窗）時，頁面內的迷你播放器不顯示，避免出現兩個小視窗。
           const isCircle = sn.collapsed;
           const w = isCircle ? CIRCLE : floatWidth();
           const h = isCircle ? CIRCLE : Math.round((w * 9) / 16);
