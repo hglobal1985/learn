@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Image, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
 import { resolveUrl, type CourseSummary } from "@/api/client";
-import { eventDays, hostLine } from "@/features/format";
+import { eventDays, hostLine, placeText } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, Icon, type IconName } from "@/ui";
@@ -146,9 +146,9 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               日期：{eventDays(cur.eventStart, cur.eventEnd)}
             </AppText>
           ) : null}
-          {cur.location && !cur.locationNone ? (
+          {placeText(cur) ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
-              地點：{cur.location}
+              地點：{placeText(cur)}
             </AppText>
           ) : null}
           <View style={{ alignSelf: "center" }}>

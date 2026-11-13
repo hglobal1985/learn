@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
-import { eventDays, plainDate, unitLine } from "@/features/format";
+import { eventDays, placeText, plainDate, unitLine } from "@/features/format";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
@@ -36,9 +36,9 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         ) : null}
       </View>
       <UnitTags course={course} />
-      {course.location && !course.locationNone ? (
+      {placeText(course) ? (
         <AppText variant="caption" tone="muted" numberOfLines={1}>
-          地點：{course.location}
+          地點：{placeText(course)}
         </AppText>
       ) : null}
       <View style={styles.meta}>

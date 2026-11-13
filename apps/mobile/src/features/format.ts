@@ -74,3 +74,10 @@ export function hostLine(c: { hostUnit: string }): string {
   const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);
   return hosts.length ? `${hosts.join("、")}主辦` : "";
 }
+
+/** 課程地點的顯示文字：線上課程→「線上課程」；勾「無」或沒填→ null（不顯示）。 */
+export function placeText(c: { isOnline?: boolean; locationNone?: boolean; location?: string | null }): string | null {
+  if (c.isOnline) return "線上課程";
+  if (c.locationNone || !c.location) return null;
+  return c.location;
+}

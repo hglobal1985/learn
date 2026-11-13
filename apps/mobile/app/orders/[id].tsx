@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { api, type Order } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
-import { ntd } from "@/features/format";
+import { eventDays, ntd } from "@/features/format";
 import { MoneyArt } from "@/features/orders/money-art";
 import { PaymentForm } from "@/features/orders/payment-form";
 import { OrderTimeline } from "@/features/orders/timeline";
@@ -45,56 +45,67 @@ function OrderDetail() {
       showToast("請長按代碼複製");
     }
   };
-  const title = data.items.map((i) => i.title).join("、");
   const total = data.items.reduce((n, i) => n + i.priceTwd, 0);
   return (
     <Screen header={false}>
       <Card style={styles.hero}>
         <MoneyArt size={72} />
-        <AppText variant="callout" tone="muted" numberOfLines={2} style={{ textAlign: "center" }}>
-          {title}
-        </AppText>
+        {data.items.map((i) => (
+          <View key={i.courseId} style={styles.info}>
+            {i.series ? (
+              <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
+                {i.series}
+              </AppText>
+            ) : null}
+            <AppText variant="headline" style={{ textAlign: "center" }}>
+              {i.title}
+            </AppText>
+            {i.eventStart ? (
+              <AppText variant="callout" style={{ textAlign: "center", fontWeight: "700" }}>
+                {eventDays(i.eventStart, i.eventEnd)}
+              </AppText>
+            ) : null}
+            {i.place ? (
+              <AppText variant="callout" style={{ textAlign: "center" }}>
+                {i.place}
+              </AppText>
+            ) : null}
+          </View>
+        ))}
         <AppText style={[styles.amount, { color: c.text }]} accessibilityLabel={`金額 ${total} 元`} adjustsFontSizeToFit numberOfLines={1}>
           {total ? ntd(total) : "免費"}
         </AppText>
       </Card>
+      {data.status === "pending" ? (
+        <Card>
+          <View style={styles.person}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={c.accentText} />
+            <AppText variant="callout" tone="muted">
+              審核人員
+            </AppText>
+            <AppText variant="headline" style={{ flex: 1 }}>
+              {data.reviewers?.length ? data.reviewers.join("、") : "總部（尚未指定）"}
+            </AppText>
+          </View>
+          <View style={styles.person}>
+            <Ionicons name="wallet-outline" size={22} color={c.accentText} />
+            <AppText variant="callout" tone="muted">
+              收費窗口
+            </AppText>
+            <AppText variant="headline" style={{ flex: 1 }}>
+              {data.collectors?.length ? data.collectors.join("、") : "總部（尚未指定）"}
+            </AppText>
+          </View>
+        </Card>
+      ) : null}
       {data.status === "pending" ? <PaymentForm order={data} onDone={reload} leftAction={<Button variant="danger" label="取消報名" loading={busy} disabled={busy} onPress={cancel} fullWidth />} /> : null}
       {data.status === "opened" ? <Button label="前往學習中的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
       {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
-
 
       {data.status === "opened" ? <NoticeBox tone="success" text="課程已開通，可以開始上課了。" /> : null}
       {data.rejectReason && data.status !== "opened" ? <NoticeBox tone="danger" text={`原因：${data.rejectReason}`} /> : null}
       {err ? <NoticeBox tone="danger" text={err} /> : null}
 
-
-      {data.status === "pending" ? (
-        <Card>
-          {true ? (
-            <View style={styles.person}>
-              <Ionicons name="shield-checkmark-outline" size={22} color={c.accentText} />
-              <AppText variant="callout" tone="muted">
-                審核人員
-              </AppText>
-              <AppText variant="headline" style={{ flex: 1 }}>
-                {data.reviewers?.length ? data.reviewers.join("、") : "總部（尚未指定）"}
-              </AppText>
-            </View>
-          ) : null}
-          {true ? (
-            <View style={styles.person}>
-              <Ionicons name="wallet-outline" size={22} color={c.accentText} />
-              <AppText variant="callout" tone="muted">
-                收費窗口
-              </AppText>
-              <AppText variant="headline" style={{ flex: 1 }}>
-                {data.collectors?.length ? data.collectors.join("、") : "總部（尚未指定）"}
-              </AppText>
-            </View>
-          ) : null}
-        </Card>
-      ) : null}
-      
       <OrderTimeline order={data} canDeletePayments={data.status === "pending"} />
     </Screen>
   );
@@ -109,6 +120,7 @@ export default function OrderScreen() {
 }
 
 const styles = StyleSheet.create({
+  info: { alignItems: "center", gap: 2 },
   hero: { alignItems: "center", gap: space.xs, paddingVertical: space.md },
   amount: { fontSize: 60, lineHeight: 68, fontWeight: "900", letterSpacing: -1 },
   person: { flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" },

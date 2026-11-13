@@ -78,6 +78,8 @@ export type CourseSummary = {
   /** 上課地點；locationNone 為 true 時公開卡片不顯示。 */
   location: string;
   locationNone: boolean;
+  /** 線上課程：地點顯示為「線上課程」。 */
+  isOnline: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
@@ -163,7 +165,8 @@ export type Order = {
   memberSub?: string;
   centerLabel: string;
   hglobal: boolean;
-  items: { courseId: string; title: string; priceTwd: number }[];
+  /** series／eventStart／eventEnd／place：給學員在報名明細核對是哪一場（place＝地點，線上課程顯示「線上課程」，沒有就是 null）。 */
+  items: { courseId: string; title: string; priceTwd: number; series: string; eventStart: string | null; eventEnd: string | null; place: string | null }[];
   /** 以下只在單筆明細提供。 */
   events?: OrderEvent[];
   /** 這位學員所屬中心的收費窗口姓名。 */

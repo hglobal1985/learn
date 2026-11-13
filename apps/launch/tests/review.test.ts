@@ -319,3 +319,18 @@ test("回報繳費方式：四種方式各自的必填欄位、只有本人能�
   await call("POST", `/orders/${o.id}/cancel`, { token: student });
   assert.equal((await pay(student, { method: "cash" })).status, 404);
 });
+
+test("線上課程與報名明細的課程資訊：地點顯示、勾線上課程顯示「線上課程」", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { series: "進階系列", eventStart: "2026-12-05", location: "台北教室" } });
+  const [o] = (await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data;
+  let item = (await call<Order>("GET", `/orders/${o.id}`, { token: student })).data.items[0]!;
+  assert.deepEqual([item.series, item.eventStart, item.place], ["進階系列", "2026-12-05", "台北教室"]);
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { isOnline: true } });
+  item = (await call<Order>("GET", `/orders/${o.id}`, { token: student })).data.items[0]!;
+  assert.equal(item.place, "線上課程");
+  assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.isOnline, true);
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { isOnline: false, locationNone: true } });
+  assert.equal((await call<Order>("GET", `/orders/${o.id}`, { token: student })).data.items[0]!.place, null, "勾「無」就不顯示");
+});
