@@ -41,8 +41,9 @@ export default function CourseDetailScreen() {
     try {
       const [order] = await api<Order[]>("POST", "/orders", { items: [{ courseId: course.id }] });
       invalidate();
-      if (order.status === "opened") setMessage({ tone: "success", text: "報名成功！課程已開通，請從下方章節開始上課。" });
-      else router.push(`/orders/${order.id}`);
+      reload();
+      // 留在這一頁：按鈕會變成「審核中」（付費）或課程直接開通（免費），不跳到別的頁面。
+      setMessage(order.status === "opened" ? { tone: "success", text: "報名成功！課程已開通，請從下方章節開始上課。" } : { tone: "success", text: "報名已送出，等待審核。繳費與審核進度可以點下方「付款審核中」查看。" });
     } catch (e) {
       setMessage({ tone: "danger", text: (e as Error).message });
     } finally {
