@@ -404,3 +404,4 @@
 - App：`VideoView` 加 `startsPictureInPictureAutomatically`；需重新打包 App 才生效（背景播放與 PiP 權限 app.json 本來就開了）。
 - 尚未實機驗證。
 - 2026-11-14 補：iPhone Safari 專用浮動小視窗寫法（webkitSetPresentationMode，`iosPipOk`）；按鈕下方加「小視窗」文字、啟用中圖示變綠（`engine.isPip()`）。網頁已上線；App 端 PiP 需重新打包（尚未打包）。未實機驗證。
+- 2026-11-14 附件圖示：Canva、PDF 改官方圖形（simple-icons CC0），Word／PowerPoint／Excel 因圖庫無官方圖形，用官方品牌色＋字母方塊（OFFICE_BADGES）；壓縮檔仍通用圖示。
