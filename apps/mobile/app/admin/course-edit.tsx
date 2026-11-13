@@ -190,8 +190,34 @@ export default function CourseEditScreen() {
       </Card>
       <Card>
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
-        {field("分類", "category", { placeholder: "例如：系列課程" })}
-        {categoryList.data?.length ? <Chips label="已有的分類" options={categoryList.data.map((x) => ({ key: x, label: x }))} value={form.category} onChange={set("category")} /> : null}
+        {field("分類（可複選，多個用「、」分開）", "category", { placeholder: "例如：達標班、會議" })}
+        {categoryList.data?.length ? (
+          <View style={{ gap: space.xs }}>
+            <AppText variant="callout" tone="muted">
+              已有的分類（點選可加入或取消，可複選）
+            </AppText>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: space.sm }}>
+              {categoryList.data.map((x) => {
+                const cur = form.category.split(/[、,，]+/).map((v) => v.trim()).filter(Boolean);
+                const on = cur.includes(x);
+                return (
+                  <Pressable
+                    key={x}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on }}
+                    onPress={() => setForm((f) => ({ ...f, category: (on ? cur.filter((v) => v !== x) : [...cur, x]).join("、") }))}
+                    style={[styles.catChip, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : c.surface }]}
+                  >
+                    <Ionicons name={on ? "checkbox" : "square-outline"} size={20} color={on ? c.accent : c.textMuted} />
+                    <AppText variant="callout" style={{ color: on ? c.accentText : c.text, fontWeight: on ? "700" : "400" }}>
+                      {x}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
         <View style={{ gap: space.xs }}>
           <AppText variant="callout" tone="muted">
             報名費用（新台幣，0 為免費）
@@ -419,6 +445,7 @@ export default function CourseEditScreen() {
 }
 
 const styles = StyleSheet.create({
+  catChip: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: minTouch - 4, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.pill },
   check: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
   multiline: { minHeight: 120, paddingTop: space.md, textAlignVertical: "top" },

@@ -215,3 +215,22 @@ test("關鍵字管理：只有超級管理員；新增、改名會一併更新�
   assert.equal((await call<{ series: string }>("GET", "/courses/share", { token: admin })).data.series, "");
   assert.equal((await call("POST", "/admin/keywords", { token: admin, body: { kind: "bad", value: "x" } })).status, 400);
 });
+
+test("分類可複選：存成「、」分隔，關鍵字改名與刪除會處理每一個", async () => {
+  const { call, login } = setup();
+  const admin = await login("demo-admin");
+  type KW = { category: { value: string; count: number }[] };
+  await call("PATCH", "/admin/courses/share", { token: admin, body: { category: ["達標班", "會議", "達標班"] } });
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { category: "會議，講座" } });
+  assert.equal((await call<{ category: string }>("GET", "/courses/share", { token: admin })).data.category, "達標班、會議");
+  assert.equal((await call<{ category: string }>("GET", "/courses/lead", { token: admin })).data.category, "會議、講座");
+  let kw = (await call<KW>("GET", "/admin/keywords", { token: admin })).data;
+  assert.equal(kw.category.find((k) => k.value === "會議")?.count, 2);
+  assert.ok((await call<string[]>("GET", "/admin/categories", { token: admin })).data.includes("講座"));
+  kw = (await call<KW>("PATCH", "/admin/keywords", { token: admin, body: { kind: "category", from: "會議", to: "月會" } })).data;
+  assert.equal((await call<{ category: string }>("GET", "/courses/share", { token: admin })).data.category, "達標班、月會");
+  assert.equal(kw.category.find((k) => k.value === "月會")?.count, 2);
+  await call("POST", "/admin/keywords/remove", { token: admin, body: { kind: "category", value: "月會" } });
+  assert.equal((await call<{ category: string }>("GET", "/courses/share", { token: admin })).data.category, "達標班");
+  assert.equal((await call<{ category: string }>("GET", "/courses/lead", { token: admin })).data.category, "講座");
+});

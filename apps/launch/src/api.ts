@@ -1017,7 +1017,11 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     if (!t) fail(400, "title_required", "請輸入課程名稱");
     sets.push(["title", t]);
   } else if (creating) fail(400, "title_required", "請輸入課程名稱");
-  for (const [k, col, max] of [["subtitle", "subtitle", 200], ["teacher", "teacher", 60], ["category", "category", 30], ["description", "description", 5000]] as const) {
+  if (body.category !== undefined) {
+    const raw = Array.isArray(body.category) ? body.category.filter((x): x is string => typeof x === "string").join(CAT_SEP) : typeof body.category === "string" ? body.category : "";
+    sets.push(["category", joinCats(splitCats(raw)).slice(0, 120)]);
+  }
+  for (const [k, col, max] of [["subtitle", "subtitle", 200], ["teacher", "teacher", 60], ["description", "description", 5000]] as const) {
     const v = text(body[k], max);
     if (v !== undefined) sets.push([col, v]);
   }
@@ -1127,6 +1131,11 @@ async function createCourse(ctx: Ctx, admin: Session) {
   return courseDetail(ctx, id);
 }
 
+/** 分類可以複選：存成「、」分隔的文字（例如「達標班、會議」）。 */
+const CAT_SEP = "、";
+const splitCats = (v: string): string[] => [...new Set(v.split(/[、,，;；\n]+/).map((x) => x.trim()).filter(Boolean))];
+const joinCats = (list: string[]): string => list.join(CAT_SEP);
+
 // ---------- 關鍵字（分類、系列、場地）：超級管理員集中管理 ----------
 const KEYWORD_COLUMN = { category: "category", series: "series", location: "location" } as const;
 type KeywordKind = keyof typeof KEYWORD_COLUMN;
@@ -1144,7 +1153,17 @@ async function keywordChoices(ctx: Ctx, kind: KeywordKind, centerKey: string | n
     .bind(...(centerKey !== null ? [centerKey] : []))
     .all<{ v: string }>();
   const preset = await ctx.db.prepare("SELECT value AS v FROM keywords WHERE kind = ?").bind(kind).all<{ v: string }>();
-  return [...new Set([...used.results.map((r) => r.v), ...preset.results.map((r) => r.v)])].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  const usedValues = kind === "category" ? used.results.flatMap((r) => splitCats(r.v)) : used.results.map((r) => r.v);
+  return [...new Set([...usedValues, ...preset.results.map((r) => r.v)])].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+}
+
+/** 把每門課的分類清單用 fn 改寫（改名、刪除用），只產生真的有變動的更新。 */
+async function rewriteCategories(ctx: Ctx, fn: (list: string[]) => string): Promise<D1PreparedStatement[]> {
+  const { results } = await ctx.db.prepare("SELECT id, category FROM courses WHERE category <> ''").all<{ id: string; category: string }>();
+  return results.flatMap((r) => {
+    const next = fn(splitCats(r.category));
+    return next === r.category ? [] : [ctx.db.prepare("UPDATE courses SET category = ? WHERE id = ?").bind(next, r.id)];
+  });
 }
 
 type KeywordItem = { value: string; count: number; preset: boolean };
@@ -1157,7 +1176,9 @@ async function listKeywords(ctx: Ctx): Promise<Record<KeywordKind, KeywordItem[]
       ctx.db.prepare("SELECT value AS v FROM keywords WHERE kind = ?").bind(kind).all<{ v: string }>(),
     ]);
     const map = new Map<string, KeywordItem>();
-    for (const r of used.results) map.set(r.v, { value: r.v, count: r.n, preset: false });
+    for (const r of used.results) {
+      for (const v of kind === "category" ? splitCats(r.v) : [r.v]) map.set(v, { value: v, count: (map.get(v)?.count ?? 0) + r.n, preset: false });
+    }
     for (const r of preset.results) map.set(r.v, { value: r.v, count: map.get(r.v)?.count ?? 0, preset: true });
     out[kind] = [...map.values()].sort((a, b) => a.value.localeCompare(b.value, "zh-Hant"));
   }
@@ -2463,8 +2484,9 @@ const routes: [string, RegExp, Handler][] = [
       const from = keywordText(body.from);
       const to = keywordText(body.to);
       const col = KEYWORD_COLUMN[kind];
+      const catUpdates = kind === "category" ? await rewriteCategories(ctx, (list) => joinCats([...new Set(list.map((x) => (x === from ? to : x)))])) : [];
       await ctx.db.batch([
-        ctx.db.prepare(`UPDATE courses SET ${col} = ? WHERE ${col} = ?`).bind(to, from),
+        ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = ? WHERE ${col} = ?`).bind(to, from)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, from),
         ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES (?, ?)").bind(kind, to),
         audit(ctx.db, s.sub, "keyword.rename", "keyword", kind, `${from} → ${to}`),
@@ -2481,8 +2503,9 @@ const routes: [string, RegExp, Handler][] = [
       const kind = keywordKind(body.kind);
       const value = keywordText(body.value);
       const col = KEYWORD_COLUMN[kind];
+      const catUpdates = kind === "category" ? await rewriteCategories(ctx, (list) => joinCats(list.filter((x) => x !== value))) : [];
       await ctx.db.batch([
-        ctx.db.prepare(`UPDATE courses SET ${col} = '' WHERE ${col} = ?`).bind(value),
+        ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = '' WHERE ${col} = ?`).bind(value)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, value),
         audit(ctx.db, s.sub, "keyword.remove", "keyword", kind, value),
       ]);

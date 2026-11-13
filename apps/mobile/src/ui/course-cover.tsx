@@ -43,9 +43,10 @@ export function CourseCover({ theme, label, title, height = 120, imageUrl, fill 
   const [bg, fg] = (courseThemes[theme] ?? courseThemes.sage)[scheme];
   const pad = space.md;
   const hasTitle = !!title?.trim();
-  const tagH = label ? 26 : 0;
+  const labels = (label || "").split(/[、,，]+/).map((x) => x.trim()).filter(Boolean);
+  const tagH = labels.length ? 26 * Math.ceil(labels.length / 3) + (Math.ceil(labels.length / 3) - 1) * 6 : 0;
   const innerW = Math.max(0, box.w - pad * 2);
-  const innerH = Math.max(0, box.h - pad * 2 - tagH - (label ? 6 : 0));
+  const innerH = Math.max(0, box.h - pad * 2 - tagH - (labels.length ? 6 : 0));
   const fs = hasTitle && box.w ? fitFontSize(title!, innerW, innerH) : 0;
   return (
     <View
@@ -57,11 +58,15 @@ export function CourseCover({ theme, label, title, height = 120, imageUrl, fill 
     >
       <View style={[styles.ring, { borderColor: fg }]} />
       <View style={[styles.ring2, { backgroundColor: fg }]} />
-      {label ? (
-        <View style={[styles.tag, { borderColor: fg }]}>
-          <AppText variant="caption" style={{ color: fg, fontWeight: "800", letterSpacing: 1 }}>
-            {label}
-          </AppText>
+      {labels.length ? (
+        <View style={styles.tags}>
+          {labels.map((x) => (
+            <View key={x} style={[styles.tag, { borderColor: fg }]}>
+              <AppText variant="caption" style={{ color: fg, fontWeight: "800", letterSpacing: 1 }}>
+                {x}
+              </AppText>
+            </View>
+          ))}
         </View>
       ) : null}
       {hasTitle ? (
@@ -81,6 +86,7 @@ const styles = StyleSheet.create({
   cover: { borderRadius: radius.md, padding: space.md, overflow: "hidden", gap: 6 },
   ring: { position: "absolute", right: -24, top: -24, width: 110, height: 110, borderRadius: 55, borderWidth: 14, opacity: 0.25 },
   ring2: { position: "absolute", left: -40, bottom: -40, width: 120, height: 120, borderRadius: 60, opacity: 0.1 },
-  tag: { alignSelf: "center", borderWidth: 1.5, borderRadius: radius.pill, paddingHorizontal: 10, height: 26, justifyContent: "center" },
+  tags: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6 },
+  tag: { borderWidth: 1.5, borderRadius: radius.pill, paddingHorizontal: 10, height: 26, justifyContent: "center" },
   titleBox: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
