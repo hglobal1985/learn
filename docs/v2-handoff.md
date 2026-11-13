@@ -247,3 +247,5 @@
 - **一次只播一個**：開另一堂時若正在播放，從畫面底部彈出面板（`switch-sheet.tsx`，網頁與 App 共用）顯示「正在播放／想播放」兩堂名稱，按鈕「關閉」「確定播放（秒數）」；**15 秒內沒操作視同同意改播**（`SWITCH_COUNTDOWN_SECONDS`）；詢問期間課程頁不顯示轉圈。選繼續原本的就回到原本那一堂。停止或播完後切換不詢問。登出自動關閉播放。
 - **通知欄／鎖定畫面**：網頁用 Media Session（標題、封面、播放／暫停、前後 10 秒、拖曳進度）；手機 App 用 expo-video 的 `showNowPlayingNotification`、`staysActiveInBackground`，並在 `app.json` 開啟 `supportsBackgroundPlayback`、`supportsPictureInPicture`。
 - **限制**：YouTube 在通知欄沒有連動（YouTube 自己的播放器不開放）；手機 App 內 YouTube 仍只在課程頁內嵌播放（WebView 無法跨頁保留）。**手機 App 的迷你播放與通知欄尚未用實機驗證**（要打包後測）；網頁版已用 390px 手機寬度的瀏覽器完整測過：播放→離開頁面仍播放且時間前進→浮動視窗拖曳→點一下回課程頁時間接續、永遠只有一個 `<video>`、切換詢問、音檔迷你列拖曳進度。
+- **背景播放（切到別的 App／鎖螢幕）**：手機瀏覽器會暫停有畫面的 `<video>`，但不會暫停 `<audio>`。所以 `engine.web.ts` 在 `visibilitychange`／`pagehide` 時，把同一支影片的聲音交給隱藏的 `<audio>`（從同一秒接著播，HLS 另開一個 hls.js），回到瀏覽器再把影像接回去；`intent` 旗標區分「使用者自己暫停」與「瀏覽器因背景而自動暫停」，只有後者會被接手。純音檔本來就不會被暫停。（桌機瀏覽器模擬切換驗證過：背景時間持續前進、回前景影像接上；**Android／iPhone 實機尚未驗證**。）
+- **通知欄圖片**：影片用課程 EDM（沒有就用封面、再沒有用 App 圖示）；純音檔優先用音檔內嵌的專輯封面（`audio-cover.ts`：MP3 的 ID3 APIC、M4A 的 covr，只用 Range 讀檔頭／moov），沒有內嵌就退回 EDM。手機 App（expo-video）目前只用 EDM／封面，音檔內嵌封面只有網頁版。

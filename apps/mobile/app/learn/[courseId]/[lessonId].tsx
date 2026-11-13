@@ -40,7 +40,7 @@ export default function LessonScreen() {
   const c = course.data;
   const lessonRow = c?.lessons.find((l) => l.id === lessonId);
   const track = useMemo(
-    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title }) : null),
+    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: c.edmUrl ?? c.coverUrl }) : null),
     [playback, c?.id, c?.title, lessonRow?.id, lessonRow?.title, legacyYoutube],
   );
   // 要播這一堂：同一堂直接接上；另一堂正在播放就詢問是否中斷，選「繼續原本的」就回到原本那一堂。

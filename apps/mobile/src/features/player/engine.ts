@@ -22,7 +22,7 @@ let subs: { remove(): void }[] = [];
 
 const sourceOf = (t: Track) => {
   const url = t.playback.kind === "youtube" ? "" : t.playback.kind === "hls" ? t.playback.url : resolveUrl(t.playback.url);
-  return { uri: url, metadata: { title: t.title, artist: t.subtitle } };
+  return { uri: url, metadata: { title: t.title, artist: t.subtitle, ...(t.artwork ? { artwork: resolveUrl(t.artwork) } : {}) } };
 };
 
 function bind(p: VideoPlayer) {

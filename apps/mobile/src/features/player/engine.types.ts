@@ -11,6 +11,8 @@ export type Track = {
   subtitle: string;
   mode: TrackMode;
   playback: Playback;
+  /** 通知欄播放器的圖片：課程 EDM（沒有就用封面）。純音檔另外優先用音檔內嵌的專輯封面。 */
+  artwork: string | null;
 };
 
 export type Snapshot = {
@@ -31,7 +33,7 @@ export const EMPTY: Snapshot = { track: null, playing: false, position: 0, durat
 
 export const trackMode = (p: Playback): TrackMode => (p.kind === "youtube" ? "youtube" : p.kind === "audio" ? "audio" : "video");
 
-export function buildTrack(p: Playback, meta: { courseId: string; lessonId: string; title: string; subtitle: string }): Track {
+export function buildTrack(p: Playback, meta: { courseId: string; lessonId: string; title: string; subtitle: string; artwork: string | null }): Track {
   return { key: `${meta.courseId}:${meta.lessonId}`, ...meta, mode: trackMode(p), playback: p };
 }
 
