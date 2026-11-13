@@ -139,7 +139,7 @@ function Source({ title, from, path, advancedTitle }: { title: string; from: str
   );
 }
 
-/** 統計分析：兩種來源分開顯示、互不混合（Mux 影片數據、本 App 資料庫），預設都收起；超級管理員、總部秘書與被指定的職務可以看。 */
+/** 統計分析：三種來源分開顯示、互不混合（Mux 影片數據、Cloudflare 網站流量、本 App 資料庫），預設都收起；超級管理員、總部秘書與被指定的職務可以看。 */
 export default function StatsScreen() {
   const { c } = useTheme();
   const { member } = useSession();
@@ -162,7 +162,8 @@ export default function StatsScreen() {
   return (
     <Screen header={false}>
       <Source title="① Mux 影片統計" from="資料來自 Mux（影片服務）" path="/admin/stats/mux" advancedTitle="進階統計（裝置、瀏覽器、國家、播放錯誤、直播）" />
-      <Source title="② App 資料庫統計" from="資料來自本 App 自己的資料庫（D1）" path="/admin/stats/app" />
+      <Source title="② Cloudflare 網站流量" from="資料來自 Cloudflare（網站主機）" path="/admin/stats/cloudflare" />
+      <Source title="③ App 資料庫統計" from="資料來自本 App 自己的資料庫（D1）" path="/admin/stats/app" />
 
       {isSuper ? (
         <Section title="誰可以看這一頁（超級管理員設定）">

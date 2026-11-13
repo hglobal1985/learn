@@ -318,3 +318,4 @@
 - 統計「各影片本月傳輸量」改顯示影片名稱（meta.title／passthrough），404＝已刪除的影片。
 - 緞帶：band 中心對齊角落對角線（文字置中）；框 90、left/right -60、top 15、字 11px。
 - 統計分析頁拆成兩個互不混合、預設收起的來源區塊：① Mux（/admin/stats/mux）② App 資料庫 D1（/admin/stats/app，app-stats.ts）。Cloudflare 流量統計尚未串接（Worker 沒有 Cloudflare API 權杖）。
+- 統計分析加第三個來源「Cloudflare 網站流量」（/admin/stats/cloudflare，cf-stats.ts）：需 Secret CF_API_TOKEN（Account Analytics:Read）；CF_ACCOUNT_ID 在 wrangler.jsonc vars。未設定時顯示「尚未設定」。

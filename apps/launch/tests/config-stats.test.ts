@@ -67,6 +67,11 @@ test("統計分析：超級管理員／秘書可看，其他職務要被指定�
   assert.equal(app.status, 200);
   assert.ok(app.data.blocks.length >= 4 && app.data.blocks.every((b) => b.id.startsWith("app_")), "資料庫統計與 Mux 統計不混合");
   assert.ok(!app.data.blocks.some((b) => b.error), "每個區塊都讀得到");
+  // Cloudflare 流量統計：沒設定權杖時只顯示「尚未設定」，不報錯
+  assert.equal((await call("GET", "/admin/stats/cloudflare", { token: student })).status, 403);
+  const cf = await call<MuxStats>("GET", "/admin/stats/cloudflare", { token: admin });
+  assert.equal(cf.status, 200);
+  assert.equal(cf.data.blocks[0]!.id, "cf_setup");
   // 超級管理員指定會長可以看
   await call("PUT", "/admin/ui-config", { token: admin, body: { statsRoles: ["president"] } });
   assert.equal((await call("GET", "/admin/stats/mux", { token: pres })).status, 200);
