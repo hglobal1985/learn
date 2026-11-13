@@ -11,7 +11,7 @@
       "expo-document-picker",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-video",
+      ["expo-video", { "supportsBackgroundPlayback": true, "supportsPictureInPicture": true }],
       [
         "expo-splash-screen",
         {

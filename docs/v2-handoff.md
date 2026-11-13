@@ -237,3 +237,13 @@
 - **版本回報**：超級管理員登入時（背景、每小時一次）呼叫 `handoff?integrated=2026-11-13.9&standards=webhook,delete_copy,no_email_copy,snapshot_reconcile`；`least_scope` 由業主在中央後台勾選，程式不宣稱。
 - **各中心自行上架課程**：會長、音控（需有所屬中心）可在「設定 → 課程設定」新增並管理**主辦單位是自己中心**的課程（含章節、場次、附件、音檔、封面）。限制：主辦單位固定為自己的中心；指導單位不能是「寰宇總部」；審核群組只能用自己中心的；不能用 Mux 影片；已有人報名的課程／場次不能刪（只能下架），刪除限總部管理員。管理清單只列自己中心的課程。後端以 `requireCourseManager`（`api.ts`）統一把關；App 以 `canManageCourses`（`src/lib/roles.ts`）決定是否顯示入口。測試 `tests/center-courses.test.ts`（後端共 53 項）。
 - 手機寬度（390px）已用瀏覽器實際看過課程設定清單、編輯頁；順手修正清單按鈕在窄螢幕被切掉。**尚未用真實會長帳號實測**。
+
+## 2026-11-13（四）：全站單一播放器與迷你播放器
+- **問題**：以前播放器綁在課程頁，離開頁面後聲音留在背景、回來又新建一個從頭播，造成「只聽到聲音」與「兩個聲音不同步」。
+- **做法**（`apps/mobile/src/features/player/`）：全站只有一個播放核心 `engine`（網頁 `engine.web.ts`，手機 App `engine.ts` 用 expo-video），媒體元素只建立一次、不搬動不銷毀。課程頁用 `PlayerSlot`／`InlineAudio` 登記「我在這一頁」（用 `useFocusEffect`，因為 Stack 會把上一頁留在背景），離開頁面就切成迷你播放：
+  - **純音檔**：底部分頁列正上方的細條（`MiniAudioBar`），時間軸可拖曳、播放／暫停、關閉；點標題區回課程頁。
+  - **影片（Mux／示範）與 YouTube**：右下角浮動小視窗（`PlayerLayer`），可按住任意拖曳（位置記在瀏覽器），點一下回課程頁，有播放／暫停與關閉；YouTube 用 postMessage 控制。
+  - 課程頁的影片改為**釘在上方**（不隨內容捲動），往下看附件與進度時也看得到畫面。
+- **一次只播一個**：開另一堂時若正在播放，詢問「正在播放「A」，要改播「B」嗎？」；選繼續原本的就回到 A 那一堂。停止或播完後切換不詢問。登出自動關閉播放。
+- **通知欄／鎖定畫面**：網頁用 Media Session（標題、封面、播放／暫停、前後 10 秒、拖曳進度）；手機 App 用 expo-video 的 `showNowPlayingNotification`、`staysActiveInBackground`，並在 `app.json` 開啟 `supportsBackgroundPlayback`、`supportsPictureInPicture`。
+- **限制**：YouTube 在通知欄沒有連動（YouTube 自己的播放器不開放）；手機 App 內 YouTube 仍只在課程頁內嵌播放（WebView 無法跨頁保留）。**手機 App 的迷你播放與通知欄尚未用實機驗證**（要打包後測）；網頁版已用 390px 手機寬度的瀏覽器完整測過：播放→離開頁面仍播放且時間前進→浮動視窗拖曳→點一下回課程頁時間接續、永遠只有一個 `<video>`、切換詢問、音檔迷你列拖曳進度。

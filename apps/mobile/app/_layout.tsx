@@ -4,6 +4,8 @@ import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppGate } from "@/features/app-gate";
+import { MiniAudioBar } from "@/features/player/audio-bar";
+import { PlayerLayer } from "@/features/player/player-layer";
 import { SessionProvider } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { BottomBar } from "@/ui";
@@ -45,7 +47,9 @@ export default function RootLayout() {
             <Stack.Screen name="auth/sso" options={{ headerShown: false }} />
           </Stack>
           </View>
+          <MiniAudioBar />
           <BottomBar />
+          <PlayerLayer />
           </View>
         </ThemeProvider>
       </SessionProvider>
