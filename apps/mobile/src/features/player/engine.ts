@@ -75,6 +75,9 @@ export const engine = {
   setFullscreenTarget(_el: unknown) {},
   canFullscreen: () => false,
   toggleFullscreen() {},
+  setCollapsed(collapsed: boolean) {
+    if (snap.collapsed !== collapsed) emit({ collapsed });
+  },
   clearSlot(key: string) {
     if (snap.slotKey === key) emit({ slotKey: null });
   },
@@ -91,7 +94,7 @@ export const engine = {
       player = createVideoPlayer(src);
       bind(player);
     } else player.replace(src);
-    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: true, error: null, segmentEnded: false });
+    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: true, error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
     const { start } = segmentOf(t);
     if (start) player.currentTime = start;
     player.play();

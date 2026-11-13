@@ -52,9 +52,14 @@ export function AudioBar({ compact }: { compact?: boolean }) {
             </Pressable>
           </>
         ) : (
-          <Pressable accessibilityRole="button" accessibilityLabel="關閉播放" onPress={() => engine.close()} style={styles.small}>
-            <Ionicons name="close" size={24} color={c.textMuted} />
-          </Pressable>
+          <>
+            <Pressable accessibilityRole="button" accessibilityLabel="縮小成小圓圖" onPress={() => engine.setCollapsed(true)} style={styles.small}>
+              <Ionicons name="remove" size={26} color={c.textMuted} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="關閉播放" onPress={() => engine.close()} style={styles.small}>
+              <Ionicons name="close" size={24} color={c.textMuted} />
+            </Pressable>
+          </>
         )}
       </View>
       {!compact ? <SeekBar value={at} max={total || 1} onSeek={seek} /> : null}
@@ -77,7 +82,7 @@ export function InlineAudio({ trackKey }: { trackKey: string }) {
 export function MiniAudioBar() {
   const { c } = useTheme();
   const s = usePlayer();
-  if (!s.track || s.track.mode !== "audio" || s.slotKey === s.track.key) return null;
+  if (!s.track || s.track.mode !== "audio" || s.slotKey === s.track.key || s.collapsed) return null;
   return (
     <View style={[styles.mini, { backgroundColor: c.surface, borderTopColor: c.border }]}>
       <AudioBar compact />

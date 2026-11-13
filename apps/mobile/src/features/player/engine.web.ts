@@ -215,6 +215,7 @@ function setupSession(t: Track) {
       if (!blobUrl) return;
       if (snap.track?.key !== t.key) return void URL.revokeObjectURL(blobUrl);
       coverUrl = blobUrl;
+      emit({ artworkUrl: blobUrl });
       ms.metadata = new MediaMetadata({ title: t.title, artist: t.subtitle, album: "寰宇行動大學", artwork: [{ src: blobUrl }] });
     });
   }
@@ -280,6 +281,9 @@ export const engine = {
     slotEl = node;
     if (snap.slotKey !== key) emit({ slotKey: key });
   },
+  setCollapsed(collapsed: boolean) {
+    if (snap.collapsed !== collapsed) emit({ collapsed });
+  },
   clearSlot(key: string) {
     if (snap.slotKey === key) {
       slotEl = null;
@@ -319,7 +323,7 @@ export const engine = {
     teardownMedia();
     endedFlag = false;
     intent = false; // 等真的開始播放（play 事件）才算「想播放」
-    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: t.mode !== "youtube", error: null, segmentEnded: false });
+    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: t.mode !== "youtube", error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
     if (t.mode !== "youtube") {
       attach(element(), t, segmentOf(t).start, true, (h) => (hlsVideo = h));
       setupSession(t);

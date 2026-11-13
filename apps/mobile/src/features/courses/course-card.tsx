@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
+import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CourseCover, Pill } from "@/ui";
@@ -16,6 +17,11 @@ export function CourseCard({ course }: { course: CourseSummary }) {
         {course.subtitle}
       </AppText>
       <UnitTags course={course} />
+      {course.eventStart ? (
+        <AppText variant="callout" style={{ fontWeight: "600" }}>
+          活動日期 {eventDays(course.eventStart, course.eventEnd)}
+        </AppText>
+      ) : null}
       <View style={styles.meta}>
         <CoursePriceTag course={course} />
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}

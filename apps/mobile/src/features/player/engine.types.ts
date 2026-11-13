@@ -27,9 +27,13 @@ export type Snapshot = {
   segmentEnded: boolean;
   /** 目前顯示在課程頁上的播放區塊屬於哪一個 track（沒有＝已離開課程頁，進入迷你播放器模式）。 */
   slotKey: string | null;
+  /** 迷你播放器縮成小圓圖（播放中會旋轉）。換播另一堂時會恢復。 */
+  collapsed: boolean;
+  /** 目前顯示的圖片（課程 EDM；純音檔有內嵌專輯封面時用封面）。 */
+  artworkUrl: string | null;
 };
 
-export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null };
+export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null, collapsed: false, artworkUrl: null };
 
 export const trackMode = (p: Playback): TrackMode => (p.kind === "youtube" ? "youtube" : p.kind === "audio" ? "audio" : "video");
 

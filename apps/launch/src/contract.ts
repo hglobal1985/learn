@@ -57,6 +57,8 @@ export type CourseSummary = {
   /** 活動日期（YYYY-MM-DD）；eventEnd 只有連續 2～3 天的活動才有。 */
   eventStart: string | null;
   eventEnd: string | null;
+  /** 完全公開：未登入的訪客也能瀏覽介紹與章節、觀看（只限免費課程）。 */
+  isPublic: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
@@ -78,6 +80,8 @@ export type Lesson = {
   minutes: number;
   completed: boolean;
   kind: "video" | "audio";
+  /** 這一堂的活動日期（YYYY-MM-DD；沒有設定為 null）。 */
+  eventDate: string | null;
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */
   start: number | null;
   end: number | null;

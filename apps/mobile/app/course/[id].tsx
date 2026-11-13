@@ -14,12 +14,12 @@ const isWeb = Platform.OS === "web";
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { member, ready, invalidate } = useSession();
-  const { data: course, error, loading, reload } = useApi<CourseDetail>(member ? `/courses/${id}` : null);
+  const { data: course, error, loading, reload } = useApi<CourseDetail>(`/courses/${id}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "danger" | "success"; text: string } | null>(null);
 
-  // 課程介紹頁需登入：未登入導向登入，完成後回到這一頁。
-  if (ready && !member) return <Redirect href={{ pathname: "/me", params: { next: `/course/${id}` } }} />;
+  // 課程介紹頁需登入：未登入導向登入，完成後回到這一頁。「完全公開」的課程例外，訪客直接看得到。
+  if (ready && !member && !course && !loading) return <Redirect href={{ pathname: "/me", params: { next: `/course/${id}` } }} />;
   if (!course)
     return (
       <Screen header={false}>
@@ -48,6 +48,7 @@ export default function CourseDetailScreen() {
   };
 
   const registerButton = (free: boolean, key: string, run?: CourseRun) => {
+    if (!member) return <Button label="登入後報名" icon="log-in-outline" onPress={() => router.push({ pathname: "/me", params: { next: `/course/${course.id}` } })} fullWidth />;
     if (!course.eligible) return <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜${course.allowPresident ? "或會長" : ""}報名。`} />;
     if (free) return <Button label="免費報名" icon="gift-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
     // iOS/Android：依商店規範不顯示付費報名方式，只說明尚未開通。
@@ -78,6 +79,7 @@ export default function CourseDetailScreen() {
         <View style={styles.row}>
           <CoursePriceTag course={course} />
           {course.minRank.order > 10 ? <Pill label={`限 ${course.minRank.name} 以上${course.allowPresident ? "或會長" : ""}`} tone={course.eligible ? "neutral" : "warning"} /> : null}
+          {course.isPublic ? <Pill label="完全公開" tone="accent" /> : null}
           {course.freeNow && course.freeUntil ? <Pill label={`限時免費至 ${dateTime(course.freeUntil)}`} tone="accent" /> : null}
         </View>
         <AppText variant="callout" tone="muted">
@@ -86,7 +88,7 @@ export default function CourseDetailScreen() {
         {course.description ? <AppText>{course.description}</AppText> : null}
       </View>
       {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
-      {nextLesson && (course.enrollment === "opened" || admin) ? (
+      {nextLesson && (course.enrollment === "opened" || admin || (!member && course.isPublic)) ? (
         <Button label={course.completedLessons ? "繼續上課" : "開始上課"} icon="play" onPress={() => router.push(`/learn/${course.id}/${nextLesson.id}`)} fullWidth />
       ) : null}
 
@@ -123,14 +125,14 @@ export default function CourseDetailScreen() {
                 key={lesson.id}
                 icon={lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
                 title={`${lesson.position}. ${lesson.title}`}
-                subtitle={`${run ? `${run.title} · ` : ""}${lesson.minutes} 分鐘${lesson.completed ? " · 已完成" : ""}`}
+                subtitle={`${lesson.eventDate ? `${eventDays(lesson.eventDate, null)} · ` : ""}${run ? `${run.title} · ` : ""}${lesson.minutes} 分鐘${lesson.completed ? " · 已完成" : ""}`}
                 onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
               />
             );
           })}
         </Card>
       </Section>
-      <CommentBoard courseId={course.id} />
+      {member ? <CommentBoard courseId={course.id} /> : null}
     </Screen>
   );
 }

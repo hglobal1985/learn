@@ -9,7 +9,7 @@ import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, Chips, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen } from "@/ui";
+import { AppText, Button, Card, Chips, DateSelect, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen, todayStr } from "@/ui";
 
 const kinds: { key: MediaType; label: string }[] = [
   { key: "demo", label: "示範短片" },
@@ -84,7 +84,7 @@ export default function LessonManagerScreen() {
       {msg ? <NoticeBox tone="danger" text={msg} /> : null}
       {lessons.map((l, i) => (
         <LessonEditor
-          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.runId}`}
+          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.runId}:${l.eventDate}`}
           lesson={l}
           allowMux={member?.role === "admin"}
           runs={course.data!.runs}
@@ -112,7 +112,7 @@ export default function LessonManagerScreen() {
           icon="add"
           loading={busy}
           disabled={!newTitle.trim()}
-          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle })).then(() => setNewTitle(""))}
+          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle, eventDate: todayStr() })).then(() => setNewTitle(""))}
         />
       </Card>
     </Screen>
@@ -175,6 +175,7 @@ function LessonEditor({
   const [start, setStart] = useState(toHms(lesson.start));
   const [end, setEnd] = useState(toHms(lesson.end));
   const [runId, setRunId] = useState(lesson.runId ?? "");
+  const [eventDate, setEventDate] = useState(lesson.eventDate ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
@@ -190,7 +191,7 @@ function LessonEditor({
     setBusy("save");
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { title, startSeconds: s, endSeconds: e, runId: runId || null };
+      const body: Record<string, unknown> = { title, startSeconds: s, endSeconds: e, runId: runId || null, eventDate: eventDate || null };
       if (kind === "demo" || kind === "youtube") body.mediaType = kind;
       if (kind === "youtube") body.mediaRef = ref;
       await api("PATCH", `/admin/lessons/${lesson.id}`, body);
@@ -247,6 +248,7 @@ function LessonEditor({
         accessibilityLabel={`第 ${lesson.position} 堂名稱`}
         style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
       />
+      <DateSelect label="活動日期" value={eventDate} onChange={setEventDate} />
       <View style={styles.row}>
         {kinds.filter((k) => allowMux || k.key !== "mux" || kind === "mux").map((k) => {
           const active = k.key === kind;

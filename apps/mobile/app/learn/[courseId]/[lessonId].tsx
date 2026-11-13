@@ -5,6 +5,7 @@ import { api, type CourseDetail, type Playback } from "@/api/client";
 import { AttachmentList } from "@/features/attachments";
 import { InlineAudio } from "@/features/player/audio-bar";
 import { engine } from "@/features/player/engine";
+import { eventDays } from "@/features/format";
 import { buildTrack } from "@/features/player/engine.types";
 import { LessonPlayer } from "@/features/player/lesson-player";
 import { PlayerSlot } from "@/features/player/player-slot";
@@ -109,14 +110,20 @@ export default function LessonScreen() {
       {playback?.kind === "demo" ? <Pill label={playback.label} tone="warning" /> : null}
       <View style={{ gap: space.xs }}>
         <AppText variant="caption" tone="muted">
-          第 {lesson.position} 堂 · {lesson.minutes} 分鐘
+          第 {lesson.position} 堂 · {lesson.minutes} 分鐘{lesson.eventDate ? ` · 活動日期 ${eventDays(lesson.eventDate, null)}` : ""}
         </AppText>
         <AppText variant="title">{lesson.title}</AppText>
       </View>
-      <AttachmentList courseId={c.id} lessonId={lesson.id} />
+      {member ? <AttachmentList courseId={c.id} lessonId={lesson.id} /> : null}
       {segmentDone && !lesson.completed ? <NoticeBox tone="success" text="這一堂播放完畢，按「完成」記錄進度。" /> : null}
       <View style={styles.row}>
-        {lesson.completed ? (
+        {!member ? (
+          <>
+            <NoticeBox text="登入後可以記錄學習進度、下載附件教材與留言。" />
+            {next && !next.locked ? <Button label="下一堂" icon="play-forward" onPress={() => router.replace(`/learn/${c.id}/${next.id}`)} /> : null}
+            <Button variant="secondary" label="登入" icon="log-in-outline" onPress={() => router.push({ pathname: "/me", params: { next: `/learn/${c.id}/${lesson.id}` } })} />
+          </>
+        ) : lesson.completed ? (
           next ? (
             <Button label="下一堂" icon="play-forward" onPress={() => router.replace(`/learn/${c.id}/${next.id}`)} />
           ) : (
@@ -133,8 +140,8 @@ export default function LessonScreen() {
               key={l.id}
               icon={l.completed ? "checkmark-circle" : l.id === lesson.id ? "play-circle" : "play-circle-outline"}
               title={`${l.position}. ${l.title}`}
-              subtitle={l.id === lesson.id ? "正在觀看" : `${l.minutes} 分鐘`}
-              onPress={l.id === lesson.id ? undefined : () => router.replace(`/learn/${c.id}/${l.id}`)}
+              subtitle={l.id === lesson.id ? "正在觀看" : `${l.eventDate ? `${eventDays(l.eventDate, null)} · ` : ""}${l.minutes} 分鐘`}
+              onPress={l.id === lesson.id || l.locked ? undefined : () => router.replace(`/learn/${c.id}/${l.id}`)}
             />
           ))}
         </Card>

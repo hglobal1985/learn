@@ -1,50 +1,31 @@
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { CourseCard } from "@/features/courses/course-card";
+import { sortByEventDate } from "@/features/courses/sort";
 import { useApi } from "@/state/session";
-import { useTheme } from "@/theme/theme";
-import { minTouch, radius, space } from "@/theme/tokens";
-import { AppText, Chips, EmptyState, ErrorView, LoadingView, Screen } from "@/ui";
+import { space } from "@/theme/tokens";
+import { EmptyState, ErrorView, LoadingView, Screen, Select } from "@/ui";
 
-const all = "全部";
+const ALL = "";
 
 export default function CoursesScreen() {
-  const { c } = useTheme();
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
-  const [category, setCategory] = useState(all);
-  const [unit, setUnit] = useState(all);
-  const courses = useMemo(() => data ?? [], [data]);
-  const categories = useMemo(() => [all, ...new Set(courses.map((x) => x.category))], [courses]);
+  const [category, setCategory] = useState(ALL);
+  const [unit, setUnit] = useState(ALL);
+  const courses = useMemo(() => sortByEventDate(data ?? []), [data]);
+  const categories = useMemo(() => [...new Set(courses.map((x) => x.category).filter(Boolean))], [courses]);
   const units = useMemo(() => [...new Set(courses.flatMap((x) => [x.guidanceUnit, x.hostUnit]).filter(Boolean))], [courses]);
-  const list = courses.filter((x) => (category === all || x.category === category) && (unit === all || x.guidanceUnit === unit || x.hostUnit === unit));
+  const list = courses.filter((x) => (category === ALL || x.category === category) && (unit === ALL || x.guidanceUnit === unit || x.hostUnit === unit));
   return (
-    <Screen
-      title="全部課程"
-      subtitle={data ? `共 ${courses.length} 門課程` : undefined}
-    >
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {categories.map((name) => {
-          const active = name === category;
-          return (
-            <Pressable
-              key={name}
-              onPress={() => setCategory(name)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[styles.chip, { backgroundColor: active ? c.accent : c.surface, borderColor: active ? c.accent : c.border }]}
-            >
-              <AppText variant="callout" style={{ color: active ? c.textOnAccent : c.text, fontWeight: "600" }}>
-                {name}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      {units.length ? <Chips label="指導或主辦單位" options={[{ key: all, label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} value={unit} onChange={setUnit} /> : null}
+    <Screen title="全部課程" subtitle={data ? `共 ${list.length} 門課程（依課程日期排序）` : undefined}>
+      <View style={styles.filters}>
+        <Select label="分類" value={category} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={setCategory} />
+        {units.length ? <Select label="指導或主辦單位" value={unit} options={[{ key: ALL, label: "全部單位" }, ...units.map((u) => ({ key: u, label: u }))]} onChange={setUnit} /> : null}
+      </View>
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
-      {data && !list.length ? <EmptyState icon="library-outline" title="這個分類還沒有課程" /> : null}
+      {data && !list.length ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}
       {list.map((course) => (
         <CourseCard key={course.id} course={course} />
       ))}
@@ -52,7 +33,4 @@ export default function CoursesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  chips: { gap: space.sm },
-  chip: { minHeight: minTouch - 8, paddingHorizontal: space.lg, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
-});
+const styles = StyleSheet.create({ filters: { flexDirection: "row", gap: space.sm } });

@@ -233,6 +233,7 @@ type CourseRow = {
   next_run_at: string | null;
   event_start: string | null;
   event_end: string | null;
+  is_public: number;
   edm_key: string | null;
   cover_key: string | null;
   cover_bg_id: string | null;
@@ -242,7 +243,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.edm_key, c.cover_key, c.cover_bg_id, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -306,6 +307,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     nextRunAt: row.next_run_at,
     eventStart: row.event_start,
     eventEnd: row.event_end,
+    isPublic: row.is_public === 1,
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
@@ -348,24 +350,26 @@ function runOpen(r: RunRow, used: number, now = iso()): boolean {
 const managesCourse = (s: Session, hostCenterKey: string | null) => s.role === "admin" || (!!s.center && !!hostCenterKey && hostCenterKey === s.center.key && s.roles.some((r) => ART_TYPES.has(r)));
 
 async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
-  const s = requireMember(ctx);
+  const s = ctx.session;
   const row = await ctx.db.prepare(`${COURSE_SELECT} WHERE c.id = ?`).bind(id).first<CourseRow>();
-  if (!row || (row.status !== "published" && !managesCourse(s, row.host_center_key))) return fail(404, "not_found", "找不到這門課程");
+  // 未登入的訪客：只有「完全公開」且已上架的課程可以看；其他一律要求登入。
+  if (!s && (!row || row.status !== "published" || row.is_public !== 1)) return fail(401, "unauthenticated", "請先登入");
+  if (!row || (s && row.status !== "published" && !managesCourse(s, row.host_center_key))) return fail(404, "not_found", "找不到這門課程");
   const [rankMap, state, lessons, done, runs, usage] = await Promise.all([
     ranks(ctx.db),
-    memberCourseState(ctx.db, s.sub),
+    memberCourseState(ctx.db, s?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, run_id FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, run_id, event_date FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; run_id: string | null }>(),
-    ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>(),
+      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null; run_id: string | null }>(),
+    s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
     ctx.db.prepare("SELECT * FROM course_runs WHERE course_id = ? ORDER BY COALESCE(starts_at, created_at) DESC").bind(id).all<RunRow>(),
     runUsage(ctx.db, id),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
   const web = ctx.platform === "web";
-  const admin = managesCourse(s, row.host_center_key);
+  const admin = !!s && managesCourse(s, row.host_center_key);
   return {
     ...summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code])),
     description: row.description ?? "",
@@ -398,7 +402,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       start: l.start_seconds,
       end: l.end_seconds,
       runId: l.run_id,
-      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id)),
+      eventDate: l.event_date,
+      // 完全公開的課程：訪客可以看沒有綁場次的章節。
+      locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id) || (row.is_public === 1 && !l.run_id && !s)),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })),
@@ -408,7 +414,12 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
 
 /** 能否觀看：管理員可預覽；章節屬於某場次時需報名該場，否則報名該課程任一場即可。 */
 async function canWatch(ctx: Ctx, courseId: string, runId: string | null): Promise<boolean> {
-  const s = requireMember(ctx);
+  const s = ctx.session;
+  if (!s) {
+    // 訪客：只有完全公開、已上架的課程裡「沒有綁場次」的章節可以看。
+    const pub = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first();
+    return !!pub && !runId;
+  }
   if (s.role === "admin") return true;
   if (s.center && s.roles.some((r) => ART_TYPES.has(r))) {
     const c = await ctx.db.prepare("SELECT host_center_key FROM courses WHERE id = ?").bind(courseId).first<{ host_center_key: string | null }>();
@@ -972,6 +983,9 @@ function randomId(n: number): string {
   const a = "abcdefghjkmnpqrstuvwxyz23456789";
   return [...crypto.getRandomValues(new Uint8Array(n))].map((b) => a[b % a.length]).join("");
 }
+/** 活動日期：YYYY-MM-DD 或 null（清除）。 */
+const dayOrNull = (v: unknown): string | null =>
+  v === null || v === "" ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) ? v : fail(400, "invalid_date", "活動日期格式請用 2026-12-01");
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : undefined);
 
 async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: boolean, who: Session) {
@@ -1004,6 +1018,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     sets.push(["status", body.status]);
   }
   if (body.allowPresident !== undefined) sets.push(["allow_president", body.allowPresident === true ? 1 : 0]);
+  if (body.isPublic !== undefined) sets.push(["is_public", body.isPublic === true ? 1 : 0]);
   const guidance = text(body.guidanceUnit, 60);
   if (centerOnly && guidance === HQ_UNIT) fail(403, "forbidden", `指導單位「${HQ_UNIT}」只有總部管理員可以設定`);
   if (guidance !== undefined) sets.push(["guidance_unit", guidance]);
@@ -1044,9 +1059,15 @@ async function checkGuidanceGroup(ctx: Ctx, guidance: unknown, groupId: unknown)
   if (g?.owner_center_key) fail(400, "hq_group_required", `指導單位為「${HQ_UNIT}」的課程只能使用總部的審核群組`);
 }
 
+/** 完全公開（訪客免登入可看）只限免費課程，避免付費內容被公開。 */
+function checkPublicFree(price: number, isPublic: boolean) {
+  if (isPublic && price > 0) fail(400, "public_must_be_free", "「完全公開」只能用在免費課程；請先把費用改成 0");
+}
+
 async function createCourse(ctx: Ctx, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
   const sets = await courseFields(ctx, body, true, admin);
+  checkPublicFree(Number(sets.find(([c]) => c === "price_twd")?.[1] ?? 0), sets.find(([c]) => c === "is_public")?.[1] === 1);
   await checkGuidanceGroup(ctx, body.guidanceUnit, body.reviewGroupId);
   const id = `c${randomId(7)}`;
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
@@ -1054,7 +1075,7 @@ async function createCourse(ctx: Ctx, admin: Session) {
   const vals = [id, (max?.m ?? 0) + 1, sets.find(([c]) => c === "status")?.[1] ?? "draft", ...sets.filter(([c]) => c !== "status").map(([, v]) => v)];
   await ctx.db.batch([
     ctx.db.prepare(`INSERT INTO courses (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).bind(...vals),
-    ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type) VALUES (?, ?, 1, '第 1 堂', 0, 'demo')").bind(`${id}-${randomId(6)}`, id),
+    ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type, event_date) VALUES (?, ?, 1, '第 1 堂', 0, 'demo', ?)").bind(`${id}-${randomId(6)}`, id, (sets.find(([c]) => c === "event_start")?.[1] as string | null | undefined) ?? null),
     audit(ctx.db, admin.sub, "course.create", "course", id, String(body.title ?? "")),
   ]);
   return courseDetail(ctx, id);
@@ -1064,8 +1085,9 @@ async function updateCourse(ctx: Ctx, id: string, admin: Session) {
   const body = await readJson<Record<string, unknown>>(ctx.req);
   const sets = await courseFields(ctx, body, false, admin);
   if (!sets.length) fail(400, "nothing_to_update", "沒有要更新的欄位");
-  const cur = await ctx.db.prepare("SELECT guidance_unit, review_group_id FROM courses WHERE id = ?").bind(id).first<{ guidance_unit: string; review_group_id: string | null }>();
+  const cur = await ctx.db.prepare("SELECT guidance_unit, review_group_id, price_twd, is_public FROM courses WHERE id = ?").bind(id).first<{ guidance_unit: string; review_group_id: string | null; price_twd: number; is_public: number }>();
   const pick = (col: string, old: unknown) => (sets.find(([c]) => c === col) ?? [col, old])[1];
+  checkPublicFree(Number(pick("price_twd", cur?.price_twd ?? 0)), pick("is_public", cur?.is_public ?? 0) === 1);
   await checkGuidanceGroup(ctx, pick("guidance_unit", cur?.guidance_unit), pick("review_group_id", cur?.review_group_id));
   const [res] = await ctx.db.batch([
     ctx.db.prepare(`UPDATE courses SET ${sets.map(([c]) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).bind(...sets.map(([, v]) => v), iso(), id),
@@ -1093,7 +1115,7 @@ const seconds = (v: unknown): number | null | undefined => {
 
 /** 修改章節：名稱、影片來源（示範／YouTube／Mux）、時間軸區間。音檔由上傳流程設定。 */
 async function updateLesson(ctx: Ctx, id: string, admin: Session) {
-  const body = await readJson<{ title?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
+  const body = await readJson<{ eventDate?: unknown; title?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
   if (body.mediaType === "mux" && admin.role !== "admin") fail(403, "forbidden", "Mux 影片由總部管理，請改用 YouTube 或音檔，或請總部協助");
   const cur = await ctx.db
     .prepare("SELECT media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE id = ?")
@@ -1106,6 +1128,7 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
     if (!title) fail(400, "title_required", "請輸入章節名稱");
     sets.push(["title", title]);
   }
+  if (body.eventDate !== undefined) sets.push(["event_date", dayOrNull(body.eventDate)]);
   let type = cur.media_type;
   if (body.mediaType !== undefined) {
     const t = body.mediaType;
@@ -1440,7 +1463,7 @@ const routes: [string, RegExp, Handler][] = [
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/playback$/,
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
-      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(403, "not_enrolled", "請先報名並通過審核");
+      if (!(await canWatch(ctx, courseId, lesson.run_id))) fail(ctx.session ? 403 : 401, ctx.session ? "not_enrolled" : "unauthenticated", ctx.session ? "請先報名並通過審核" : "請先登入");
       const seg = { start: lesson.start_seconds, end: lesson.end_seconds };
       if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref, ...seg };
       if (lesson.media_type === "mux" && lesson.media_ref) {
@@ -2395,14 +2418,15 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/courses\/([\w-]+)\/lessons$/,
     async (ctx, [courseId]) => {
       const admin = await requireCourseManager(ctx, courseId);
-      const body = await readJson<{ title?: unknown }>(ctx.req);
+      const body = await readJson<{ title?: unknown; eventDate?: unknown }>(ctx.req);
       const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
       if (!title) fail(400, "title_required", "請輸入章節名稱");
+      const eventDate = body.eventDate === undefined ? null : dayOrNull(body.eventDate);
       const course = await ctx.db.prepare("SELECT (SELECT COALESCE(MAX(position), 0) FROM lessons WHERE course_id = c.id) AS maxpos FROM courses c WHERE c.id = ?").bind(courseId).first<{ maxpos: number }>();
       if (!course) return fail(404, "not_found", "找不到這門課程");
       const id = `${courseId}-${randomId(6)}`;
       await ctx.db.batch([
-        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type) VALUES (?, ?, ?, ?, 0, 'demo')").bind(id, courseId, course.maxpos + 1, title),
+        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type, event_date) VALUES (?, ?, ?, ?, 0, 'demo', ?)").bind(id, courseId, course.maxpos + 1, title, eventDate),
         audit(ctx.db, admin.sub, "lesson.create", "lesson", id, title),
       ]);
       return courseDetail(ctx, courseId);

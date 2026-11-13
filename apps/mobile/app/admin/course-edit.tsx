@@ -8,10 +8,11 @@ import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, Chips, CourseCover, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
+import { todayStr } from "@/ui/date-select";
+import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -29,7 +30,7 @@ export default function CourseEditScreen() {
   const ranks = useApi<Rank[]>("/ranks");
   const centers = useApi<string[]>(isAdmin ? "/centers" : null);
   const groups = useApi<ReviewGroup[]>(canManage ? "/admin/review-groups" : null);
-  const [form, setForm] = useState<Form>(() => ({ ...empty, ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
+  const [form, setForm] = useState<Form>(() => ({ ...empty, eventStart: todayStr(), ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -42,6 +43,7 @@ export default function CourseEditScreen() {
     if (d)
       setForm({
         allowPresident: d.allowPresident,
+        isPublic: d.isPublic,
         guidanceUnit: d.guidanceUnit,
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
@@ -63,7 +65,7 @@ export default function CourseEditScreen() {
   if (!canManage) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
-  const set = (k: Exclude<keyof Form, "allowPresident">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   const save = async (status?: "draft" | "published") => {
     const freeFrom = parseLocal(form.freeFrom);
@@ -72,7 +74,7 @@ export default function CourseEditScreen() {
     setBusy(status ?? "save");
     setMsg(null);
     try {
-      const body = { ...form, freeFrom, freeUntil, reviewGroupId: form.reviewGroupId || null, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
+      const body = { ...form, isPublic: price > 0 ? false : form.isPublic, freeFrom, freeUntil, reviewGroupId: form.reviewGroupId || null, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
       const d = id ? await api<CourseDetail>("PATCH", `/admin/courses/${id}`, body) : await api<CourseDetail>("POST", "/admin/courses", body);
       invalidate();
       if (!id) {
@@ -126,7 +128,7 @@ export default function CourseEditScreen() {
     }
   };
 
-  const field = (label: string, k: Exclude<keyof Form, "allowPresident">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
+  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
     <View style={{ gap: space.xs }}>
       <AppText variant="callout" tone="muted">
         {label}
@@ -180,8 +182,11 @@ export default function CourseEditScreen() {
 
       <Section title="活動日期（選填）">
         <Card>
-            <Field label="活動開始日期（選填）" value={form.eventStart} onChange={set("eventStart")} placeholder="2026-12-01" />
-            <Field label="活動結束日期（連續 2～3 天才填，單日留白）" value={form.eventEnd} onChange={set("eventEnd")} placeholder="2026-12-03" hint="顯示在課程介紹頁與首頁；最多連續 3 天。" />
+            <DateSelect label="活動開始日期" value={form.eventStart} onChange={(v) => setForm((f) => ({ ...f, eventStart: v, ...(v ? {} : { eventEnd: "" }) }))} />
+            {form.eventStart ? <DateSelect label="活動結束日期（連續 2～3 天才設定，單日不用）" value={form.eventEnd} defaultValue={form.eventStart} onChange={(v) => setForm((f) => ({ ...f, eventEnd: v }))} /> : null}
+            <AppText variant="caption" tone="muted">
+              顯示在課程介紹頁、首頁與「全部課程」的排序（最多連續 3 天）。
+            </AppText>
         </Card>
       </Section>
 
@@ -235,6 +240,16 @@ export default function CourseEditScreen() {
               })}
             </View>
           ) : null}
+          {price > 0 ? (
+            <NoticeBox text="「完全公開」（訪客免登入可看）只限免費課程。" />
+          ) : (
+            <Chips
+              label="誰可以瀏覽"
+              options={[{ key: "no", label: "需要登入" }, { key: "yes", label: "完全公開（訪客免登入可看）" }]}
+              value={form.isPublic ? "yes" : "no"}
+              onChange={(v) => setForm((f) => ({ ...f, isPublic: v === "yes" }))}
+            />
+          )}
           {form.minRankCode !== "none" ? (
             <Chips
               label="會長"
