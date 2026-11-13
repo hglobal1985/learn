@@ -182,14 +182,16 @@ export default function CourseEditScreen() {
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
       <CourseCover theme={form.theme} label={form.category} title={form.title || "課程名稱"} imageUrl={course.data?.coverUrl ?? null} height={160} />
       <Card>
-        {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
-        {field("分類", "category", { placeholder: "例如：系列課程" })}
-        {categoryList.data?.length ? <Chips label="已有的分類" options={categoryList.data.map((x) => ({ key: x, label: x }))} value={form.category} onChange={set("category")} /> : null}
         {field("系列（同系列的課，全部課程清單只顯示最近的一場；不填＝不合併）", "series", { placeholder: "例如：翡翠達標班" })}
         {seriesList.data?.length ? <Chips label="已有的系列" options={[{ key: "", label: "不合併" }, ...seriesList.data.map((x) => ({ key: x, label: x }))]} value={form.series} onChange={set("series")} /> : null}
         {id ? (
           <Button variant="secondary" label="複製這門課，建立下一梯" icon="copy-outline" loading={busy === "dup"} disabled={!!busy} onPress={duplicate} fullWidth />
         ) : null}
+      </Card>
+      <Card>
+        {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
+        {field("分類", "category", { placeholder: "例如：系列課程" })}
+        {categoryList.data?.length ? <Chips label="已有的分類" options={categoryList.data.map((x) => ({ key: x, label: x }))} value={form.category} onChange={set("category")} /> : null}
         <View style={{ gap: space.xs }}>
           <AppText variant="callout" tone="muted">
             報名費用（新台幣，0 為免費）
