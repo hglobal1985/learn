@@ -151,9 +151,11 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
               地點：{placeText(cur)}
             </AppText>
           ) : null}
-          <View style={{ alignSelf: "center" }}>
-            <CoursePriceTag course={cur} />
-          </View>
+          {progress ? null : (
+            <View style={{ alignSelf: "center" }}>
+              <CoursePriceTag course={cur} />
+            </View>
+          )}
           {progress && cur.lessonCount ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
               學習進度 {cur.progressPercent}%
