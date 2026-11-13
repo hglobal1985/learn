@@ -148,7 +148,7 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
           ) : null}
           {placeText(cur) ? (
             <AppText variant="caption" tone="muted" numberOfLines={1}>
-              地點：{placeText(cur)}
+              {placeText(cur)}
             </AppText>
           ) : null}
           {progress ? null : (
