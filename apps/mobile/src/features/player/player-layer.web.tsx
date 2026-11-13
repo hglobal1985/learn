@@ -40,13 +40,21 @@ export function PlayerLayer() {
   const boxRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const pos = useRef<Pos | null>(null);
-  const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean; hidden?: boolean } | null>(null);
   const zoomLayer = useRef<HTMLDivElement>(null);
   const gesture = useRef<HTMLDivElement>(null);
   const lastTap = useRef({ t: 0, x: 0, y: 0 });
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapInfo = useRef<{ x: number; y: number; t: number; multi: boolean } | null>(null);
   const [showHint, setShowHint] = useState(false);
+  // 迷你播放器的三顆按鈕：1 秒沒有觸摸就自動隱藏，再摸到迷你播放器才會再顯示。
+  const [ctl, setCtl] = useState(true);
+  const ctlTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeCtl = () => {
+    setCtl(true);
+    if (ctlTimer.current) clearTimeout(ctlTimer.current);
+    ctlTimer.current = setTimeout(() => setCtl(false), 1000);
+  };
   const justSwitched = () => engine.recentlySwitched();
   const zoom = useRef<Zoom>(IDENTITY);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -136,6 +144,13 @@ export function PlayerLayer() {
     }
     if (pointers.current.size === 0) tapInfo.current = null;
   };
+
+  useEffect(() => {
+    if (windowed) wakeCtl();
+    return () => {
+      if (ctlTimer.current) clearTimeout(ctlTimer.current);
+    };
+  }, [windowed, t?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 操作提示：進入影片、觸摸影片、拖曳時間軸時顯示，3.5 秒沒操作就自動消失。
   useEffect(() => {
@@ -240,8 +255,9 @@ export function PlayerLayer() {
   const down = (e: PointerEvent<HTMLDivElement>) => {
     const r = boxRef.current?.getBoundingClientRect();
     if (!r) return;
-    drag.current = { px: e.clientX, py: e.clientY, x: r.left, y: r.top, moved: false };
+    drag.current = { px: e.clientX, py: e.clientY, x: r.left, y: r.top, moved: false, hidden: !ctl };
     e.currentTarget.setPointerCapture(e.pointerId);
+    wakeCtl();
   };
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -266,6 +282,7 @@ export function PlayerLayer() {
     if (!d) return;
     if (d.moved) return save();
     if (justSwitched()) return;
+    if (d.hidden && !s.collapsed) return; // 按鈕藏著時的第一下只是叫出按鈕，不要直接跳回課程頁
     if (s.collapsed) restore(); // 點一下小圓圖＝恢復原本的迷你播放器
     else if (t) router.push(`/learn/${t.courseId}/${t.lessonId}`); // 點一下小視窗＝回到課程頁
   };
@@ -290,6 +307,7 @@ export function PlayerLayer() {
   };
   const stop = (e: PointerEvent) => e.stopPropagation();
 
+  const ctlStyle: CSSProperties = { opacity: ctl ? 1 : 0, pointerEvents: ctl ? "auto" : "none", transition: "opacity 0.2s" };
   if (typeof document === "undefined") return null;
   const yt = t?.mode === "youtube" && t.playback.kind === "youtube" ? t.playback : null;
   const range = yt ? `${yt.start ? `&start=${yt.start}` : ""}${yt.end ? `&end=${yt.end}` : ""}` : "";
@@ -327,14 +345,14 @@ export function PlayerLayer() {
         </div>
       ) : null}
       {windowed ? (
-        <div style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => (drag.current = null)} role="button" aria-label="回到課程頁（可按住拖曳移動）">
-          <button type="button" aria-label="關閉播放" style={{ ...btn, top: 4, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.close()}>
+        <div style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} onPointerDown={down} onPointerMove={(e) => { move(e); wakeCtl(); }} onPointerUp={up} onPointerCancel={() => (drag.current = null)} role="button" aria-label="回到課程頁（可按住拖曳移動）">
+          <button type="button" aria-label="關閉播放" style={{ ...btn, ...ctlStyle, top: 4, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.close()}>
             ✕
           </button>
-          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, top: 48, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && minimize()}>
+          <button type="button" aria-label="縮小成小圓圖" style={{ ...btn, ...ctlStyle, top: 48, right: 4, width: 40, height: 40 }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && minimize()}>
             ─
           </button>
-          <button type="button" aria-label={s.playing ? "暫停" : "播放"} style={{ ...btn, left: "50%", top: "50%", width: 52, height: 52, transform: "translate(-50%,-50%)" }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.toggle()}>
+          <button type="button" aria-label={s.playing ? "暫停" : "播放"} style={{ ...btn, ...ctlStyle, left: "50%", top: "50%", width: 52, height: 52, transform: "translate(-50%,-50%)" }} onPointerDown={stop} onPointerUp={stop} onClick={() => !justSwitched() && engine.toggle()}>
             {s.playing ? "❚❚" : "▶"}
           </button>
         </div>
