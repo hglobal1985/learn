@@ -63,7 +63,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
       ) : null}
       {onHide ? (
         <Pressable accessibilityRole="button" accessibilityLabel="從學習中隱藏" onPress={onHide} hitSlop={6} style={styles.hide}>
-            <Ionicons name="close" size={30} color="#fff" />
+            <Ionicons name="close" size={22} color="#fff" />
         </Pressable>
       ) : null}
       {sheet ? <SeriesSheet title={course.series || course.title} items={[course, ...siblings].sort((a, b) => (b.eventStart ?? "").localeCompare(a.eventStart ?? ""))} onClose={() => setSheet(false)} onPick={onPickSibling} currentId={course.id} /> : null}
@@ -96,7 +96,7 @@ export function UnitTags({ course }: { course: CourseSummary }) {
 }
 
 const styles = StyleSheet.create({
-  hide: { position: "absolute", top: -14, right: -10, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", zIndex: 5 },
+  hide: { position: "absolute", top: -12, right: -8, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", zIndex: 5 },
   more: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderStyle: "dashed", borderRadius: radius.md },
   coverWrap: { borderRadius: radius.md, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
