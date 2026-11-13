@@ -8,7 +8,12 @@ const KEY = "ui_config";
 export function normalizeConfig(raw: unknown): UiConfig {
   const r = (raw && typeof raw === "object" ? raw : {}) as Partial<Record<keyof UiConfig, unknown>>;
   const groups = Array.isArray(r.sortGroups) ? (r.sortGroups as unknown[]).filter((g): g is SortGroup => (SORT_GROUPS as readonly string[]).includes(g as string)) : [];
-  const sortGroups = [...new Set([...groups, ...SORT_GROUPS])];
+  const sortGroups: SortGroup[] = [...new Set([...groups, ...SORT_GROUPS])];
+  // 後來新增的分組「費用尚未公布」：舊設定裡沒有時，放在「符合資格・尚未開課」後面，而不是最後面。
+  if (!groups.includes("eligible_tba") && groups.includes("eligible_upcoming")) {
+    sortGroups.splice(sortGroups.indexOf("eligible_tba"), 1);
+    sortGroups.splice(sortGroups.indexOf("eligible_upcoming") + 1, 0, "eligible_tba");
+  }
   const given = (r.ribbons && typeof r.ribbons === "object" ? r.ribbons : {}) as Record<string, { label?: unknown; color?: unknown; enabled?: unknown } | undefined>;
   const ribbons = { ...DEFAULT_UI_CONFIG.ribbons };
   for (const k of RIBBON_KEYS) {

@@ -69,5 +69,6 @@ export function classify(course: CourseSummary, member: Member | null): SortGrou
   if (course.isPublic) return "public_free";
   const upcoming = dateState(course) === "upcoming";
   if (member && !course.eligible) return upcoming ? "ineligible_upcoming" : "ineligible_started";
+  if (upcoming && course.priceTba) return "eligible_tba";
   return upcoming ? "eligible_upcoming" : "eligible_started";
 }

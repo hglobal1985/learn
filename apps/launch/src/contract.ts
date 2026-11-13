@@ -370,11 +370,12 @@ export const RIBBON_INFO: Record<RibbonKey, { title: string; side: "left" | "rig
 };
 
 /** 「全部課程」的排序分組（由上到下就是優先順序）。每組內：未開課依日期由近到遠，已開課依日期由新到舊。 */
-export const SORT_GROUPS = ["pending", "eligible_upcoming", "eligible_started", "public_free", "enrolled", "ineligible_upcoming", "ineligible_started"] as const;
+export const SORT_GROUPS = ["pending", "eligible_upcoming", "eligible_tba", "eligible_started", "public_free", "enrolled", "ineligible_upcoming", "ineligible_started"] as const;
 export type SortGroup = (typeof SORT_GROUPS)[number];
 export const SORT_GROUP_INFO: Record<SortGroup, { title: string; hint: string }> = {
   pending: { title: "報名審核中的課程", hint: "已送出報名、等待審核" },
   eligible_upcoming: { title: "符合資格、尚未報名・尚未開課", hint: "活動日期還沒到" },
+  eligible_tba: { title: "符合資格、尚未報名・費用尚未公布", hint: "活動日期還沒到、費用還沒公布" },
   eligible_started: { title: "符合資格、尚未報名・已開課", hint: "已經開始或沒有日期" },
   public_free: { title: "公開免費的課程", hint: "完全公開、不用報名" },
   enrolled: { title: "已報名的課程", hint: "已開通（學習中、已聽完）" },

@@ -320,3 +320,4 @@
 - 統計分析頁拆成兩個互不混合、預設收起的來源區塊：① Mux（/admin/stats/mux）② App 資料庫 D1（/admin/stats/app，app-stats.ts）。Cloudflare 流量統計尚未串接（Worker 沒有 Cloudflare API 權杖）。
 - 統計分析加第三個來源「Cloudflare 網站流量」（/admin/stats/cloudflare，cf-stats.ts）：需 Secret CF_API_TOKEN（Account Analytics:Read）；CF_ACCOUNT_ID 在 wrangler.jsonc vars。未設定時顯示「尚未設定」。
 - Cloudflare 區塊擴充：帳戶層（Workers、R2、Web Analytics RUM）與網域層（httpRequestsAdaptiveGroups：國家、裝置、瀏覽器、OS、路徑、狀態碼、機房…），各合併成一次 GraphQL（避免被限流）。網域層需權杖加「區域→Analytics→讀取」，CF_ZONE_ID 在 wrangler.jsonc。停留時間 Cloudflare 沒有，不做。
+- 排序分組新增 eligible_tba「符合資格、尚未報名・費用尚未公布」（第 3 組，舊設定自動插在 eligible_upcoming 後面）。
