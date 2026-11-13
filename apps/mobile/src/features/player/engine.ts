@@ -63,6 +63,8 @@ function bind(p: VideoPlayer) {
   ];
 }
 
+let switchTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const engine = {
   subscribe(l: () => void) {
     listeners.add(l);
@@ -72,7 +74,7 @@ export const engine = {
   /** 給 VideoView 用的播放器（尚未載入時為 null）。 */
   player: () => player,
   setSlot(key: string | null, _node?: unknown) {
-    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}) });
+    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}), ...(key && key === snap.track?.key ? { switching: false } : {}) });
   },
   setFullscreenTarget(view: VideoView | null) {
     fsView = view;
@@ -94,9 +96,19 @@ export const engine = {
   clearSlot(key: string) {
     if (snap.slotKey === key) emit({ slotKey: null });
   },
+  /** 使用者在上課頁點了同一門課的另一堂：換好之前（最多 6 秒）不跳迷你播放器，也不再詢問。 */
+  expectSwitch() {
+    if (switchTimer) clearTimeout(switchTimer);
+    switchTimer = setTimeout(() => {
+      switchTimer = null;
+      if (snap.switching) emit({ switching: false });
+    }, 6000);
+    if (!snap.switching) emit({ switching: true });
+  },
   async request(t: Track): Promise<boolean> {
     if (snap.track?.key === t.key) return true;
-    if (snap.track && snap.playing && !(await askSwitch(snap.track, t))) return false;
+    const intended = snap.switching && snap.track?.courseId === t.courseId; // 自己點的章節：直接換
+    if (snap.track && snap.playing && !intended && !(await askSwitch(snap.track, t))) return false;
     engine.load(t);
     return true;
   },

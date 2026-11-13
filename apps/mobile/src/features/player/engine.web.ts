@@ -270,6 +270,8 @@ if (typeof window !== "undefined") {
   });
 }
 
+let switchTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const engine = {
   subscribe(l: () => void) {
     listeners.add(l);
@@ -280,7 +282,7 @@ export const engine = {
   /** 課程頁登記「播放區塊」：有登記＝內嵌模式；離開頁面（null）＝迷你播放器模式。 */
   setSlot(key: string | null, node: HTMLElement | null = null) {
     slotEl = node;
-    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}) });
+    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}), ...(key && key === snap.track?.key ? { switching: false } : {}) });
   },
   setCollapsed(collapsed: boolean) {
     switchAt = Date.now();
@@ -327,9 +329,19 @@ export const engine = {
    * 課程頁要播放這一堂。同一堂：直接接上（不重新載入）。
    * 另一堂正在播放：詢問是否中斷；選擇「關閉」回傳 false（呼叫端應回到原本那堂）。
    */
+  /** 使用者在上課頁點了同一門課的另一堂：換好之前（最多 6 秒）不跳迷你播放器，也不再詢問。 */
+  expectSwitch() {
+    if (switchTimer) clearTimeout(switchTimer);
+    switchTimer = setTimeout(() => {
+      switchTimer = null;
+      if (snap.switching) emit({ switching: false });
+    }, 6000);
+    if (!snap.switching) emit({ switching: true });
+  },
   async request(t: Track): Promise<boolean> {
     if (snap.track?.key === t.key) return true;
-    if (snap.track && snap.playing && !(await askSwitch(snap.track, t))) return false;
+    const intended = snap.switching && snap.track?.courseId === t.courseId; // 自己點的章節：直接換
+    if (snap.track && snap.playing && !intended && !(await askSwitch(snap.track, t))) return false;
     engine.load(t);
     return true;
   },

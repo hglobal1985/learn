@@ -33,9 +33,11 @@ export type Snapshot = {
   artworkUrl: string | null;
   /** 最近一次「該顯示影片操作提示」的時間（毫秒）；進入影片、觸摸影片、拖曳時間軸時更新。 */
   hintAt: number;
+  /** 正在從這一堂換到同一門課的另一堂（使用者在上課頁點了章節清單）：換好之前不顯示迷你播放器，也不再詢問。 */
+  switching: boolean;
 };
 
-export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null, collapsed: false, artworkUrl: null, hintAt: 0 };
+export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null, collapsed: false, artworkUrl: null, hintAt: 0, switching: false };
 
 export const trackMode = (p: Playback): TrackMode => (p.kind === "youtube" ? "youtube" : p.kind === "audio" ? "audio" : "video");
 

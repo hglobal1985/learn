@@ -187,6 +187,9 @@ export function PlayerLayer() {
       if (!box) return;
       const sn = engine.getSnapshot();
       const tr = sn.track;
+      // 換章節的空檔：小視窗不顯示（聲音照常播），換好之後回到上課頁的播放區。
+      box.style.opacity = sn.switching ? "0" : "1";
+      box.style.pointerEvents = sn.switching ? "none" : "auto";
       let css = "none";
       if (tr) {
         const slot = sn.slotKey === tr.key ? engine.slotElement() : null;

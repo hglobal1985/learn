@@ -83,7 +83,7 @@ export function InlineAudio({ trackKey }: { trackKey: string }) {
 export function MiniAudioBar() {
   const { c } = useTheme();
   const s = usePlayer();
-  if (!s.track || s.track.mode !== "audio" || s.slotKey === s.track.key || s.collapsed) return null;
+  if (!s.track || s.track.mode !== "audio" || s.slotKey === s.track.key || s.collapsed || s.switching) return null;
   return (
     <View style={[styles.mini, { backgroundColor: c.surface, borderTopColor: c.border }]}>
       <AudioBar compact />
