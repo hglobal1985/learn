@@ -47,7 +47,8 @@ export default function HomeScreen() {
   const mine = courses
     .filter((x) => x.enrollment === "opened")
     .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
-  const recommended = courses.filter((x) => x.status === "published" && x.eligible && x.enrollment !== "opened");
+  // 會員：符合獎銜、尚未報名的課程；訪客：完全公開的課程。
+  const recommended = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && (member ? x.eligible : x.isPublic));
   return (
     <>
     {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} initial={member.profileForm ?? null} /> : null}
@@ -121,10 +122,10 @@ export default function HomeScreen() {
               icon="sparkles-outline"
               tone="orange"
               courses={recommended}
-              note="只顯示符合獎銜資格的課程"
+              note="顯示您可報名的課程"
               empty={
                 <AppText variant="callout" tone="muted" style={{ textAlign: "center" }}>
-                  {member ? "目前沒有符合你獎銜、尚未報名的課程。" : "登入後顯示符合你獎銜的課程。"}
+                  {member ? "目前沒有符合你獎銜、尚未報名的課程。" : "目前沒有公開的課程，登入後顯示您可報名的課程。"}
                 </AppText>
               }
             />

@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { Image, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState, type ElementRef } from "react";
+import { Image, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { resolveUrl, type CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
@@ -58,8 +58,14 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
   const { c } = useTheme();
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [page, setPage] = useState(0);
+  const scroller = useRef<ElementRef<typeof ScrollView>>(null);
   const cur = courses[Math.min(page, Math.max(0, courses.length - 1))];
   const onEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => box.w && setPage(Math.round(e.nativeEvent.contentOffset.x / box.w));
+  /** 點圓點直接跳到那一張（電腦版用滑鼠、手機用手指都可以）。 */
+  const goTo = (i: number) => {
+    setPage(i);
+    scroller.current?.scrollTo({ x: i * box.w, animated: true });
+  };
   const [bg, fg] = tone === "green" ? [c.accentSoft, c.accentText] : [c.warningSoft, c.warning];
   return (
     <View style={styles.col}>
@@ -75,9 +81,24 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
       <View style={styles.stage} onLayout={(e) => setBox({ w: Math.floor(e.nativeEvent.layout.width), h: Math.floor(e.nativeEvent.layout.height) })}>
         {box.w > 0 && box.h > 0 ? (
           courses.length ? (
-            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} onMomentumScrollEnd={onEnd} onScroll={onEnd} scrollEventThrottle={64} nestedScrollEnabled style={{ width: box.w, height: box.h }}>
+            <ScrollView
+              ref={scroller}
+              horizontal
+              pagingEnabled
+              // 一次最多只翻一張：輕輕一滑不會連跳 2～3 張（手機用 snapToInterval＋停用慣性，網頁用 scroll-snap-stop）。
+              snapToInterval={box.w}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              disableIntervalMomentum
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={onEnd}
+              onScroll={onEnd}
+              scrollEventThrottle={64}
+              nestedScrollEnabled
+              style={{ width: box.w, height: box.h }}
+            >
               {courses.map((course) => (
-                <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={course.title} style={{ width: box.w, height: box.h }}>
+                <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={course.title} style={[{ width: box.w, height: box.h }, SNAP_STOP]}>
                   <Slide course={course} w={box.w} h={box.h} />
                 </Pressable>
               ))}
@@ -90,9 +111,13 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
           )
         ) : null}
       </View>
-      <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={styles.dots}>
         {courses.length > 1
-          ? courses.map((course, i) => <View key={course.id} style={[styles.dot, { backgroundColor: i === page ? c.accent : c.border }]} />)
+          ? courses.map((course, i) => (
+              <Pressable key={course.id} onPress={() => goTo(i)} accessibilityRole="button" accessibilityLabel={`第 ${i + 1} 張，共 ${courses.length} 張`} accessibilityState={{ selected: i === page }} hitSlop={4} style={styles.dotHit}>
+                <View style={[styles.dot, { backgroundColor: i === page ? c.accent : c.border }]} />
+              </Pressable>
+            ))
           : null}
       </View>
       {!cur ? <View style={styles.info} /> : null}
@@ -125,12 +150,16 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
   );
 }
 
+/** 網頁：滑動時每一張都要停住（輕滑不會一次跳過好幾張）。 */
+const SNAP_STOP = (Platform.OS === "web" ? { scrollSnapStop: "always" } : {}) as object;
+
 const styles = StyleSheet.create({
   col: { flex: 1, minWidth: 0, gap: space.xs, alignItems: "stretch" },
   pill: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs, minHeight: 36, paddingHorizontal: space.sm, borderRadius: radius.pill },
   note: { textAlign: "center", minHeight: 32 },
   stage: { flex: 1, minHeight: 120 },
-  dots: { flexDirection: "row", justifyContent: "center", gap: 5, height: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  dots: { flexDirection: "row", justifyContent: "center", alignItems: "center", height: 26 },
+  dotHit: { width: 22, height: 26, alignItems: "center", justifyContent: "center", ...(Platform.OS === "web" ? ({ cursor: "pointer" } as object) : {}) },
+  dot: { width: 11, height: 11, borderRadius: 6 },
   info: { gap: 2, alignItems: "center", minHeight: 112 },
 });

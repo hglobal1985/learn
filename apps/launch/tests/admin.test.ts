@@ -305,64 +305,36 @@ test("刪除已有人報名的課程：先看影響、必須輸入 YES、報名�
   assert.equal((await call("DELETE", `/admin/courses/${c}`, { token: admin })).status, 200);
 });
 
-test("EDM 與封面：公開網址、底圖圖庫（內建＋自訂、只有編輯權限者看得到上傳者）、權限依中心、壓縮後格式檢查、刪課程時清檔", async () => {
+test("EDM（橫幅由畫面自動用 EDM 模糊放大）：公開網址、權限依中心、壓縮後格式檢查、換圖刪舊檔、刪課程時清檔", async () => {
   const r2 = fakeR2();
   const { env, call, raw, login } = setup({ MEDIA: r2, MEDIA_URL_SECRET: "s" });
   const [admin, pres, student] = await Promise.all(["demo-admin", "demo-president", "demo-student"].map(login));
   const jpeg = (n: number) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array.from({ length: n + 10 }, (_, i) => i % 256)]);
   const put = (token: string, path: string, bytes: Uint8Array) => call<Record<string, unknown>>("PUT", path, { token, bytes });
-  // 內建底圖（migration 已寫入資料列；圖檔在 R2）
-  r2.objects.set("bg/builtin-1.jpg", { data: jpeg(20), type: "image/jpeg" });
 
-  // 圖庫只有編輯權限者能看；學員不行
-  assert.equal((await call("GET", "/admin/cover-backgrounds", { token: student })).status, 403);
-  type Bg = { id: string; url: string; uploaderName: string; uploaderCenter: string; builtin: boolean; hidden: boolean; inUse: boolean };
-  const gallery = (await call<Bg[]>("GET", "/admin/cover-backgrounds", { token: admin })).data;
-  assert.equal(gallery.filter((g) => g.builtin).length, 5);
-  assert.equal((await raw("GET", gallery[0].url)).status, 200, "簽名網址可讀取");
-  assert.equal((await raw("GET", gallery[0].url.replace(/s=(.)/, (_m, ch) => `s=${ch === "X" ? "Y" : "X"}`))).status, 403);
+  // 已移除的封面與底圖圖庫功能：路徑不存在
+  assert.equal((await call("GET", "/admin/cover-backgrounds", { token: admin })).status, 404);
+  assert.equal((await put(admin, "/admin/courses/start/cover", jpeg(10))).status, 404);
 
-  // 自訂底圖：只收圖片、記錄上傳者姓名與中心
-  assert.equal((await put(admin, "/admin/cover-backgrounds", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))).status, 400, "不是圖片");
-  assert.equal((await put(student, "/admin/cover-backgrounds", jpeg(5))).status, 403);
-  const mine = await put(pres, "/admin/cover-backgrounds", jpeg(50));
-  assert.equal(mine.status, 200);
-  assert.ok(String(mine.data.uploaderName).length > 0);
-  assert.ok(String(mine.data.uploaderCenter).length > 0, "中心名稱一併記錄");
-  const bgId = String(mine.data.id);
-
-  // 課程：主辦單位是會長的中心，會長才能編輯 EDM／封面；別的課程不行
-  const pCenter = String(mine.data.uploaderCenter);
-  await call("PATCH", "/admin/courses/start", { token: admin, body: { hostUnit: pCenter } });
+  // 課程：主辦單位是會長的中心，會長才能編輯 EDM；別的課程、學員不行
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { hostUnit: "台北中心" } });
   assert.equal((await put(pres, "/admin/courses/start/edm", jpeg(100))).status, 200);
   assert.equal((await put(pres, "/admin/courses/talk/edm", jpeg(100))).status, 403, "不是自己中心的課程");
-  assert.equal((await put(student, "/admin/courses/start/cover", jpeg(10))).status, 403);
+  assert.equal((await put(student, "/admin/courses/start/edm", jpeg(10))).status, 403);
+  assert.equal((await put(admin, "/admin/courses/start/edm", new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))).status, 400, "不是圖片");
   assert.equal((await put(admin, "/admin/courses/start/edm", new Uint8Array(9 * 1024 * 1024).fill(1)).catch(() => ({ status: 0 }))).status === 200, false);
-  assert.equal((await put(pres, `/admin/courses/start/cover?bg=nope`, jpeg(10))).status, 400, "底圖不存在");
-  assert.equal((await put(pres, `/admin/courses/start/cover?bg=${bgId}`, jpeg(10))).status, 200);
 
   // 課程摘要帶公開網址，未登入也能讀圖；舊檔已被取代而刪除
-  const sum = (await call<{ id: string; coverUrl: string | null; edmUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
-  assert.ok(decodeURIComponent(sum.coverUrl ?? "").startsWith("/api/v2/media/pub?k=cover/start/") && decodeURIComponent(sum.edmUrl ?? "").startsWith("/api/v2/media/pub?k=edm/start/"));
+  const sum = (await call<{ id: string; edmUrl: string | null }[]>("GET", "/courses", { token: student })).data.find((c) => c.id === "start")!;
+  assert.ok(decodeURIComponent(sum.edmUrl ?? "").startsWith("/api/v2/media/pub?k=edm/start/"));
+  assert.equal("coverUrl" in sum, false, "不再有封面網址");
   const img = await raw("GET", sum.edmUrl!);
   assert.deepEqual([img.status, img.headers.get("content-type"), img.headers.get("cache-control")?.includes("immutable")], [200, "image/jpeg", true]);
   assert.equal((await raw("GET", "/api/v2/media/pub?k=edm/start/not-used.jpg")).status, 404, "沒在使用的檔案不提供");
-  assert.equal((await raw("GET", "/api/v2/media/pub?k=bg/builtin-1.jpg")).status, 404, "底圖不走公開網址");
   await put(pres, "/admin/courses/start/edm", jpeg(120));
   assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("edm/start/")).length, 1, "舊 EDM 已刪");
-
-  // 底圖：使用中不能刪、只能隱藏；內建不能刪；隱藏後一般編輯者看不到，管理員看得到
-  assert.equal((await call("DELETE", `/admin/cover-backgrounds/${bgId}`, { token: admin })).status, 409);
-  assert.equal((await call("DELETE", "/admin/cover-backgrounds/builtin-1", { token: admin })).status, 409);
-  assert.equal((await call("PATCH", `/admin/cover-backgrounds/${bgId}`, { token: pres, body: { hidden: true } })).status, 403, "只有管理員能隱藏");
-  assert.equal((await call("PATCH", `/admin/cover-backgrounds/${bgId}`, { token: admin, body: { hidden: true } })).status, 200);
-  assert.equal((await call<Bg[]>("GET", "/admin/cover-backgrounds", { token: pres })).data.some((g) => g.id === bgId), false);
-  assert.equal((await call<Bg[]>("GET", "/admin/cover-backgrounds", { token: admin })).data.find((g) => g.id === bgId)!.hidden, true);
-
-  // 移除封面後底圖可刪除
-  assert.equal((await call("DELETE", "/admin/courses/start/cover", { token: pres })).status, 200);
-  assert.equal((await call("DELETE", `/admin/cover-backgrounds/${bgId}`, { token: admin })).status, 200);
-  assert.equal([...r2.objects.keys()].some((k) => k.startsWith("bg/") && k !== "bg/builtin-1.jpg"), false);
+  assert.equal((await call("DELETE", "/admin/courses/start/edm", { token: pres })).status, 200);
+  assert.equal([...r2.objects.keys()].filter((k) => k.startsWith("edm/start/")).length, 0);
 
   // 刪除課程時一併刪 EDM
   const created = (await call<{ id: string }>("POST", "/admin/courses", { token: admin, body: { title: "有海報的課" } })).data.id;

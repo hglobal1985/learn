@@ -1,8 +1,9 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, HQ_UNIT, type CourseDeleteImpact, type CourseDetail, type Rank, type ReviewGroup } from "@/api/client";
-import { CoverManager } from "@/features/admin/cover-manager";
+import { EdmManager } from "@/features/admin/edm-manager";
 import { ntd, parseLocal, toLocal } from "@/features/format";
 import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
@@ -11,8 +12,8 @@ import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { todayStr } from "@/ui/date-select";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 function confirm(title: string, message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
@@ -44,6 +45,7 @@ export default function CourseEditScreen() {
       setForm({
         allowPresident: d.allowPresident,
         isPublic: d.isPublic,
+        priceTba: d.priceTba,
         guidanceUnit: d.guidanceUnit,
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
@@ -65,7 +67,7 @@ export default function CourseEditScreen() {
   if (!canManage) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
-  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   const save = async (status?: "draft" | "published") => {
     const freeFrom = parseLocal(form.freeFrom);
@@ -74,7 +76,7 @@ export default function CourseEditScreen() {
     setBusy(status ?? "save");
     setMsg(null);
     try {
-      const body = { ...form, isPublic: price > 0 ? false : form.isPublic, freeFrom, freeUntil, reviewGroupId: form.reviewGroupId || null, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
+      const body = { ...form, isPublic: price > 0 || form.priceTba ? false : form.isPublic, freeFrom, freeUntil, reviewGroupId: form.reviewGroupId || null, priceTwd: Number.isFinite(price) ? Math.round(price) : form.priceTwd, ...(status ? { status } : {}) };
       const d = id ? await api<CourseDetail>("PATCH", `/admin/courses/${id}`, body) : await api<CourseDetail>("POST", "/admin/courses", body);
       invalidate();
       if (!id) {
@@ -128,7 +130,7 @@ export default function CourseEditScreen() {
     }
   };
 
-  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
+  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
     <View style={{ gap: space.xs }}>
       <AppText variant="callout" tone="muted">
         {label}
@@ -151,14 +153,23 @@ export default function CourseEditScreen() {
     <Screen header={false}>
       <Stack.Screen options={{ title: id ? "編輯課程" : "新增課程" }} />
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
-      <CourseCover theme={form.theme} label={form.category || "分類"} />
+      <CourseCover theme={form.theme} label={form.category || "分類"} edmUrl={course.data?.edmUrl ?? null} height={course.data?.edmUrl ? 180 : 120} />
       <Card>
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}
         {field("講師／主辦", "teacher", { placeholder: "例如：寰宇總部" })}
         {field("分類", "category", { placeholder: "例如：系列課程" })}
-        {field("報名費用（新台幣，0 為免費）", "priceTwd", { numeric: true })}
-        {price === 0 ? <Pill label="免費課程：報名後立即開通" tone="accent" /> : <Pill label="付費課程：報名後需審核繳費才開通" tone="warning" />}
+        {form.priceTba ? null : field("報名費用（新台幣，0 為免費）", "priceTwd", { numeric: true })}
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: form.priceTba }}
+          onPress={() => setForm((f) => ({ ...f, priceTba: !f.priceTba }))}
+          style={styles.check}
+        >
+          <Ionicons name={form.priceTba ? "checkbox" : "square-outline"} size={28} color={form.priceTba ? c.accent : c.textMuted} />
+          <AppText variant="body">尚未公布</AppText>
+        </Pressable>
+        {form.priceTba ? <Pill label="費用尚未公布：課程頁顯示「費用尚未公布」，暫不開放報名" tone="warning" /> : price === 0 ? <Pill label="免費課程：報名後立即開通" tone="accent" /> : <Pill label="付費課程：報名後需審核繳費才開通" tone="warning" />}
         {field("課程介紹", "description", { multiline: true, placeholder: "課程內容、上課時間、適合對象……" })}
       </Card>
 
@@ -190,7 +201,7 @@ export default function CourseEditScreen() {
         </Card>
       </Section>
 
-      {price > 0 ? (
+      {price > 0 && !form.priceTba ? (
         <Section title="限時免費（選填）">
           <Card>
             <Field label="開始（空白＝立即）" value={form.freeFrom} onChange={set("freeFrom")} placeholder="2026-12-01 00:00" />
@@ -240,7 +251,7 @@ export default function CourseEditScreen() {
               })}
             </View>
           ) : null}
-          {price > 0 ? (
+          {price > 0 || form.priceTba ? (
             <NoticeBox text="「完全公開」（訪客免登入可看）只限免費課程。" />
           ) : (
             <Chips
@@ -278,7 +289,7 @@ export default function CourseEditScreen() {
         </View>
       </Section>
 
-      {id && course.data ? <CoverManager course={course.data} onChanged={course.reload} /> : null}
+      {id && course.data ? <EdmManager course={course.data} onChanged={course.reload} /> : null}
 
       <View style={{ gap: space.sm }}>
         <Button label={id ? "儲存" : "建立課程（先不上架）"} icon="save-outline" loading={busy === "save"} disabled={!!busy} onPress={() => save()} fullWidth />
@@ -309,6 +320,7 @@ export default function CourseEditScreen() {
 }
 
 const styles = StyleSheet.create({
+  check: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
   multiline: { minHeight: 120, paddingTop: space.md, textAlignVertical: "top" },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" },

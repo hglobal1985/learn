@@ -11,17 +11,21 @@ export function CourseCard({ course }: { course: CourseSummary }) {
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
-      <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
-      <AppText variant="headline">{course.title}</AppText>
+      <CourseCover theme={course.theme} label={course.category} edmUrl={course.edmUrl} height={course.edmUrl ? 180 : 120} />
+      <View style={styles.titleRow}>
+        <AppText variant="headline" style={{ flex: 1 }}>
+          {course.title}
+        </AppText>
+        {course.eventStart ? (
+          <AppText variant="callout" tone="muted" style={styles.date}>
+            {eventDays(course.eventStart, course.eventEnd)}
+          </AppText>
+        ) : null}
+      </View>
       <AppText variant="callout" tone="muted" numberOfLines={2}>
         {course.subtitle}
       </AppText>
       <UnitTags course={course} />
-      {course.eventStart ? (
-        <AppText variant="callout" style={{ fontWeight: "600" }}>
-          活動日期 {eventDays(course.eventStart, course.eventEnd)}
-        </AppText>
-      ) : null}
       <View style={styles.meta}>
         <CoursePriceTag course={course} />
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
@@ -43,6 +47,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
 export function CoursePriceTag({ course }: { course: CourseSummary }) {
   if (course.enrollment === "opened") return <Pill label="已開通" tone="success" />;
   if (course.enrollment === "pending") return <Pill label="待審核" tone="warning" />;
+  if (course.priceTba) return <Pill label="費用尚未公布" tone="warning" />;
   if (course.hasRuns && course.enrollment === null) return <Pill label="分場次報名" tone="accent" />;
   if (course.freeNow) return <Pill label="限時免費" tone="accent" />;
   if (course.free) return <Pill label="免費" tone="accent" />;
@@ -62,6 +67,8 @@ export function UnitTags({ course }: { course: CourseSummary }) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  date: { textAlign: "right", flexShrink: 0, paddingTop: 2 },
   meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
   track: { height: 6, borderRadius: radius.pill, overflow: "hidden" },
   bar: { height: 6, borderRadius: radius.pill },

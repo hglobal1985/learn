@@ -42,7 +42,7 @@ export default function LessonScreen() {
   const c = course.data;
   const lessonRow = c?.lessons.find((l) => l.id === lessonId);
   const track = useMemo(
-    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: c.edmUrl ?? c.coverUrl }) : null),
+    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: c.edmUrl }) : null),
     [playback, c?.id, c?.title, lessonRow?.id, lessonRow?.title, legacyYoutube],
   );
   // 要播這一堂：同一堂直接接上；另一堂正在播放就詢問是否中斷，選「繼續原本的」就回到原本那一堂。
@@ -110,9 +110,18 @@ export default function LessonScreen() {
       {playback?.kind === "demo" ? <Pill label={playback.label} tone="warning" /> : null}
       <View style={{ gap: space.xs }}>
         <AppText variant="caption" tone="muted">
-          第 {lesson.position} 堂 · {lesson.minutes} 分鐘{lesson.eventDate ? ` · 活動日期 ${eventDays(lesson.eventDate, null)}` : ""}
+          第 {lesson.position} 堂 · {lesson.minutes} 分鐘
         </AppText>
-        <AppText variant="title">{lesson.title}</AppText>
+        <View style={styles.titleRow}>
+          <AppText variant="title" style={{ flex: 1 }}>
+            {lesson.title}
+          </AppText>
+          {lesson.eventDate ? (
+            <AppText variant="callout" tone="muted" style={{ textAlign: "right", flexShrink: 0, paddingTop: 4 }}>
+              {eventDays(lesson.eventDate, null)}
+            </AppText>
+          ) : null}
+        </View>
       </View>
       {member ? <AttachmentList courseId={c.id} lessonId={lesson.id} /> : null}
       {segmentDone && !lesson.completed ? <NoticeBox tone="success" text="這一堂播放完畢，按「完成」記錄進度。" /> : null}
@@ -140,7 +149,8 @@ export default function LessonScreen() {
               key={l.id}
               icon={l.completed ? "checkmark-circle" : l.id === lesson.id ? "play-circle" : "play-circle-outline"}
               title={`${l.position}. ${l.title}`}
-              subtitle={l.id === lesson.id ? "正在觀看" : `${l.eventDate ? `${eventDays(l.eventDate, null)} · ` : ""}${l.minutes} 分鐘`}
+              subtitle={l.id === lesson.id ? "正在觀看" : `${l.minutes} 分鐘`}
+              right={l.eventDate ? <AppText variant="callout" tone="muted">{eventDays(l.eventDate, null)}</AppText> : undefined}
               onPress={l.id === lesson.id || l.locked ? undefined : () => router.replace(`/learn/${c.id}/${l.id}`)}
             />
           ))}
@@ -152,6 +162,7 @@ export default function LessonScreen() {
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   pinned: { backgroundColor: "#000", alignItems: "center" },
   pinnedInner: { width: "100%", maxWidth: maxContentWidth },

@@ -51,26 +51,6 @@ export async function verifyFileUrl(env: Env, url: URL): Promise<string | null> 
   return diff === 0 ? key : null;
 }
 
-/** 封面底圖圖庫（bg/）：只給有課程編輯權限的人，簽名網址 1 小時有效。 */
-export async function imgUrl(env: Env, key: string, seconds = 3600): Promise<string | null> {
-  if (!env.MEDIA || !env.MEDIA_URL_SECRET) return null;
-  const exp = Math.floor(Date.now() / 1000) + seconds;
-  return `/api/v2/media/img?k=${encodeURIComponent(key)}&e=${exp}&s=${await hmac(env.MEDIA_URL_SECRET, `${key}|${exp}`)}`;
-}
-
-export async function verifyImgUrl(env: Env, url: URL): Promise<string | null> {
-  const key = url.searchParams.get("k") ?? "";
-  const exp = Number(url.searchParams.get("e"));
-  const sig = url.searchParams.get("s") ?? "";
-  if (!env.MEDIA_URL_SECRET || !key.startsWith("bg/") || !Number.isInteger(exp) || exp < Date.now() / 1000) return null;
-  const expected = await hmac(env.MEDIA_URL_SECRET, `${key}|${exp}`);
-  if (expected.length !== sig.length) return null;
-  let diff = 0;
-  for (let i = 0; i < sig.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
-  return diff === 0 ? key : null;
-}
-
-/** 以檔頭判斷圖片格式（不信任瀏覽器回報的類型）。 */
 export function sniffImage(b: Uint8Array): { ext: "jpg" | "png" | "webp"; type: string } | null {
   if (b.length > 12 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return { ext: "jpg", type: "image/jpeg" };
   if (b.length > 12 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return { ext: "png", type: "image/png" };

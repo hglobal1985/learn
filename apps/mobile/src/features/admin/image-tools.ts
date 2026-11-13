@@ -1,12 +1,9 @@
 /**
  * 網頁版圖片處理（在管理員的瀏覽器內完成，伺服器只收處理好的圖）：
- * 讀取 JPG／PNG／WebP／HEIC → 依長邊壓縮 → 裁切 → 合成 16:9 封面。上傳後不保留原始檔。
+ * 讀取 JPG／PNG／WebP／HEIC → 裁切 → 依長邊壓縮。上傳後不保留原始檔。
  */
 export const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 export const EDM_MAX_SIDE = 2048; // EDM 原圖（小字與 QR code 要看得清楚）
-export const BG_MAX_SIDE = 1024; // 底圖與封面
-export const COVER_W = 1024;
-export const COVER_H = 576; // 16:9
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -71,26 +68,11 @@ export async function compress(img: HTMLImageElement, maxSide: number, quality =
   return toBlob(c, quality);
 }
 
-/** 把圖片的 crop 區域（原圖像素；null＝整張）放進 16:9 封面：有底圖就等比置中在底圖上，沒有底圖就鋪滿（裁成 16:9）。 */
-export async function composeCover(edm: HTMLImageElement, crop: Rect | null, bg: HTMLImageElement | null, quality = 0.88): Promise<Blob> {
-  const { c, ctx } = canvasOf(COVER_W, COVER_H);
-  const src = crop ?? { x: 0, y: 0, w: edm.naturalWidth, h: edm.naturalHeight };
-  if (!bg) {
-    ctx.drawImage(edm, src.x, src.y, src.w, src.h, 0, 0, COVER_W, COVER_H);
-    return toBlob(c, quality);
-  }
-  const k = Math.max(COVER_W / bg.naturalWidth, COVER_H / bg.naturalHeight); // 底圖鋪滿（cover）
-  const bw = bg.naturalWidth * k;
-  const bh = bg.naturalHeight * k;
-  ctx.drawImage(bg, (COVER_W - bw) / 2, (COVER_H - bh) / 2, bw, bh);
-  const maxW = COVER_W * 0.9;
-  const maxH = COVER_H * 0.9;
-  const s = Math.min(maxW / src.w, maxH / src.h);
-  const w = src.w * s;
-  const h = src.h * s;
-  ctx.shadowColor = "rgba(0,0,0,0.35)";
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 6;
-  ctx.drawImage(edm, src.x, src.y, src.w, src.h, (COVER_W - w) / 2, (COVER_H - h) / 2, w, h);
+/** 取圖片的 crop 區域（原圖像素；null＝整張），等比縮到長邊不超過 maxSide，輸出 JPEG。 */
+export async function cropCompress(img: HTMLImageElement, crop: Rect | null, maxSide: number, quality = 0.9): Promise<Blob> {
+  const src = crop ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+  const s = Math.min(1, maxSide / Math.max(src.w, src.h));
+  const { c, ctx } = canvasOf(Math.max(1, Math.round(src.w * s)), Math.max(1, Math.round(src.h * s)));
+  ctx.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
   return toBlob(c, quality);
 }

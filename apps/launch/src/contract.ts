@@ -59,6 +59,8 @@ export type CourseSummary = {
   eventEnd: string | null;
   /** 完全公開：未登入的訪客也能瀏覽介紹與章節、觀看（只限免費課程）。 */
   isPublic: boolean;
+  /** 費用尚未公布：顯示「費用尚未公布」、暫不開放報名。 */
+  priceTba: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
@@ -67,8 +69,7 @@ export type CourseSummary = {
   hasRuns: boolean;
   enrollment: EnrollmentState;
   completedLessons: number;
-  /** 課程封面圖（16:9）與海報 EDM（直式）的公開網址；沒有上傳時為 null，畫面改用色塊封面。 */
-  coverUrl: string | null;
+  /** 課程海報 EDM（直式）的公開網址；沒有上傳時為 null。橫幅由畫面把 EDM 模糊放大當底圖，沒有 EDM 時用色塊。 */
   edmUrl: string | null;
 };
 
@@ -110,7 +111,7 @@ export type CourseDetail = CourseSummary & {
   lessons: Lesson[];
   runs: CourseRun[];
   /** 只有管理員會拿到。 */
-  admin?: { coverBgId: string | null; hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
+  admin?: { hostCenterKey: string | null; freeFrom: string | null; freeUntil: string | null; reviewGroupId: string | null; basePriceTwd: number };
 };
 
 export type OrderStatus = "pending" | "opened" | "rejected";
@@ -265,7 +266,6 @@ export type CourseDeleteImpact = { title: string; registrations: number; pending
 export type RunDeleteImpact = { title: string; courseTitle: string; registrations: number; pending: number; opened: number; students: number; lessons: number; paidTwd: number };
 
 /** 封面底圖圖庫的一張圖。uploaderName／uploaderCenter 只在管理人員開啟圖庫時提供。 */
-export type CoverBackground = { id: string; url: string; uploaderName: string; uploaderCenter: string; builtin: boolean; hidden: boolean; inUse: boolean };
 
 /** 首頁跑馬燈公告（只有超級管理員與總部秘書可管理）。 */
 export type Announcement = { id: string; text: string; enabled: boolean };
@@ -282,4 +282,42 @@ export type ProfileForm = {
   hglobalSystems: string[];
   fields: Record<"education_system" | "education_center" | "rank", { value: string; pending: string | null; status: string }>;
   rankOptions: { value: string; label: string }[];
+};
+
+// ---------- 學習成就（徽章）----------
+export type AchievementType = "lessons_completed" | "courses_completed" | "courses_enrolled" | "learning_days" | "comments_posted" | "course_completed";
+/** 條件類型的中文說明（單位用在「累計 N ○」）。 */
+export const ACHIEVEMENT_TYPES: Record<AchievementType, { label: string; unit: string; needsCourse?: boolean }> = {
+  lessons_completed: { label: "累計完成幾堂課", unit: "堂" },
+  courses_completed: { label: "累計完整學完幾門課程", unit: "門" },
+  courses_enrolled: { label: "累計報名（已開通）幾門課程", unit: "門" },
+  learning_days: { label: "累計幾個不同的日子有學習紀錄", unit: "天" },
+  comments_posted: { label: "在課程留言板留言幾次", unit: "次" },
+  course_completed: { label: "學完指定的某一門課程", unit: "門", needsCourse: true },
+};
+/** 會員看到的徽章：已取得或尚未取得（含目前進度）。 */
+export type Achievement = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: AchievementType;
+  threshold: number;
+  courseTitle: string | null;
+  current: number;
+  earned: boolean;
+  earnedAt: string | null;
+};
+/** 超級管理員設定徽章用。 */
+export type AdminAchievement = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: AchievementType;
+  threshold: number;
+  courseId: string | null;
+  courseTitle: string | null;
+  active: boolean;
+  earnedCount: number;
 };

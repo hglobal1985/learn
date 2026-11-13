@@ -1,10 +1,14 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router, type Href } from "expo-router";
+import { Pressable, View } from "react-native";
 import { api, type Notice } from "@/api/client";
 import { dateTime, noticeTarget } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
+import { useTheme } from "@/theme/theme";
 import { Button, Card, EmptyState, ErrorView, ListRow, LoadingView, Screen } from "@/ui";
 
 export default function NoticesScreen() {
+  const { c } = useTheme();
   const { member, invalidate } = useSession();
   const { data, error, loading, reload } = useApi<Notice[]>(member ? "/notifications" : null);
   const unread = (data ?? []).filter((n) => !n.read).length;
@@ -32,7 +36,14 @@ export default function NoticesScreen() {
     <Screen
       title="站內通知"
       subtitle={data ? (unread ? `${unread} 則未讀` : "全部已讀") : undefined}
-      right={unread ? <Button variant="ghost" label="全部標為已讀" onPress={markAll} /> : undefined}
+      right={
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          {unread ? <Button variant="ghost" label="全部標為已讀" onPress={markAll} /> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="通知設定" onPress={() => router.push("/settings/notifications")} hitSlop={8} style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="settings-outline" size={26} color={c.text} />
+          </Pressable>
+        </View>
+      }
     >
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}

@@ -59,7 +59,7 @@ test("活動日期：課程與每一則章節都可設定、清除，格式錯�
   const made = await call<CourseDetail>("POST", "/admin/courses", { token: admin, body: { title: "有日期", eventStart: "2026-12-05" } });
   assert.equal(made.data.eventStart, "2026-12-05");
   const added = await call<CourseDetail>("POST", `/admin/courses/${made.data.id}/lessons`, { token: admin, body: { title: "第二堂", eventDate: "2026-12-06" } });
-  assert.deepEqual(added.data.lessons.map((l) => l.eventDate), [null, "2026-12-06"]);
+  assert.deepEqual(added.data.lessons.map((l) => l.eventDate), ["2026-12-05", "2026-12-06"], "第 1 堂沿用課程開始日");
   const lid = added.data.lessons[0]!.id;
   const first = async () => (await call<CourseDetail>("GET", `/courses/${made.data.id}`, { token: admin })).data.lessons[0]!.eventDate;
   assert.equal((await call("PATCH", `/admin/lessons/${lid}`, { token: admin, body: { eventDate: "2026-12-05" } })).status, 200);

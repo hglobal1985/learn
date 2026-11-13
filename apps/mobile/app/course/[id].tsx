@@ -1,6 +1,6 @@
 import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { api, resolveUrl, type CourseDetail, type CourseRun, type Order } from "@/api/client";
 import { CommentBoard } from "@/features/comments/comment-board";
 import { CoursePriceTag, UnitTags } from "@/features/courses/course-card";
@@ -10,6 +10,16 @@ import { space } from "@/theme/tokens";
 import { AppText, Button, Card, CourseCover, ErrorView, ListRow, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
 const isWeb = Platform.OS === "web";
+
+const confirmCancel = (): Promise<boolean> =>
+  isWeb
+    ? Promise.resolve(window.confirm("確定要取消這筆報名嗎？\n\n取消後可以重新報名。"))
+    : new Promise((resolve) =>
+        Alert.alert("取消報名", "確定要取消這筆報名嗎？取消後可以重新報名。", [
+          { text: "先不要", style: "cancel", onPress: () => resolve(false) },
+          { text: "取消報名", style: "destructive", onPress: () => resolve(true) },
+        ]),
+      );
 
 export default function CourseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -47,7 +57,25 @@ export default function CourseDetailScreen() {
     }
   };
 
+  /** 反悔取消報名：審核中、或免費自動開通的都可以取消（已繳費開通的要聯絡窗口）。 */
+  const cancel = async (run?: CourseRun) => {
+    if (!(await confirmCancel())) return;
+    setBusy(`cancel-${run?.id ?? "course"}`);
+    setMessage(null);
+    try {
+      await api("POST", `/courses/${course.id}/cancel-registration`, { runId: run?.id ?? "" });
+      invalidate();
+      setMessage({ tone: "success", text: "已取消報名。" });
+    } catch (e) {
+      setMessage({ tone: "danger", text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const cancelButton = (run?: CourseRun) => <Button variant="ghost" label="取消報名" icon="close-circle-outline" loading={busy === `cancel-${run?.id ?? "course"}`} disabled={!!busy} onPress={() => cancel(run)} />;
+
   const registerButton = (free: boolean, key: string, run?: CourseRun) => {
+    if (course.priceTba) return <NoticeBox tone="warning" text="這門課程的費用尚未公布，公布後才開放報名。" />;
     if (!member) return <Button label="登入後報名" icon="log-in-outline" onPress={() => router.push({ pathname: "/me", params: { next: `/course/${course.id}` } })} fullWidth />;
     if (!course.eligible) return <NoticeBox tone="warning" text={`這門課程限 ${course.minRank.name} 以上獎銜${course.allowPresident ? "或會長" : ""}報名。`} />;
     if (free) return <Button label="免費報名" icon="gift-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
@@ -55,10 +83,11 @@ export default function CourseDetailScreen() {
     if (!isWeb) return <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
     return <Button label="報名（送出後由窗口審核繳費）" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
   };
-  const pendingBox = (
+  const pendingBox = (run?: CourseRun) => (
     <>
       <NoticeBox tone="warning" text="報名審核中，窗口確認繳費後會通知你。" />
       {isWeb ? <Button variant="secondary" label="查看我的報名" onPress={() => router.push("/orders")} fullWidth /> : null}
+      {cancelButton(run)}
     </>
   );
 
@@ -67,13 +96,22 @@ export default function CourseDetailScreen() {
       <Stack.Screen options={{ title: course.title }} />
       {course.edmUrl ? (
         <Pressable onPress={() => Linking.openURL(resolveUrl(course.edmUrl!))} accessibilityRole="link" accessibilityLabel="開啟課程海報原圖">
-          <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
+          <CourseCover theme={course.theme} label={course.category} height={160} edmUrl={course.edmUrl} />
         </Pressable>
       ) : (
-        <CourseCover theme={course.theme} label={course.category} height={160} imageUrl={course.coverUrl} />
+        <CourseCover theme={course.theme} label={course.category} height={160} edmUrl={course.edmUrl} />
       )}
       <View style={{ gap: space.sm }}>
-        <AppText variant="display">{course.title}</AppText>
+        <View style={styles.titleRow}>
+          <AppText variant="display" style={{ flex: 1 }}>
+            {course.title}
+          </AppText>
+          {course.eventStart ? (
+            <AppText variant="callout" tone="muted" style={styles.date}>
+              {eventDays(course.eventStart, course.eventEnd)}
+            </AppText>
+          ) : null}
+        </View>
         <AppText tone="muted">{course.subtitle}</AppText>
         <UnitTags course={course} />
         <View style={styles.row}>
@@ -83,7 +121,7 @@ export default function CourseDetailScreen() {
           {course.freeNow && course.freeUntil ? <Pill label={`限時免費至 ${dateTime(course.freeUntil)}`} tone="accent" /> : null}
         </View>
         <AppText variant="callout" tone="muted">
-          講師：{course.teacher} · {course.lessonCount} 堂 · 約 {course.totalMinutes} 分鐘{course.eventStart ? ` · 活動日期 ${eventDays(course.eventStart, course.eventEnd)}` : ""}
+          講師：{course.teacher} · {course.lessonCount} 堂 · 約 {course.totalMinutes} 分鐘
         </AppText>
         {course.description ? <AppText>{course.description}</AppText> : null}
       </View>
@@ -105,15 +143,17 @@ export default function CourseDetailScreen() {
               <AppText variant="callout" tone="muted">
                 {[run.startsAt ? dateTime(run.startsAt) : "", run.location, run.registerUntil ? `報名至 ${dateTime(run.registerUntil)}` : "", run.remaining != null ? `剩 ${run.remaining} 個名額` : ""].filter(Boolean).join(" · ")}
               </AppText>
-              {run.enrollment === "pending" ? pendingBox : run.enrollment === null && run.open ? registerButton(run.free, run.id, run) : null}
+              {run.enrollment === "pending" ? pendingBox(run) : run.enrollment === null && run.open ? registerButton(run.free, run.id, run) : run.enrollment === "opened" && run.free ? cancelButton(run) : null}
             </Card>
           ))}
           {!course.runs.length ? <NoticeBox text="目前沒有開放報名的場次。" /> : null}
         </Section>
       ) : course.enrollment === "pending" ? (
-        <View style={{ gap: space.sm }}>{pendingBox}</View>
+        <View style={{ gap: space.sm }}>{pendingBox()}</View>
       ) : course.enrollment === null ? (
         <View style={{ gap: space.sm }}>{registerButton(course.free, "course")}</View>
+      ) : course.enrollment === "opened" && course.free ? (
+        <View style={{ alignItems: "flex-start" }}>{cancelButton()}</View>
       ) : null}
 
       <Section title="課程章節">
@@ -125,7 +165,8 @@ export default function CourseDetailScreen() {
                 key={lesson.id}
                 icon={lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
                 title={`${lesson.position}. ${lesson.title}`}
-                subtitle={`${lesson.eventDate ? `${eventDays(lesson.eventDate, null)} · ` : ""}${run ? `${run.title} · ` : ""}${lesson.minutes} 分鐘${lesson.completed ? " · 已完成" : ""}`}
+                subtitle={`${run ? `${run.title} · ` : ""}${lesson.minutes} 分鐘${lesson.completed ? " · 已完成" : ""}`}
+                right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
                 onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
               />
             );
@@ -137,4 +178,4 @@ export default function CourseDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({ row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm } });
+const styles = StyleSheet.create({ titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm }, date: { textAlign: "right", flexShrink: 0, paddingTop: 8 }, row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm } });

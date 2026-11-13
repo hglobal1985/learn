@@ -2,7 +2,7 @@ import { router, useLocalSearchParams, type Href } from "expo-router";
 import { useState } from "react";
 import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { openAccountCenter } from "@/features/account-link";
-import type { AppConfig, Member } from "@/api/client";
+import type { Achievement, AppConfig, Member } from "@/api/client";
 import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
@@ -60,17 +60,21 @@ export default function MeScreen() {
       setBusy(null);
     }
   };
-  const removeData = async () => {
+  const removeAccount = async () => {
     const central = !member?.demo;
     const ok = await confirm(
-      "刪除學習資料",
+      "刪除帳號",
       central
-        ? "將刪除你在本 App 的學習紀錄、報名紀錄與通知，並登出。若要刪除整個會員帳號，請到「會員中心」辦理。"
-        : "將刪除這個測試帳號在本 App 的學習紀錄、報名紀錄與通知。",
+        ? "將刪除你在本 App 的所有資料（學習紀錄、報名紀錄、徽章、通知）並登出，接著帶你前往會員中心刪除會員帳號。此操作無法復原。"
+        : "將刪除這個測試帳號在本 App 的所有資料（學習紀錄、報名紀錄、徽章、通知）。",
       "確定刪除",
     );
-    if (ok) await run("delete", deleteAccount, central ? "已刪除你在本 App 的資料並登出。" : "已刪除測試帳號的資料。");
+    if (!ok) return;
+    await run("delete", deleteAccount, central ? "已刪除你在本 App 的資料並登出。請在會員中心完成帳號刪除。" : "已刪除測試帳號的資料。");
+    if (central) openAccountCenter();
   };
+  const achievements = useApi<Achievement[]>(member ? "/me/achievements" : null);
+  const earned = (achievements.data ?? []).filter((a) => a.earned);
 
   return (
     <Screen title="設定">
@@ -79,11 +83,6 @@ export default function MeScreen() {
       {member ? (
         <Card>
           <AppText variant="title">{member.name}</AppText>
-          {!member.demo ? (
-            <AppText variant="caption" tone="muted" selectable>
-              會員 ID：{member.sub}
-            </AppText>
-          ) : null}
           <View style={styles.row}>
             {member.rank ? <Pill label={member.rank.name} tone="accent" /> : null}
             {member.titles.length ? member.titles.map((t) => <Pill key={t} label={t} />) : <Pill label={member.role === "admin" ? "管理員" : "學員"} />}
@@ -137,6 +136,17 @@ export default function MeScreen() {
         </Section>
       ) : null}
 
+      {member ? (
+        <Card style={{ paddingVertical: 0 }}>
+          <ListRow
+            icon="trophy-outline"
+            title="學習成就"
+            subtitle={achievements.data ? `已取得 ${earned.length} / ${achievements.data.length} 枚徽章${earned.length ? `　${earned.slice(0, 6).map((a) => a.icon).join(" ")}` : ""}` : "查看你的學習徽章"}
+            onPress={() => router.push("/achievements")}
+          />
+        </Card>
+      ) : null}
+
       {member && (member.reviewer || member.role === "admin" || canManageCourses(member)) ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
@@ -146,6 +156,7 @@ export default function MeScreen() {
             {isWeb && (member.role === "admin" || member.titles.includes("會長") || member.titles.includes("音控")) ? (
               <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />
             ) : null}
+            {member.titles.includes("超級管理員") ? <ListRow icon="trophy-outline" title="學習成就徽章設定" subtitle="設定要達成什麼條件才能獲得徽章" onPress={() => router.push("/admin/achievements")} /> : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
             {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}
           </Card>
@@ -164,15 +175,19 @@ export default function MeScreen() {
         <Section title="帳號">
           <Card style={{ paddingVertical: 0 }}>
             {!member.demo ? (
-              <ListRow icon="person-circle-outline" title="會員中心" subtitle="修改基本資料、刪除會員帳號" onPress={openAccountCenter} />
+              <ListRow icon="person-circle-outline" title="會員中心" subtitle="修改基本資料" onPress={openAccountCenter} />
             ) : null}
-            <ListRow icon="notifications-outline" title="通知設定" subtitle="Email 信箱與通知方式" onPress={() => router.push("/settings/notifications")} />
-            <ListRow icon="trash-outline" title="刪除學習資料" subtitle="刪除本 App 的學習紀錄、報名紀錄與通知" onPress={removeData} />
+            <ListRow icon="trash-outline" title="刪除帳號" subtitle="刪除本 App 的所有資料，並前往會員中心刪除會員帳號" onPress={removeAccount} />
           </Card>
         </Section>
       ) : null}
 
       <SiteFooter />
+      {member && !member.demo ? (
+        <AppText variant="caption" tone="muted" selectable style={{ textAlign: "center" }}>
+          會員 ID：{member.sub}
+        </AppText>
+      ) : null}
     </Screen>
   );
 }
