@@ -276,7 +276,7 @@ test("完整版影片：同一支影片裁成多堂時，清單最後自動多�
   const detail = (await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data;
   assert.equal(detail.lessons.length, 3);
   const full = detail.lessons[2]!;
-  assert.deepEqual([full.title, full.start, full.end, full.minutes, full.locked, full.completed], ["完整版", null, null, 20, false, false]);
+  assert.deepEqual([full.title, full.start, full.end, full.minutes, full.locked, full.completed], ["完整版(含主持/串場/影片)", null, null, 20, false, false]);
   assert.equal(detail.lessonCount, 2, "完整版不算章節總數");
   const pb = (await call<{ kind: string; videoId: string; start: number | null; end: number | null }>("GET", `/courses/${c.id}/lessons/${full.id}/playback`, { token: student })).data;
   assert.deepEqual([pb.kind, pb.videoId, pb.start, pb.end], ["youtube", "dQw4w9WgXcQ", null, null], "整支播放，沒有起訖時間");

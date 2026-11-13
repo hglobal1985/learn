@@ -168,7 +168,7 @@ export default function LessonScreen() {
       </View>
       {c.lessons.some((l) => l.full) ? (
         <View style={{ gap: space.xs }}>
-          <AppText variant="headline">完整版</AppText>
+          <AppText variant="headline">完整版(含主持/串場/影片)</AppText>
           <Card style={{ paddingVertical: 0 }}>
             {c.lessons
               .filter((l) => l.full)

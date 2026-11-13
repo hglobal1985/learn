@@ -148,7 +148,7 @@ export default function CourseDetailScreen() {
           </View>
         </Section>
         {course.lessons.some((l) => l.full) ? (
-          <Section title="完整版">
+          <Section title="完整版(含主持/串場/影片)">
             <Card style={{ paddingVertical: 0 }}>
               {course.lessons
                 .filter((l) => l.full)

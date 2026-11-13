@@ -442,7 +442,7 @@ function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: strin
   return segmented.map((g, i) => ({
     id: `${FULL_PREFIX}${g[0]!.id}`,
     position: rows.length + i + 1,
-    title: segmented.length > 1 ? `完整版 ${i + 1}` : "完整版",
+    title: segmented.length > 1 ? `完整版 ${i + 1}(含主持/串場/影片)` : "完整版(含主持/串場/影片)",
     full: true,
     minutes: g.reduce((n, l) => n + l.duration_minutes, 0),
     completed: false,
