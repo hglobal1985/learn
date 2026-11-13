@@ -314,3 +314,4 @@
 - Mux delivery-usage：結束時間須在 12 小時前（HTTP 400 invalid timeframe），已改為現在−13 小時。
 - 緞帶再次復原為 bafea86 版本（top 24、框 128）。業主兩次否決調整方案，除非業主提供圖示，勿再改緞帶。
 - Mux delivery-usage 時間須為整點，已取整。
+- 緞帶（業主說明：更靠近角落、三角形範圍小、減少遮擋 EDM）：框 104、band left -50/top 12、字 13px、padding 5；5 字標籤剛好容納。
