@@ -67,6 +67,8 @@ export type CourseSummary = {
   /** 這門課「鑽石免費」（鑽石以上獎銜的會員報名免費）；diamondFreeNow＝對目前登入的這位會員已生效。 */
   diamondFree: boolean;
   diamondFreeNow: boolean;
+  /** 早鳥優惠（null＝沒有設定）：until 為截止日（含當天，台灣時間）；active＝現在還在優惠期間。priceTwd 在 App 為 null。 */
+  earlyBird: { priceTwd: number | null; until: string; active: boolean } | null;
   /** 上課地點；locationNone 為 true 時公開卡片不顯示。 */
   location: string;
   locationNone: boolean;

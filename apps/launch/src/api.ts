@@ -299,6 +299,9 @@ type CourseRow = {
   price_tba: number;
   hide_home: number;
   diamond_free: number;
+  early_bird: number;
+  early_price_twd: number | null;
+  early_until: string | null;
   location: string;
   location_none: number;
   cover_key: string | null;
@@ -309,7 +312,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
   FROM courses c`;
@@ -329,6 +332,10 @@ async function memberCourseState(db: D1Database, sub: string | undefined) {
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
+/** 早鳥優惠是否有效：台灣時間 early_until（含當天）之前。 */
+const earlyActive = (row: { early_bird: number; early_price_twd: number | null; early_until: string | null; price_twd: number }, now = iso()) =>
+  row.early_bird === 1 && row.early_price_twd != null && row.early_price_twd < row.price_twd && !!row.early_until && new Date(Date.parse(now) + 8 * 3600_000).toISOString().slice(0, 10) <= row.early_until;
+
 /** 「鑽石免費」判斷用的獎銜代碼：鑽石（含）以上。 */
 const DIAMOND = "diamond";
 
@@ -342,7 +349,8 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
   const minRank = rankMap.get(row.min_rank_code) ?? { code: row.min_rank_code, name: row.min_rank_code, order: 9999 };
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
   const diamondNow = row.diamond_free === 1 && row.price_twd > 0 && eligibility.get(DIAMOND) === true;
-  const price = freeNow || diamondNow ? 0 : row.price_twd;
+  const earlyNow = earlyActive(row);
+  const price = freeNow || diamondNow ? 0 : earlyNow ? (row.early_price_twd as number) : row.price_twd;
   const web = ctx.platform === "web";
   return {
     id: row.id,
@@ -371,6 +379,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hideFromHome: row.hide_home === 1,
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
+    earlyBird: row.early_bird === 1 && row.early_price_twd != null && !!row.early_until ? { priceTwd: web ? row.early_price_twd : null, until: row.early_until, active: earlyNow } : null,
     location: row.location,
     locationNone: row.location_none === 1,
     lessonCount: row.lesson_count,
@@ -701,9 +710,9 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
   const marks = ids.map(() => "?").join(",");
   const [{ results: courses }, rankMap, state] = await Promise.all([
     ctx.db
-      .prepare(`SELECT id, title, price_twd, price_tba, diamond_free, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
+      .prepare(`SELECT id, title, price_twd, price_tba, diamond_free, early_bird, early_price_twd, early_until, min_rank_code, free_from, free_until, review_group_id, allow_president FROM courses WHERE status = 'published' AND id IN (${marks})`)
       .bind(...ids)
-      .all<{ id: string; title: string; price_twd: number; price_tba: number; diamond_free: number; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
+      .all<{ id: string; title: string; price_twd: number; price_tba: number; diamond_free: number; early_bird: number; early_price_twd: number | null; early_until: string | null; min_rank_code: string; free_from: string | null; free_until: string | null; review_group_id: string | null; allow_president: number }>(),
     ranks(ctx.db),
     memberCourseState(ctx.db, s.sub),
   ]);
@@ -720,7 +729,7 @@ async function createOrders(ctx: Ctx, body: { courseIds?: unknown; items?: unkno
     const c = courses.find((x) => x.id === item.courseId)!;
     const key = c.id;
     if (state.enrolled.has(key) || state.pending.has(key)) fail(409, "duplicate", "這門課程已報名（已開通或審核中），請勿重複報名");
-    const price = inFreeWindow(c, iso(now)) || (c.diamond_free === 1 && eligibility.get(DIAMOND) === true) ? 0 : c.price_twd;
+    const price = inFreeWindow(c, iso(now)) || (c.diamond_free === 1 && eligibility.get(DIAMOND) === true) ? 0 : earlyActive(c, iso(now)) ? (c.early_price_twd as number) : c.price_twd;
     const isFree = price === 0;
     if (!isFree && ctx.platform !== "web") fail(403, "web_only", "付費課程請至網頁版報名");
     // 付費課程：對帳需要真實姓名，報名當下讀取會員中心的 legal_name 存成快照（免費課程不存）。
@@ -1033,6 +1042,17 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   const loc = text(body.location, 100);
   if (loc !== undefined) sets.push(["location", loc]);
   if (body.locationNone !== undefined) sets.push(["location_none", body.locationNone === true ? 1 : 0]);
+  if (body.earlyBird !== undefined) {
+    if (body.earlyBird === true) {
+      const price = Number(body.earlyPriceTwd);
+      const until = body.earlyUntil;
+      if (!Number.isInteger(price) || price < 1 || price > 10_000_000) fail(400, "invalid_early_price", "早鳥優惠價請輸入 1 以上的整數");
+      if (typeof until !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(until) || Number.isNaN(Date.parse(until))) fail(400, "invalid_early_until", "請選擇早鳥優惠的截止日期");
+      const base = sets.find(([c]) => c === "price_twd")?.[1];
+      if (typeof base === "number" && price >= base) fail(400, "invalid_early_price", "早鳥優惠價必須低於原價");
+      sets.push(["early_bird", 1], ["early_price_twd", price], ["early_until", until]);
+    } else sets.push(["early_bird", 0], ["early_price_twd", null], ["early_until", null]);
+  }
   if (body.diamondFree !== undefined) sets.push(["diamond_free", body.diamondFree === true ? 1 : 0]);
   if (body.hideFromHome !== undefined) sets.push(["hide_home", body.hideFromHome === true ? 1 : 0]);
   if (body.edmViewY !== undefined) {

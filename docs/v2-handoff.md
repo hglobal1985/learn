@@ -334,3 +334,4 @@
 - 自動標題封面：分類標籤與標題置中（避免被左上角緞帶遮住）。
 - 日期顯示一律不補 0（format.ts：dateTime／dateOnly／plainDate／eventDays；分隔符統一為 /；分鐘保留兩位數）。輸入欄位（toLocal）與 CSV 維持原格式。
 - 課程新增「鑽石免費」（migration 0026 diamond_free）：鑽石（含）以上獎銜報名費用為 0（自動開通），其他獎銜原價；編輯頁勾選位於費用輸入框右側、在「尚未公布」下方。欄位 diamondFree／diamondFreeNow。
+- 早鳥優惠（migration 0027 early_bird／early_price_twd／early_until）：勾選後設早鳥價與截止日（台灣時間含當天）；有效期間 priceTwd＝早鳥價；欄位 earlyBird{priceTwd,until,active}；免費／鑽石免費優先於早鳥。

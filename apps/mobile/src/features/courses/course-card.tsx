@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
-import { eventDays } from "@/features/format";
+import { eventDays, plainDate } from "@/features/format";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
@@ -65,6 +65,7 @@ export function CoursePriceTag({ course }: { course: CourseSummary }) {
   if (course.enrollment === "pending") return <Pill label="待審核" tone="warning" />;
   if (course.priceTba) return <Pill label="費用尚未公布" tone="warning" />;
   if (course.diamondFreeNow) return <Pill label="鑽石免費" tone="accent" />;
+  if (course.earlyBird?.active && course.earlyBird.priceTwd != null && !course.free) return <Pill label={`早鳥 NT$${course.earlyBird.priceTwd.toLocaleString()}（至 ${plainDate(course.earlyBird.until)}）`} tone="warning" />;
   if (course.freeNow) return <Pill label="限時免費" tone="accent" />;
   if (course.free) return <Pill label="免費" tone="accent" />;
   if (course.priceTwd !== null) return <Pill label={`NT$${course.priceTwd.toLocaleString()}${course.diamondFree ? "・鑽石免費" : ""}`} />;

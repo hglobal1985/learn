@@ -143,3 +143,20 @@ test("鑽石免費：鑽石以上免費自動開通，其他獎銜照原價待�
   assert.equal((await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data[0].status, "pending");
   assert.equal((await call<Order[]>("POST", "/orders", { token: admin, body: { courseIds: ["lead"] } })).data[0].status, "opened");
 });
+
+test("早鳥優惠：期間內用早鳥價，過期恢復原價；早鳥價要低於原價", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  assert.equal((await call("PATCH", "/admin/courses/lead", { token: admin, body: { earlyBird: true, earlyPriceTwd: 1280, earlyUntil: "2999-12-31" } })).status, 200, "沒帶原價時只檢查格式");
+  assert.equal((await call("PATCH", "/admin/courses/lead", { token: admin, body: { priceTwd: 1000, earlyBird: true, earlyPriceTwd: 1000, earlyUntil: "2999-12-31" } })).status, 400, "早鳥價不可不低於原價");
+  assert.equal((await call("PATCH", "/admin/courses/lead", { token: admin, body: { priceTwd: 1280, earlyBird: true, earlyPriceTwd: 900, earlyUntil: "2999-12-31" } })).status, 200);
+  const on = (await call<CourseDetail>("GET", "/courses/lead", { token: student })).data;
+  assert.deepEqual([on.priceTwd, on.originalPriceTwd, on.earlyBird?.active, on.earlyBird?.until], [900, 1280, true, "2999-12-31"]);
+  const order = (await call<Order[]>("POST", "/orders", { token: student, body: { courseIds: ["lead"] } })).data[0];
+  assert.equal(order.totalTwd, 900);
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { earlyBird: true, earlyPriceTwd: 900, earlyUntil: "2000-01-01" } });
+  const off = (await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data;
+  assert.deepEqual([off.priceTwd, off.earlyBird?.active], [1280, false]);
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { earlyBird: false } });
+  assert.equal((await call<CourseDetail>("GET", "/courses/lead", { token: admin })).data.earlyBird, null);
+});
