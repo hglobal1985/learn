@@ -75,9 +75,9 @@ export function hostLine(c: { hostUnit: string }): string {
   return hosts.length ? `${hosts.join("、")}主辦` : "";
 }
 
-/** 課程地點的顯示文字：線上課程→「線上課程」；勾「無」或沒填→ null（不顯示）。 */
+/** 課程卡與首頁的地點顯示文字：線上課程不顯示（「線上課程」只在報名明細的繳費確認才出現）；勾「無」或沒填也不顯示。 */
 export function placeText(c: { isOnline?: boolean; locationNone?: boolean; location?: string | null }): string | null {
-  if (c.isOnline) return "線上課程";
+  if (c.isOnline) return null;
   if (c.locationNone || !c.location) return null;
   return c.location;
 }
