@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Image, PanResponder, Platform, Pressable, StyleSheet, View } from "react-native";
 import { resolveUrl, type CourseSummary } from "@/api/client";
-import { eventDays, unitLine } from "@/features/format";
+import { eventDays, hostLine } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, Icon, type IconName } from "@/ui";
@@ -136,9 +136,9 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
       {!cur ? <View style={styles.info} /> : null}
       {cur ? (
         <Pressable onPress={() => router.push(`/course/${cur.id}`)} accessibilityRole="link" style={styles.info}>
-          {unitLine(cur) ? (
-            <AppText variant="callout" numberOfLines={2} style={{ fontWeight: "700" }}>
-              {unitLine(cur)}
+          {hostLine(cur) ? (
+            <AppText variant="caption" tone="muted" numberOfLines={2}>
+              {hostLine(cur)}
             </AppText>
           ) : null}
           {cur.eventStart ? (

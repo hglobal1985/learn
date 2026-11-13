@@ -68,3 +68,9 @@ export function unitLine(c: { guidanceUnit: string; hostUnit: string }): string 
   const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);
   return [c.guidanceUnit ? `${cleanUnit(c.guidanceUnit)}指導` : "", hosts.length ? `${hosts.join("、")}主辦` : ""].filter(Boolean).join("、");
 }
+
+/** 只有主辦單位的顯示：「台中主辦」（首頁區塊用，不含指導單位）。 */
+export function hostLine(c: { hostUnit: string }): string {
+  const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);
+  return hosts.length ? `${hosts.join("、")}主辦` : "";
+}
