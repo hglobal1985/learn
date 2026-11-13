@@ -111,7 +111,7 @@ export default function LessonScreen() {
           )}
         </View>
       ) : null}
-    <Screen header={false} tight>
+    <Screen header={false} tight gap={space.sm}>
       <Stack.Screen options={{ title: c.title, headerRight: () => <HeaderShare title={`${c.title}｜${lesson.title}`} path={`/learn/${c.id}/${lesson.id}`} /> }} />
       {legacyYoutube && playback ? (
         <LessonPlayer playback={playback} onSegmentEnd={() => setLegacyDone(true)} />
@@ -135,6 +135,7 @@ export default function LessonScreen() {
           ) : null}
         </View>
       </View>
+      {!member || (lesson.completed && !next) ? (
       <View style={styles.row}>
         {!member ? (
           <>
@@ -145,6 +146,7 @@ export default function LessonScreen() {
           <NoticeBox tone="success" text="恭喜！你已完成這門課程的最後一堂。" />
         ) : null}
       </View>
+      ) : null}
       <View>
         <Card style={{ paddingVertical: 0 }}>
           {c.lessons.filter((l) => !l.full).map((l) => (
@@ -154,6 +156,7 @@ export default function LessonScreen() {
               title={`${l.position}. ${l.title}`}
               subtitle={l.id === lesson.id ? "正在觀看" : l.minutes ? `約 ${l.minutes} 分鐘` : undefined}
               highlight={l.id === lesson.id}
+              dense
               right={l.eventDate ? <AppText variant="callout" tone="muted">{eventDays(l.eventDate, null)}</AppText> : undefined}
               onPress={l.id === lesson.id || l.locked ? undefined : () => {
                 engine.expectSwitch();
@@ -176,6 +179,7 @@ export default function LessonScreen() {
                   title={l.title}
                   subtitle={l.id === lesson.id ? "正在觀看" : l.minutes ? `約 ${l.minutes} 分鐘` : undefined}
                   highlight={l.id === lesson.id}
+                  dense
                   onPress={l.id === lesson.id || l.locked ? undefined : () => {
                     engine.expectSwitch();
                     router.replace(`/learn/${c.id}/${l.id}`);

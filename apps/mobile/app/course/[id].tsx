@@ -125,6 +125,7 @@ export default function CourseDetailScreen() {
                     title={`${lesson.position}. ${lesson.title}`}
                     subtitle={soon ? "敬請期待" : `${lesson.minutes ? `${lesson.minutes} 分鐘` : ""}${lesson.completed ? `${lesson.minutes ? " · " : ""}已完成` : ""}` || undefined}
                     right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
+                    dense
                     onPress={lesson.locked || soon ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
                   />
                 );

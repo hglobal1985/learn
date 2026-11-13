@@ -16,6 +16,7 @@ export function Screen({
   children,
   header = true,
   tight = false,
+  gap = space.lg,
 }: {
   title?: string;
   subtitle?: string;
@@ -24,6 +25,8 @@ export function Screen({
   header?: boolean;
   /** 上方留白縮小（內容要貼近上方影片時用）。 */
   tight?: boolean;
+  /** 各區塊之間的間距（預設 space.lg）。 */
+  gap?: number;
 }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
@@ -36,7 +39,7 @@ export function Screen({
       ]}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <View style={styles.inner}>
+      <View style={[styles.inner, { gap }]}>
         {header && (title || subtitle || right) ? (
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
