@@ -98,8 +98,8 @@ export default function MeScreen() {
             </AppText>
             <View style={styles.row}>
               <Button label="使用 Google 登入" icon="logo-google" loading={busy === "google"} onPress={() => run("google", async () => {
-                await signInGoogle(back ?? "/me");
-                if (back) router.replace(back as Href);
+                await signInGoogle(back ?? "/");
+                router.replace((back ?? "/") as Href); // 登入後預設回首頁
               })} />
             </View>
           </Card>
@@ -115,7 +115,7 @@ export default function MeScreen() {
                     subtitle={m.rank ? `示範獎銜：${m.rank.name}` : undefined}
                     onPress={() => run(`in-${m.sub}`, async () => {
                       await signInDemo(m.sub);
-                      if (back) router.replace(back as Href);
+                      router.replace((back ?? "/") as Href);
                     })}
                     right={busy === `in-${m.sub}` ? <AppText tone="muted">登入中…</AppText> : undefined}
                   />
@@ -137,7 +137,7 @@ export default function MeScreen() {
         </Card>
       ) : null}
 
-      {member && (member.reviewer || member.role === "admin" || canManageCourses(member)) ? (
+      {member && (member.reviewer || member.role === "admin" || canManageCourses(member) || member.canViewStats) ? (
         <Section title="管理">
           <Card style={{ paddingVertical: 0 }}>
             {member.titles.includes("超級管理員") ? <ListRow icon="chatbubble-ellipses-outline" title="編輯學習金句" subtitle="首頁「繼續學習」下方的金句" onPress={() => router.push("/admin/quotes")} /> : null}
@@ -146,6 +146,8 @@ export default function MeScreen() {
             {isWeb && (member.role === "admin" || member.titles.includes("會長") || member.titles.includes("音控")) ? (
               <ListRow icon="people-outline" title="審核群組" subtitle="指定各中心的報名窗口、收費窗口、審核員" onPress={() => router.push("/admin/review-groups")} />
             ) : null}
+            {member.canViewStats ? <ListRow icon="stats-chart-outline" title="統計分析" subtitle="Mux 免費額度用量、觀看與播放品質統計" onPress={() => router.push("/admin/stats")} /> : null}
+            {member.titles.includes("超級管理員") ? <ListRow icon="swap-vertical-outline" title="課程排序與條件" subtitle="全部課程的排序優先順位、卡片緞帶文字與顏色" onPress={() => router.push("/admin/list-rules")} /> : null}
             {member.titles.includes("超級管理員") ? <ListRow icon="trophy-outline" title="學習成就徽章設定" subtitle="設定要達成什麼條件才能獲得徽章" onPress={() => router.push("/admin/achievements")} /> : null}
             {member.role === "admin" ? <ListRow icon="flag-outline" title="留言檢舉" subtitle="處理被檢舉的留言" onPress={() => router.push("/admin/comments")} /> : null}
             {canManageCourses(member) ? <ListRow icon="ribbon-outline" title="課程設定" subtitle="新增／編輯課程、場次、章節、影片與音檔" onPress={() => router.push("/admin/courses")} /> : null}

@@ -28,6 +28,8 @@ export type Member = {
   reviewer: boolean;
   /** 已核准的中心名稱（沒有則 null）。 */
   center: string | null;
+  /** 可以使用「統計分析」頁（超級管理員、總部秘書，或被超級管理員指定的職務）。 */
+  canViewStats?: boolean;
 };
 
 export type EnrollmentState = "opened" | "pending" | null;
@@ -59,8 +61,12 @@ export type CourseSummary = {
   eventEnd: string | null;
   /** 完全公開：未登入的訪客也能瀏覽介紹與章節、觀看（只限免費課程）。 */
   isPublic: boolean;
+  /** 這位會員審核中的報名編號（沒有為 null）；點「付款審核中」直接進完整的報名明細與訊息頁。 */
+  pendingOrderId: string | null;
   /** 費用尚未公布：顯示「費用尚未公布」、暫不開放報名。 */
   priceTba: boolean;
+  /** 目前開放報名（沒有場次＝true；有場次＝至少一個場次尚未截止）。額滿與否要進介紹頁才知道。 */
+  registrationOpen: boolean;
   /** 目前是否在限時免費期間；originalPriceTwd 為原價（App 為 null）。 */
   freeNow: boolean;
   originalPriceTwd: number | null;
@@ -87,6 +93,8 @@ export type Lesson = {
   kind: "video" | "audio";
   /** 這一堂的活動日期（YYYY-MM-DD；沒有設定為 null）。 */
   eventDate: string | null;
+  /** 內容已準備好（已上傳影片／音檔或設定好來源）；false＝敬請期待。 */
+  ready: boolean;
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */
   start: number | null;
   end: number | null;
@@ -109,6 +117,7 @@ export type CourseRun = {
   status: "open" | "closed";
   open: boolean;
   enrollment: EnrollmentState;
+  pendingOrderId: string | null;
 };
 export type CourseDetail = CourseSummary & {
   description: string;
@@ -333,3 +342,84 @@ export function applicantLabel(legalName: string | null | undefined, nickname: s
   if (legal && nick && legal !== nick) return `${legal}（${nick}）`;
   return legal || nick;
 }
+
+// ---------- 畫面設定（課程排序與緞帶）----------
+/** 緞帶可選的顏色：只能用《寰宇生態系固定配色規範》的色（色碼在 App 端的 ribbon 色表）。 */
+export const RIBBON_PALETTE = ["green", "greenDark", "olive", "orange", "warn", "yellow", "salmon", "danger", "ok", "muted"] as const;
+export type RibbonColor = (typeof RIBBON_PALETTE)[number];
+
+/** 課程卡片的緞帶狀態。left＝左上角（資格或狀態）、right＝右上角（日期倒數）。 */
+export const RIBBON_KEYS = ["public_free", "learning", "completed", "pending", "can_register", "ineligible", "price_tba", "closed", "countdown", "in_progress", "ended"] as const;
+export type RibbonKey = (typeof RIBBON_KEYS)[number];
+export const RIBBON_INFO: Record<RibbonKey, { title: string; side: "left" | "right"; hint: string }> = {
+  public_free: { title: "免費公開", side: "left", hint: "訪客看到完全公開的課程" },
+  learning: { title: "學習中", side: "left", hint: "已報名開通、還沒學完" },
+  completed: { title: "已聽完", side: "left", hint: "已報名開通、全部章節都完成" },
+  pending: { title: "報名審核中", side: "left", hint: "已送出報名、等待窗口審核" },
+  can_register: { title: "可以報名", side: "left", hint: "符合資格、尚未報名、開放報名" },
+  ineligible: { title: "獎銜不符", side: "left", hint: "登入會員但獎銜不符合報名資格" },
+  price_tba: { title: "費用尚未公布", side: "left", hint: "勾選「尚未公布」的課程" },
+  closed: { title: "報名已截止", side: "left", hint: "分場次的課程，所有場次都已截止或額滿" },
+  countdown: { title: "倒數天數", side: "right", hint: "活動還沒開始；文字裡的 {n} 會換成天數" },
+  in_progress: { title: "活動進行中", side: "right", hint: "今天正在活動日期範圍內" },
+  ended: { title: "活動已結束", side: "right", hint: "活動日期已過" },
+};
+
+/** 「全部課程」的排序分組（由上到下就是優先順序）。每組內：未開課依日期由近到遠，已開課依日期由新到舊。 */
+export const SORT_GROUPS = ["pending", "eligible_upcoming", "eligible_started", "public_free", "enrolled", "ineligible_upcoming", "ineligible_started"] as const;
+export type SortGroup = (typeof SORT_GROUPS)[number];
+export const SORT_GROUP_INFO: Record<SortGroup, { title: string; hint: string }> = {
+  pending: { title: "報名審核中的課程", hint: "已送出報名、等待審核" },
+  eligible_upcoming: { title: "符合資格、尚未報名・尚未開課", hint: "活動日期還沒到" },
+  eligible_started: { title: "符合資格、尚未報名・已開課", hint: "已經開始或沒有日期" },
+  public_free: { title: "公開免費的課程", hint: "完全公開、不用報名" },
+  enrolled: { title: "已報名的課程", hint: "已開通（學習中、已聽完）" },
+  ineligible_upcoming: { title: "不符合資格・尚未開課", hint: "獎銜不符、活動日期還沒到" },
+  ineligible_started: { title: "不符合資格・已開課", hint: "獎銜不符、已開始或沒有日期" },
+};
+
+export type UiConfig = {
+  sortGroups: SortGroup[];
+  ribbons: Record<RibbonKey, { label: string; color: RibbonColor; enabled: boolean }>;
+  /** 除了超級管理員、總部秘書之外，哪些職務可以看「統計分析」（職務代碼：president、sound、course、reviewer）。 */
+  statsRoles: string[];
+};
+export const STATS_ROLE_OPTIONS: { key: string; title: string }[] = [
+  { key: "president", title: "會長" },
+  { key: "sound", title: "音控" },
+  { key: "course", title: "課務" },
+  { key: "reviewer", title: "審核員" },
+];
+export const DEFAULT_UI_CONFIG: UiConfig = {
+  sortGroups: [...SORT_GROUPS],
+  ribbons: {
+    public_free: { label: "免費公開", color: "ok", enabled: true },
+    learning: { label: "學習中", color: "green", enabled: true },
+    completed: { label: "已聽完", color: "olive", enabled: true },
+    pending: { label: "報名審核中", color: "orange", enabled: true },
+    can_register: { label: "可以報名", color: "yellow", enabled: true },
+    ineligible: { label: "獎銜不符", color: "danger", enabled: true },
+    price_tba: { label: "費用尚未公布", color: "warn", enabled: true },
+    closed: { label: "報名已截止", color: "muted", enabled: true },
+    countdown: { label: "剩餘 {n} 天", color: "salmon", enabled: true },
+    in_progress: { label: "進行中", color: "greenDark", enabled: true },
+    ended: { label: "已結束", color: "muted", enabled: true },
+  },
+  statsRoles: [],
+};
+
+// ---------- 統計分析（Mux）----------
+export type StatBlock = {
+  id: string;
+  title: string;
+  /** core＝最常用、more＝次要、advanced＝進階（排在最後）。 */
+  level: "core" | "more" | "advanced";
+  note?: string;
+  /** 讀不到時的原因（其他區塊不受影響）。 */
+  error?: string;
+  stats?: { label: string; value: string; sub?: string }[];
+  bars?: { label: string; value: number; max: number; text: string }[];
+  head?: string[];
+  rows?: string[][];
+};
+export type MuxStats = { generatedAt: string; freeMinutes: number; blocks: StatBlock[] };

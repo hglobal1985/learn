@@ -121,9 +121,9 @@ export function PlayerLayer() {
 }
 
 const styles = StyleSheet.create({
-  win: { position: "absolute", left: 0, top: 0, borderRadius: 14, overflow: "hidden", backgroundColor: "#000", borderWidth: 3, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
-  circle: { position: "absolute", left: 0, top: 0, width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, overflow: "hidden", backgroundColor: "#000", borderWidth: 3, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
-  art: { width: CIRCLE - 6, height: CIRCLE - 6 },
+  win: { position: "absolute", left: 0, top: 0, borderRadius: 14, overflow: "hidden", backgroundColor: "#000", borderWidth: 4.5, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
+  circle: { position: "absolute", left: 0, top: 0, width: CIRCLE, height: CIRCLE, borderRadius: CIRCLE / 2, overflow: "hidden", backgroundColor: "#000", borderWidth: 4.5, borderColor: GOLD, shadowColor: GREEN, shadowOpacity: 0.5, shadowRadius: 10, zIndex: 1000, elevation: 12 },
+  art: { width: CIRCLE - 9, height: CIRCLE - 9 },
   dim: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.35)" },
   center: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   btn: { position: "absolute", width: 40, height: 40, borderRadius: 26, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center" },

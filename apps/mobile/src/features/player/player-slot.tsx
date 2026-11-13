@@ -1,7 +1,10 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { VideoView } from "expo-video";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PanResponder, StyleSheet, View, type GestureResponderEvent } from "react-native";
+import { radius } from "@/theme/tokens";
+import { AppText } from "@/ui";
 import { StageFrame } from "@/ui/stage-frame";
 import { engine } from "./engine";
 import { usePlayer } from "./use-player";
@@ -28,15 +31,25 @@ export function PlayerSlot({ trackKey }: { trackKey: string }) {
   const size = useRef({ w: 1, h: 1 });
   const pinch = useRef<{ dist: number } | null>(null);
   const last = useRef({ x: 0, y: 0 });
+  const lastTap = useRef(0);
+  const [showHint, setShowHint] = useState(false);
+  // 操作提示：進入影片、觸摸影片、拖曳時間軸時顯示，3.5 秒沒操作就消失。
+  useEffect(() => {
+    if (!s.hintAt) return;
+    setShowHint(true);
+    const id = setTimeout(() => setShowHint(false), 3500);
+    return () => clearTimeout(id);
+  }, [s.hintAt]);
   const set = (n: Zoom) => {
     zoom.current = n;
     setZ(n);
   };
   const pan = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (e) => e.nativeEvent.touches.length >= 2 || zoom.current.s > 1,
       onPanResponderGrant: (e) => {
+        engine.pokeHint();
         pinch.current = null;
         last.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
       },
@@ -54,7 +67,17 @@ export function PlayerSlot({ trackKey }: { trackKey: string }) {
         }
         last.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
       },
-      onPanResponderRelease: () => (pinch.current = null),
+      onPanResponderRelease: (_e, g) => {
+        pinch.current = null;
+        // 影片任意處點兩下：還原 100% 原始比例。
+        if (Math.hypot(g.dx, g.dy) < 8) {
+          const now = Date.now();
+          if (now - lastTap.current < 320) {
+            set(IDENTITY);
+            lastTap.current = 0;
+          } else lastTap.current = now;
+        }
+      },
       onPanResponderTerminate: () => (pinch.current = null),
     }),
   ).current;
@@ -75,6 +98,16 @@ export function PlayerSlot({ trackKey }: { trackKey: string }) {
           </View>
         ) : null}
       </View>
+      {showHint ? (
+        <View style={styles.hint} pointerEvents="none">
+          <Ionicons name="move" size={14} color="#fff" />
+          <AppText variant="caption" style={{ color: "#fff" }}>
+            可拖曳或放大縮小 點兩下復原
+          </AppText>
+        </View>
+      ) : null}
     </StageFrame>
   );
 }
+
+const styles = StyleSheet.create({ hint: { position: "absolute", bottom: 8, alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, backgroundColor: "rgba(0,0,0,0.55)" } });

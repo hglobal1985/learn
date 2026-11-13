@@ -6,6 +6,7 @@ import { api, type CourseDetail, type CourseRun, type Order } from "@/api/client
 import { CommentBoard } from "@/features/comments/comment-board";
 import { confirmSheet } from "@/features/confirm";
 import { EdmStage } from "@/features/courses/edm-viewer";
+import { HeaderShare } from "@/features/share-button";
 import { dateTime, eventDays, ntd } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -72,26 +73,32 @@ export default function CourseDetailScreen() {
     if (free) return <Button label="免費報名" icon="gift-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
     // iOS/Android：依商店規範不顯示付費報名方式，只說明尚未開通。
     if (!isWeb) return <NoticeBox text="這門課程尚未為你開通。開通後即可在這裡觀看。" />;
-    return <Button label="報名（送出後由窗口審核繳費）" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
+    return <Button label="按此報名＋繳費審核" icon="create-outline" loading={busy === key} disabled={!!busy} onPress={() => register(run)} fullWidth />;
   };
 
   /** 審核中：同一列兩顆按鈕——「付款審核中（點擊查看）」與「取消」。 */
-  const pendingRow = (run?: CourseRun) => (
+  const pendingRow = (run?: CourseRun) => {
+    const orderId = run ? run.pendingOrderId : course.pendingOrderId;
+    return (
     <View style={styles.pending}>
       <View style={{ flex: 1 }}>
-        <Button variant="secondary" label="付款審核中（點擊查看）" icon="time-outline" onPress={() => router.push("/orders")} fullWidth />
+        <Button variant="secondary" label="付款審核中（點擊查看）" icon="time-outline" onPress={() => router.push(orderId ? `/orders/${orderId}` : "/orders")} fullWidth />
       </View>
       <Button variant="danger" label="取消" loading={busy === `cancel-${run?.id ?? "course"}`} disabled={!!busy} onPress={() => cancel(run)} />
     </View>
-  );
+    );
+  };
 
   // 還不能看（尚未報名、不符資格…）：整個章節區蓋一層灰色遮罩加大鎖頭，章節完全不能點。
-  const allLocked = course.lessons.length > 0 && course.lessons.every((l) => l.locked);
+  const anyReady = course.lessons.some((l) => l.ready);
+  const noAccess = course.lessons.length === 0 ? course.enrollment !== "opened" && !course.isPublic && !course.admin : course.lessons.every((l) => l.locked);
+  const allLocked = noAccess;
   const lockedText = course.priceTba ? "費用尚未公布，暫不開放" : member && !course.eligible ? "獎銜不符，目前無法報名" : "報名後才能觀看";
+  const needRank = member && !course.eligible ? `限${course.minRank.name}獎銜以上報名${course.allowPresident ? "（會長也可報名）" : ""}` : null;
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack.Screen options={{ title: course.title }} />
+      <Stack.Screen options={{ title: course.title, headerRight: () => <HeaderShare title={course.title} path={`/course/${course.id}`} /> }} />
       <EdmStage course={course} />
       <Screen header={false}>
         {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
@@ -122,20 +129,25 @@ export default function CourseDetailScreen() {
 
         <Section title="課程章節">
           <View>
-          <Card style={{ paddingVertical: 0, ...(allLocked ? { minHeight: 170 } : {}) }}>
-            {course.lessons.map((lesson) => {
-              const run = lesson.runId ? course.runs.find((r) => r.id === lesson.runId) : null;
-              return (
-                <ListRow
-                  key={lesson.id}
-                  icon={lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
-                  title={`${lesson.position}. ${lesson.title}`}
-                  subtitle={`${run ? `${run.title} · ` : ""}${lesson.minutes ? `${lesson.minutes} 分鐘` : ""}${lesson.completed ? `${lesson.minutes ? " · " : ""}已完成` : ""}` || undefined}
-                  right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
-                  onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
-                />
-              );
-            })}
+          <Card style={{ paddingVertical: 0, ...(allLocked ? { minHeight: 230 } : {}) }}>
+            {course.lessons.length === 0 || !anyReady ? (
+              <ListRow icon="hourglass-outline" title="敬請期待" subtitle="課程內容準備中" />
+            ) : (
+              course.lessons.map((lesson) => {
+                const run = lesson.runId ? course.runs.find((r) => r.id === lesson.runId) : null;
+                const soon = !lesson.ready;
+                return (
+                  <ListRow
+                    key={lesson.id}
+                    icon={soon ? "hourglass-outline" : lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
+                    title={`${lesson.position}. ${lesson.title}`}
+                    subtitle={soon ? "敬請期待" : `${run ? `${run.title} · ` : ""}${lesson.minutes ? `${lesson.minutes} 分鐘` : ""}${lesson.completed ? `${lesson.minutes ? " · " : ""}已完成` : ""}` || undefined}
+                    right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
+                    onPress={lesson.locked || soon ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
+                  />
+                );
+              })
+            )}
           </Card>
           {allLocked ? (
             <View style={styles.mask} accessibilityRole="alert" accessibilityLabel={lockedText}>
@@ -143,6 +155,11 @@ export default function CourseDetailScreen() {
               <AppText variant="title" style={{ color: "#fff", textAlign: "center" }}>
                 {lockedText}
               </AppText>
+              {needRank ? (
+                <AppText variant="headline" style={{ color: "#fff", textAlign: "center" }}>
+                  {needRank}
+                </AppText>
+              ) : null}
             </View>
           ) : null}
           </View>

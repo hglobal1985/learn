@@ -31,6 +31,8 @@ import { amwayMe, centerKey, centerList, centralProfileView, centralSuggest, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
+import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
+import { collectMuxStats } from "./mux-stats.ts";
 import { audioUrl, fileUrl, sniffImage, verifyAudioUrl, verifyFileUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
 
@@ -197,6 +199,14 @@ function notify(db: D1Database, to: { sub: string } | { role: "admin" } | { role
     .bind(crypto.randomUUID(), "sub" in to ? to.sub : null, "role" in to ? to.role : null, "centerKey" in to ? to.centerKey : null, title, body, link);
 }
 
+/** 統計分析：超級管理員、總部秘書一定可以；其他職務要被超級管理員指定。 */
+async function canViewStats(ctx: Ctx, s: Session): Promise<boolean> {
+  if (s.role === "admin") return true;
+  if (!s.roles.length) return false;
+  const cfg = await loadConfig(ctx.db);
+  return s.roles.some((r) => cfg.statsRoles.includes(r));
+}
+
 /** 重新計算會員的徽章；新取得的發站內通知，回傳完整清單。 */
 async function grantAchievements(ctx: Ctx, sub: string) {
   const { list, fresh } = await evaluateAchievements(ctx.db, sub);
@@ -287,6 +297,7 @@ type CourseRow = {
   event_end: string | null;
   is_public: number;
   price_tba: number;
+  open_runs: number;
   cover_key: string | null;
   edm_view_y: number;
   edm_key: string | null;
@@ -296,7 +307,7 @@ type CourseRow = {
   total_minutes: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, (SELECT COALESCE(MIN(CASE WHEN r.starts_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now') THEN r.starts_at END), MAX(r.starts_at)) FROM course_runs r WHERE r.course_id = c.id) AS next_run_at, c.event_start, c.event_end, c.is_public, c.price_tba, (SELECT COUNT(*) FROM course_runs r2 WHERE r2.course_id = c.id AND r2.status = 'open' AND (r2.register_until IS NULL OR r2.register_until > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))) AS open_runs, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM course_runs r WHERE r.course_id = c.id) AS run_count,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes
@@ -315,16 +326,18 @@ type RunRow = {
 };
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), done: new Map<string, number>() };
+  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>() };
   if (!sub) return empty;
   const [e, p, d] = await db.batch([
     db.prepare("SELECT course_id, run_id FROM enrollments WHERE member_sub = ?").bind(sub),
-    db.prepare("SELECT DISTINCT i.course_id, i.run_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending'").bind(sub),
+    db.prepare("SELECT i.course_id, i.run_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
     db.prepare("SELECT course_id, COUNT(*) AS n FROM lesson_progress WHERE member_sub = ? GROUP BY course_id").bind(sub),
   ]);
   // 鍵值：課程 ID（任何一場）與「課程 ID|場次 ID」。
   const keys = (rows: unknown[]) => new Set((rows as { course_id: string; run_id: string }[]).flatMap((r) => [r.course_id, `${r.course_id}|${r.run_id}`]));
-  return { enrolled: keys(e.results), pending: keys(p.results), done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])) };
+  const pendingOrder = new Map<string, string>();
+  for (const r of p.results as { course_id: string; run_id: string; order_id: string }[]) for (const k of [r.course_id, `${r.course_id}|${r.run_id}`]) pendingOrder.set(k, r.order_id);
+  return { enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
@@ -362,7 +375,9 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     eventStart: row.event_start,
     eventEnd: row.event_end,
     isPublic: row.is_public === 1,
+    pendingOrderId: state.pendingOrder.get(row.id) ?? null,
     priceTba: row.price_tba === 1,
+    registrationOpen: row.run_count === 0 || row.open_runs > 0,
     hasRuns: row.run_count > 0,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
@@ -445,6 +460,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
         status: r.status,
         open: runOpen(r, used) && row.price_tba !== 1,
         enrollment: state.enrolled.has(key) ? "opened" : state.pending.has(key) ? "pending" : null,
+        pendingOrderId: state.pendingOrder.get(key) ?? null,
       };
     }),
     lessons: lessons.results.map((l) => ({
@@ -458,6 +474,8 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       end: l.end_seconds,
       runId: l.run_id,
       eventDate: l.event_date,
+      // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
+      ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
       // 完全公開的課程：任何人（含訪客與會員）都可以看沒有綁場次的章節，不需要報名。
       locked: !admin && !(l.run_id ? state.enrolled.has(`${id}|${l.run_id}`) : state.enrolled.has(id) || (row.is_public === 1 && !l.run_id)),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
@@ -1468,6 +1486,7 @@ const routes: [string, RegExp, Handler][] = [
         central ? profileGaps(central.sub, central.token, null).catch(() => []) : undefined,
       ]);
       const member = memberOf(s, rankMap, { duties: results.map((r) => labels[r.duty]) });
+      member.canViewStats = await canViewStats(ctx, s).catch(() => false);
       if (central) {
         // 獎銜：值為空或「無／none」顯示「安麗寶寶」；其餘用中央選項的名稱，查不到退回本地階梯名稱。
         if (rv !== undefined) member.rankLabel = rv && rv !== "none" && rv !== "無" ? (opts?.get(rv) ?? rankLabelOf(rv, rankMap)) : "安麗寶寶";
@@ -1557,6 +1576,30 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   ["POST", /^\/orders$/, async (ctx) => createOrders(ctx, await readJson(ctx.req))],
+  ["GET", /^\/ui-config$/, async (ctx) => loadConfig(ctx.db)],
+  [
+    "PUT",
+    /^\/admin\/ui-config$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      // 只更新有傳的欄位，其餘保留目前設定。
+      const cur = await loadConfig(ctx.db);
+      const next = normalizeConfig({ ...cur, ...body, ribbons: { ...cur.ribbons, ...((body.ribbons as object) ?? {}) } });
+      await saveConfig(ctx.db, next);
+      await audit(ctx.db, s.sub, "ui_config.update", "ui_config", "ui_config", Object.keys(body).join(",")).run();
+      return next;
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/stats\/mux$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (!(await canViewStats(ctx, s))) fail(403, "forbidden", "沒有查看統計分析的權限");
+      return collectMuxStats(ctx.env);
+    },
+  ],
   ["GET", /^\/me\/achievements$/, async (ctx) => grantAchievements(ctx, requireMember(ctx).sub)],
   ["GET", /^\/admin\/achievements$/, async (ctx) => (requireSuperAdmin(ctx), listAchievements(ctx))],
   [

@@ -84,7 +84,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMember(known(await fetchMember()));
     invalidate();
   }, [invalidate]);
-  const signInGoogle = useCallback(async (returnTo = "/me") => {
+  const signInGoogle = useCallback(async (returnTo = "/") => {
     await saveToken(null);
     const result = await signInWithGoogle(returnTo);
     if (result !== "ok") return;
@@ -108,7 +108,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     if (member?.demo) await api("POST", "/auth/logout").catch(() => undefined);
     else {
-      await signOutCentral();
+      await signOutCentral(true); // 「登出所有 App」：中央會結束這位會員所有 App、所有裝置與會員中心網站的登入
       if (Platform.OS === "web") {
         await saveToken(null);
         webSsoLogout("/me"); // 登出這個瀏覽器的所有 App

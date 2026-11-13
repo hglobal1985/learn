@@ -3,7 +3,8 @@ import { StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useSession } from "@/state/session";
-import { daysUntilStart } from "./sort";
+import { useUiConfig } from "@/state/ui-config";
+import { ribbonsFor } from "./ribbons";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
@@ -11,18 +12,16 @@ import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 export function CourseCard({ course }: { course: CourseSummary }) {
   const { c } = useTheme();
   const { member } = useSession();
-  // 緞帶：訪客看到完全公開的課程 → 「免費公開」；其餘尚未開始的課程 → 「剩餘 X 天」。
-  const days = daysUntilStart(course);
-  const ribbon = !member && course.isPublic ? { label: "免費公開", tone: "accent" as const } : days != null ? { label: `剩餘 ${days} 天`, tone: "warning" as const } : null;
-  // 登入會員但獎銜不符、又還沒報名：右上角另外顯示紅色「獎銜不符」。
-  const ineligible = !!member && !course.eligible && course.enrollment === null && course.status === "published";
+  // 緞帶：左上角＝資格或狀態、右上角＝日期倒數；文字與顏色由超級管理員在「課程排序與條件」設定。
+  const { config } = useUiConfig();
+  const ribbons = ribbonsFor(course, member, config);
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
     <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
       <View style={styles.coverWrap}>
         <CourseCover theme={course.theme} label={course.category} imageUrl={course.coverUrl} />
-        {ribbon ? <CornerRibbon label={ribbon.label} tone={ribbon.tone} /> : null}
-        {ineligible ? <CornerRibbon label="獎銜不符" tone="danger" side="right" /> : null}
+        {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
+        {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
       <View style={styles.titleRow}>
         <AppText variant="headline" style={{ flex: 1 }}>
@@ -43,7 +42,7 @@ export function CourseCard({ course }: { course: CourseSummary }) {
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
         {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
         <AppText variant="caption" tone="muted">
-          {course.lessonCount} 堂{course.totalMinutes ? ` · 約 ${course.totalMinutes} 分鐘` : ""}
+          {course.lessonCount ? `${course.lessonCount} 堂` : ""}{course.lessonCount && course.totalMinutes ? " · " : ""}{course.totalMinutes ? `約 ${course.totalMinutes} 分鐘` : ""}
         </AppText>
       </View>
       {course.enrollment === "opened" ? (

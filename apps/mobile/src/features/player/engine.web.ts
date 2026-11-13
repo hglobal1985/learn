@@ -280,7 +280,7 @@ export const engine = {
   /** 課程頁登記「播放區塊」：有登記＝內嵌模式；離開頁面（null）＝迷你播放器模式。 */
   setSlot(key: string | null, node: HTMLElement | null = null) {
     slotEl = node;
-    if (snap.slotKey !== key) emit({ slotKey: key });
+    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}) });
   },
   setCollapsed(collapsed: boolean) {
     switchAt = Date.now();
@@ -288,6 +288,10 @@ export const engine = {
   },
   /** 剛縮小／放大完的 0.5 秒內：手指放開產生的「點擊」會落在換出來的新按鈕上，要忽略，免得誤按播放／暫停或關閉。 */
   recentlySwitched: () => Date.now() - switchAt < 500,
+  /** 顯示「可拖曳或放大縮小 點兩下復原」提示（幾秒後自動消失）。 */
+  pokeHint() {
+    emit({ hintAt: Date.now() });
+  },
   clearSlot(key: string) {
     if (snap.slotKey === key) {
       slotEl = null;

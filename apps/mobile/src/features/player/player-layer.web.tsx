@@ -1,5 +1,6 @@
 import { router } from "expo-router";
-import { useCallback, useEffect, useRef, type CSSProperties, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { createPortal } from "react-dom";
 import { useSession } from "@/state/session";
 import { engine } from "./engine.web";
@@ -42,6 +43,8 @@ export function PlayerLayer() {
   const drag = useRef<{ px: number; py: number; x: number; y: number; moved: boolean } | null>(null);
   const zoomLayer = useRef<HTMLDivElement>(null);
   const gesture = useRef<HTMLDivElement>(null);
+  const lastTap = useRef({ t: 0, x: 0, y: 0 });
+  const [showHint, setShowHint] = useState(false);
   const justSwitched = () => engine.recentlySwitched();
   const zoom = useRef<Zoom>(IDENTITY);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -80,6 +83,14 @@ export function PlayerLayer() {
     return () => el.removeEventListener("wheel", onWheel);
   }, [canZoom]); // eslint-disable-line react-hooks/exhaustive-deps
   const zDown = (e: PointerEvent<HTMLDivElement>) => {
+    engine.pokeHint(); // 觸摸影片就顯示操作提示
+    // 影片任意處點兩下：還原 100% 原始比例。
+    const now = Date.now();
+    const lt = lastTap.current;
+    if (pointers.current.size === 0 && now - lt.t < 320 && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < 40) {
+      applyZoom(IDENTITY);
+      lastTap.current = { t: 0, x: 0, y: 0 };
+    } else lastTap.current = { t: now, x: e.clientX, y: e.clientY };
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     e.currentTarget.setPointerCapture(e.pointerId);
     if (pointers.current.size === 2) {
@@ -109,6 +120,19 @@ export function PlayerLayer() {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
   };
+
+  // 操作提示：進入影片、觸摸影片、拖曳時間軸時顯示，3.5 秒沒操作就自動消失。
+  useEffect(() => {
+    if (!s.hintAt) return;
+    setShowHint(true);
+    const id = setTimeout(() => setShowHint(false), 3500);
+    return () => clearTimeout(id);
+  }, [s.hintAt]);
+
+  // 播放／暫停時，外框的反光流動跟著動或停。
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.style.animationPlayState = s.playing ? "running" : "paused";
+  }, [s.playing]);
 
   useEffect(() => {
     hostRef.current?.appendChild(engine.element());
@@ -169,7 +193,7 @@ export function PlayerLayer() {
       }
       const [l, tp, w, h, fl] = css.split("|");
       const framed = fl !== "0";
-      box.style.setProperty("--pad", framed ? "3px" : "0px");
+      box.style.setProperty("--pad", framed ? "4.5px" : "0px");
       Object.assign(box.style, {
         display: "block",
         left: `${l}px`,
@@ -182,6 +206,7 @@ export function PlayerLayer() {
         backgroundSize: framed ? "300% 300%" : "auto",
         animation: framed ? "hg-sheen 7s linear infinite" : "none",
       });
+      box.style.animationPlayState = engine.getSnapshot().playing ? "running" : "paused"; // 暫停播放時，外框反光也暫停
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -270,6 +295,12 @@ export function PlayerLayer() {
         ) : null}
       </div>
       {canZoom ? <div ref={gesture} onPointerDown={zDown} onPointerMove={zMove} onPointerUp={zUp} onPointerCancel={zUp} style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab" }} aria-label="影片（雙指或滾輪放大縮小）" /> : null}
+      {canZoom && showHint ? (
+        <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 999, background: "rgba(0,0,0,0.55)", color: "#fff", fontSize: 12, lineHeight: "16px", fontWeight: 500, whiteSpace: "nowrap", pointerEvents: "none" }}>
+          <span style={{ fontFamily: "ionicons", fontSize: 14, lineHeight: "16px" }}>{String.fromCodePoint(Number(Ionicons.glyphMap["move"]))}</span>
+          <span>可拖曳或放大縮小 點兩下復原</span>
+        </div>
+      ) : null}
       {circle ? (
         <div style={{ position: "absolute", inset: 0, touchAction: "none", cursor: "grab", background: "#000", borderRadius: "50%", overflow: "hidden" }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => (drag.current = null)} role="button" aria-label="恢復迷你播放器（可按住拖曳移動）">
           <img src={art} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", animation: "hg-spin 8s linear infinite", animationPlayState: s.playing ? "running" : "paused", pointerEvents: "none" }} />

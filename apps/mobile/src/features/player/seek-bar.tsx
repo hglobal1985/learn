@@ -6,7 +6,7 @@ import { useTheme } from "@/theme/theme";
  * 時間軸細條：點一下跳到該位置，手指按住左右拖曳可連續調整（觸控區高 44px，單手好操作）。
  * value、max 單位相同（秒）；放開手指才真正跳轉。
  */
-export function SeekBar({ value, max, onSeek }: { value: number; max: number; onSeek: (v: number) => void }) {
+export function SeekBar({ value, max, onSeek, onTouch }: { value: number; max: number; onSeek: (v: number) => void; onTouch?: () => void }) {
   const { c } = useTheme();
   const [width, setWidth] = useState(1);
   const [drag, setDrag] = useState<number | null>(null);
@@ -20,6 +20,7 @@ export function SeekBar({ value, max, onSeek }: { value: number; max: number; on
       onMoveShouldSetPanResponder: () => true,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (e) => {
+        onTouchRef.current?.();
         geo.current.left = e.nativeEvent.pageX - e.nativeEvent.locationX;
         setDrag(frac(e.nativeEvent.pageX) * geo.current.max);
       },
@@ -31,6 +32,8 @@ export function SeekBar({ value, max, onSeek }: { value: number; max: number; on
       onPanResponderTerminate: () => setDrag(null),
     }),
   ).current;
+  const onTouchRef = useRef(onTouch);
+  onTouchRef.current = onTouch;
   const onSeekRef = useRef(onSeek);
   onSeekRef.current = onSeek;
   const shown = drag ?? value;

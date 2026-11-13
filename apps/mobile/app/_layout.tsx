@@ -6,11 +6,13 @@ import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppGate } from "@/features/app-gate";
 import { ConfirmSheetHost } from "@/features/confirm";
+import { ToastHost } from "@/ui/toast";
 import { MiniAudioBar } from "@/features/player/audio-bar";
 import { PlayerLayer } from "@/features/player/player-layer";
 import { SwitchSheet } from "@/features/player/switch-sheet";
 import { installNoPageZoom } from "@/lib/no-page-zoom";
 import { SessionProvider } from "@/state/session";
+import { UiConfigProvider } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
 import { BottomBar } from "@/ui";
 
@@ -26,6 +28,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AppGate>
       <SessionProvider>
+        <UiConfigProvider>
         <ThemeProvider value={navTheme}>
           <StatusBar style={scheme === "dark" ? "light" : "dark"} />
           <View style={{ flex: 1, backgroundColor: c.background }}>
@@ -34,6 +37,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "寰宇行動大學" }} />
             <Stack.Screen name="course/[id]" options={{ title: "課程介紹" }} />
             <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課" }} />
+            <Stack.Screen name="admin/list-rules" options={{ title: "課程排序與條件" }} />
+            <Stack.Screen name="admin/stats" options={{ title: "統計分析" }} />
             <Stack.Screen name="achievements" options={{ title: "學習成就" }} />
             <Stack.Screen name="admin/achievements" options={{ title: "學習成就徽章設定" }} />
             <Stack.Screen name="orders/index" options={{ title: "我的報名" }} />
@@ -59,8 +64,10 @@ export default function RootLayout() {
           <PlayerLayer />
           <SwitchSheet />
           <ConfirmSheetHost />
+          <ToastHost />
           </View>
         </ThemeProvider>
+        </UiConfigProvider>
       </SessionProvider>
       </AppGate>
     </SafeAreaProvider>

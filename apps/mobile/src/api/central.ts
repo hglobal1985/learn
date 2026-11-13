@@ -192,9 +192,20 @@ export async function finishWebReturn(): Promise<string> {
   return safePath(pending.returnTo);
 }
 
-export async function signOutCentral(): Promise<void> {
+/** 登出。all＝true：登出所有 App、所有裝置與會員中心網站（POST /v1/auth/logout-all）；否則只登出這個 App 的這次登入。 */
+export async function signOutCentral(all = false): Promise<void> {
   const token = access ?? (await storage.get(ACCESS_KEY));
-  if (token) await central("/v1/auth/logout", "POST", undefined, token).catch(() => undefined);
+  if (token && all) {
+    try {
+      await central("/v1/auth/logout-all", "POST", undefined, token);
+    } catch {
+      // 存取權杖（15 分鐘）過期時先換發一次，再登出所有 App。
+      if (await refresh().catch(() => false)) {
+        const fresh = access;
+        if (fresh) await central("/v1/auth/logout-all", "POST", undefined, fresh).catch(() => undefined);
+      }
+    }
+  } else if (token) await central("/v1/auth/logout", "POST", undefined, token).catch(() => undefined);
   await clearCentral();
 }
 

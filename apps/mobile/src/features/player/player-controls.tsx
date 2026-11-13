@@ -29,7 +29,7 @@ export function PlayerControls() {
           <Ionicons name={icon} size={24} color={c.text} />
         </Pressable>
         <View style={styles.bar}>
-          <SeekBar value={at} max={total || 1} onSeek={(v) => engine.seek(start + v)} />
+          <SeekBar value={at} max={total || 1} onSeek={(v) => engine.seek(start + v)} onTouch={t.mode === "audio" ? undefined : () => engine.pokeHint()} />
         </View>
         <AppText variant="caption" tone="muted" style={styles.time}>
           {formatClock(at)}

@@ -1,36 +1,27 @@
-import type { CourseSummary } from "@/api/client";
+import type { CourseSummary, Member, SortGroup } from "@/api/client";
 import { todayStr } from "@/ui/date-select";
+import { classify } from "./ribbons";
 
 /** 課程排序用的日期：活動日期；沒有就用最近一場的開課日（台灣時間的日期）。 */
 export const startOf = (c: CourseSummary): string | null => c.eventStart ?? (c.nextRunAt ? new Date(Date.parse(c.nextRunAt) + 8 * 3600_000).toISOString().slice(0, 10) : null);
 
 /**
- * 「全部課程」預設排序（依課程日期）：
- * 1. 今天或之後的活動，日期近的在前（正在進行的連續活動也算）；
- * 2. 沒有設定日期的課程；
- * 3. 已經結束的活動，最近結束的在前。
+ * 「全部課程」排序：先依分組優先順序（由超級管理員在「課程排序與條件」設定），
+ * 同一組內：還沒開始的日期由近到遠，已開始或沒有日期的由新到舊。
  */
-export function sortByEventDate(list: CourseSummary[]): CourseSummary[] {
+export function sortCourses(list: CourseSummary[], member: Member | null, groups: SortGroup[]): CourseSummary[] {
+  const rank = new Map(groups.map((g, i) => [g, i]));
   const today = todayStr();
-  const upcoming: CourseSummary[] = [];
-  const undated: CourseSummary[] = [];
-  const past: CourseSummary[] = [];
-  for (const c of list) {
-    const start = startOf(c);
-    if (!start) undated.push(c);
-    else if ((c.eventEnd ?? start) >= today) upcoming.push(c);
-    else past.push(c);
-  }
-  upcoming.sort((a, b) => startOf(a)!.localeCompare(startOf(b)!));
-  past.sort((a, b) => startOf(b)!.localeCompare(startOf(a)!));
-  return [...upcoming, ...undated, ...past];
-}
-
-/** 距離活動開始還有幾天（只有「尚未開始」才有值；今天或已開始、已結束、沒有日期都回傳 null）。 */
-export function daysUntilStart(c: CourseSummary): number | null {
-  const start = startOf(c);
-  if (!start) return null;
-  const today = todayStr();
-  if (start <= today) return null;
-  return Math.round((Date.parse(`${start}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  const upcomingKey = (c: CourseSummary) => ((startOf(c) ?? "9999-12-31") > today ? 0 : 1);
+  return [...list].sort((a, b) => {
+    const ga = rank.get(classify(a, member)) ?? 99;
+    const gb = rank.get(classify(b, member)) ?? 99;
+    if (ga !== gb) return ga - gb;
+    const ua = upcomingKey(a);
+    const ub = upcomingKey(b);
+    if (ua !== ub) return ua - ub;
+    const sa = startOf(a) ?? "";
+    const sb = startOf(b) ?? "";
+    return ua === 0 ? sa.localeCompare(sb) : sb.localeCompare(sa);
+  });
 }

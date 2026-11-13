@@ -72,7 +72,7 @@ export const engine = {
   /** 給 VideoView 用的播放器（尚未載入時為 null）。 */
   player: () => player,
   setSlot(key: string | null, _node?: unknown) {
-    if (snap.slotKey !== key) emit({ slotKey: key });
+    if (snap.slotKey !== key) emit({ slotKey: key, ...(key ? { hintAt: Date.now() } : {}) });
   },
   setFullscreenTarget(view: VideoView | null) {
     fsView = view;
@@ -87,6 +87,10 @@ export const engine = {
   },
   /** 剛縮小／放大完的 0.5 秒內：手指放開產生的「點擊」會落在換出來的新按鈕上，要忽略，免得誤按播放／暫停或關閉。 */
   recentlySwitched: () => Date.now() - switchAt < 500,
+  /** 顯示「可拖曳或放大縮小 點兩下復原」提示（幾秒後自動消失）。 */
+  pokeHint() {
+    emit({ hintAt: Date.now() });
+  },
   clearSlot(key: string) {
     if (snap.slotKey === key) emit({ slotKey: null });
   },

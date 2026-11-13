@@ -1,11 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Platform } from "react-native";
 
-/** 是否為 iPhone／iPad（原生 iOS，或網頁在 iOS 的瀏覽器）。 */
+/** 是否為 Apple 平台（iPhone、iPad、Mac；原生 iOS 或網頁在這些裝置的瀏覽器）。 */
 export const isApplePlatform = (): boolean => {
   if (Platform.OS === "ios") return true;
   if (Platform.OS !== "web" || typeof navigator === "undefined") return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return /Mac|iPad|iPhone|iPod/.test(navigator.userAgent); // Mac 與 iOS 使用相同的分享圖示
 };
 
 /**

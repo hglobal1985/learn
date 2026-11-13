@@ -168,3 +168,19 @@ export async function listMuxAssets(env: Env, cursor?: string): Promise<{ assets
   );
   return { assets, nextCursor: body.next_cursor ?? null };
 }
+
+/** 對 Mux API 發 GET（Basic 驗證，用 MUX_TOKEN_ID／MUX_TOKEN_SECRET）。失敗丟 MuxApiError；status 記錄 HTTP 狀態。 */
+export async function muxGetJson(env: Env, path: string): Promise<unknown> {
+  const id = env.MUX_TOKEN_ID?.trim();
+  const secret = env.MUX_TOKEN_SECRET?.trim();
+  if (!id || !secret) throw new MuxApiError("mux_api_not_configured");
+  let res: Response;
+  try {
+    res = await muxFetch(`https://api.mux.com${path}`, { headers: { authorization: `Basic ${btoa(`${id}:${secret}`)}` }, signal: AbortSignal.timeout(12000) });
+  } catch {
+    throw new MuxApiError("mux_api_unavailable");
+  }
+  if (res.status === 401 || res.status === 403) throw new MuxApiError("mux_api_unauthorized");
+  if (!res.ok) throw new MuxApiError("mux_api_unavailable");
+  return res.json();
+}
