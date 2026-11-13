@@ -115,7 +115,24 @@ export async function collectMuxStats(env: Env): Promise<MuxStats> {
     block("usage_by_asset", "各影片本月傳輸量", "more", false, async () => {
       const rows = (await deliveryUsage(env, monthStart, now)).sort((a, b) => num(b.delivered_seconds) - num(a.delivered_seconds)).slice(0, 10);
       const max = Math.max(1, ...rows.map((r) => num(r.delivered_seconds)));
-      return { bars: rows.map((r) => ({ label: String(r.asset_id ?? "").slice(0, 14), value: num(r.delivered_seconds), max, text: `${fmt(num(r.delivered_seconds) / 60)} 分鐘` })) };
+      // 傳輸量只回影片代碼；逐支查影片名稱（上傳時的檔名）。查不到＝影片已從 Mux 刪除，但本月傳輸量仍會計入。
+      const names = await Promise.all(
+        rows.map(async (r) => {
+          const id = String(r.asset_id ?? "");
+          try {
+            const a = ((await muxGetJson(env, `/video/v1/assets/${encodeURIComponent(id)}`)) as Obj).data as Obj | undefined;
+            const meta = (a?.meta ?? {}) as Obj;
+            const t = String(meta.title || a?.passthrough || "").trim();
+            return t ? t.slice(0, 40) : `（未命名影片 ${id.slice(0, 6)}）`;
+          } catch (e) {
+            return e instanceof MuxApiError && e.code === "mux_api_unavailable" && /HTTP 404/.test(e.detail) ? `（已刪除的影片 ${id.slice(0, 6)}）` : `（影片 ${id.slice(0, 6)}）`;
+          }
+        }),
+      );
+      return {
+        note: "傳輸量以影片代碼統計；已從 Mux 刪除的影片，本月先前產生的傳輸量仍會列在這裡。",
+        bars: rows.map((r, i) => ({ label: names[i]!, value: num(r.delivered_seconds), max, text: `${fmt(num(r.delivered_seconds) / 60)} 分鐘` })),
+      };
     }),
     block("quality", "播放品質（近 30 天）", "more", true, async () => {
       const [rebuf, startup, fail, exits, score] = await Promise.all(["rebuffer_percentage", "video_startup_time", "playback_failure_percentage", "exits_before_video_start", "viewer_experience_score"].map((m) => overall(env, m)));
