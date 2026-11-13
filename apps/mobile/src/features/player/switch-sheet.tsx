@@ -1,8 +1,7 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
-import { minTouch, radius, space } from "@/theme/tokens";
+import { space } from "@/theme/tokens";
 import { AppText, Button } from "@/ui";
 import { BottomSheet } from "@/ui/bottom-sheet";
 import { SWITCH_COUNTDOWN_SECONDS, switchPromptStore, type SwitchPrompt } from "./switch-prompt";
@@ -31,22 +30,13 @@ function Sheet({ prompt }: { prompt: SwitchPrompt }) {
 
   return (
     <BottomSheet onClose={() => prompt.resolve(false)}>
-          <AppText variant="title">要改播這一堂嗎？</AppText>
-          <View style={[styles.row, { backgroundColor: c.background, borderColor: c.accent }]}>
-            <Ionicons name="play-circle" size={24} color={c.accent} />
-            <AppText variant="headline" numberOfLines={2} style={styles.text}>
-              {prompt.to.title}
-            </AppText>
-          </View>
-          <AppText variant="caption" tone="muted" numberOfLines={1}>
-            正在播放：{prompt.from.title}
-          </AppText>
+          <AppText variant="title">是否更換播放？</AppText>
           <View style={[styles.bar, { backgroundColor: c.border }]}>
             <View style={{ height: 4, width: `${Math.max(0, left) * (100 / SWITCH_COUNTDOWN_SECONDS)}%`, backgroundColor: c.accent, borderRadius: 2 }} />
           </View>
           <View style={styles.buttons}>
-            <View style={{ flex: 1 }}>
-              <Button variant="secondary" label="關閉" fullWidth onPress={() => prompt.resolve(false)} />
+            <View style={{ flexShrink: 0 }}>
+              <Button variant="secondary" label="關閉" onPress={() => prompt.resolve(false)} />
             </View>
             <View style={{ flex: 1 }}>
               <Button label={`確定播放（${Math.max(0, left)}）`} fullWidth onPress={() => prompt.resolve(true)} />
@@ -57,8 +47,6 @@ function Sheet({ prompt }: { prompt: SwitchPrompt }) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: space.md, borderWidth: 1, borderRadius: radius.md, padding: space.md, minHeight: minTouch },
-  text: { flex: 1, gap: 2 },
   bar: { height: 4, borderRadius: 2, overflow: "hidden" },
   buttons: { flexDirection: "row", gap: space.sm },
 });
