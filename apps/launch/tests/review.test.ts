@@ -63,6 +63,7 @@ test("審核群組：依中心通知窗口與會長；只能審核自己中心�
   // 學員看得到收費窗口；延後再審＋私人備註；學員看不到備註
   let mine = (await call<Order>("GET", `/orders/${o1.id}`, { token: taipei })).data;
   assert.deepEqual(mine.collectors, ["測試窗口"]);
+  assert.deepEqual(mine.reviewers, [], "這個群組沒有審核員");
   const deferred = (await call<Order>("POST", `/admin/orders/${o1.id}/review`, { token: desk, body: { action: "defer", reasonCode: "wrong_amount", note: "少 100", message: "請補差額" } })).data;
   assert.deepEqual([deferred.status, deferred.deferred, deferred.events!.at(-1)!.note], ["pending", true, "少 100"]);
   mine = (await call<Order>("GET", `/orders/${o1.id}`, { token: taipei })).data;

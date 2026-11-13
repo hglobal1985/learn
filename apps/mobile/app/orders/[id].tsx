@@ -14,7 +14,7 @@ import { radius, space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, LoadingView, NoticeBox, Pill, Screen } from "@/ui";
 import { showToast } from "@/ui/toast";
 
-/** 報名明細：只放最重要的——要繳多少錢（超大）、付款代碼、狀態、取消。處理紀錄收在最下面，點開才看。 */
+/** 報名明細：金額（超大）、狀態、取消按鈕（第一個畫面就看得到）、審核人員與收費窗口、處理紀錄與留言（直接展開）。付款代碼還沒串金流，先不顯示。 */
 function OrderDetail() {
   const { c } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,7 +22,6 @@ function OrderDetail() {
   const { data, error, loading, reload } = useApi<Order>(`/orders/${id}`);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [log, setLog] = useState(false);
   if (!data) return <Screen header={false}>{loading ? <LoadingView /> : <ErrorView message={error ?? "找不到這筆報名"} onRetry={reload} />}</Screen>;
   const st = orderStatus(data);
   const cancel = async () => {
@@ -51,7 +50,7 @@ function OrderDetail() {
   return (
     <Screen header={false}>
       <Card style={styles.hero}>
-        <MoneyArt size={104} />
+        <MoneyArt size={72} />
         <AppText variant="callout" tone="muted" numberOfLines={2} style={{ textAlign: "center" }}>
           {title}
         </AppText>
@@ -62,36 +61,43 @@ function OrderDetail() {
           <Pill label={st.label} tone={st.tone} />
         </View>
       </Card>
+      {data.status === "pending" ? <Button variant="danger" label="取消報名" icon="close-circle-outline" loading={busy} disabled={busy} onPress={cancel} fullWidth /> : null}
+      {data.status === "opened" ? <Button label="前往學習中的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
+      {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
 
-      {data.status === "pending" && data.payRef ? (
-        <Card>
-          <AppText variant="callout" tone="muted">
-            付款代碼（繳費時告知窗口，匯款請填在備註）
-          </AppText>
-          <View style={styles.codeRow}>
-            <AppText style={[styles.code, { color: c.accentText }]} selectable>
-              {data.payRef}
-            </AppText>
-            <Pressable accessibilityRole="button" accessibilityLabel="複製付款代碼" onPress={copy} style={[styles.copy, { borderColor: c.accent }]}>
-              <Ionicons name="copy-outline" size={22} color={c.accentText} />
-              <AppText variant="callout" style={{ color: c.accentText, fontWeight: "700" }}>
-                複製
-              </AppText>
-            </Pressable>
-          </View>
-        </Card>
-      ) : null}
 
       {data.status === "opened" ? <NoticeBox tone="success" text="課程已開通，可以開始上課了。" /> : null}
       {data.rejectReason && data.status !== "opened" ? <NoticeBox tone="danger" text={`原因：${data.rejectReason}`} /> : null}
       {err ? <NoticeBox tone="danger" text={err} /> : null}
 
-      {data.status === "pending" ? <Button variant="danger" label="取消報名" icon="close-circle-outline" loading={busy} disabled={busy} onPress={cancel} fullWidth /> : null}
-      {data.status === "opened" ? <Button label="前往學習中的課程" onPress={() => router.navigate("/learning")} fullWidth /> : null}
-      {data.status === "rejected" && !data.revoked ? <Button label="回到課程頁重新報名" onPress={() => router.push(`/course/${data.items[0]?.courseId}`)} fullWidth /> : null}
 
-      <Button variant="ghost" label={log ? "收起處理紀錄" : "處理紀錄與留言"} icon={log ? "chevron-up" : "chevron-down"} onPress={() => setLog((v) => !v)} fullWidth />
-      {log ? <OrderTimeline order={data} /> : null}
+      {data.reviewers?.length || data.collectors?.length ? (
+        <Card>
+          {data.reviewers?.length ? (
+            <View style={styles.person}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={c.accentText} />
+              <AppText variant="callout" tone="muted">
+                審核人員
+              </AppText>
+              <AppText variant="headline" style={{ flex: 1 }}>
+                {data.reviewers.join("、")}
+              </AppText>
+            </View>
+          ) : null}
+          {data.collectors?.length ? (
+            <View style={styles.person}>
+              <Ionicons name="wallet-outline" size={22} color={c.accentText} />
+              <AppText variant="callout" tone="muted">
+                收費窗口
+              </AppText>
+              <AppText variant="headline" style={{ flex: 1 }}>
+                {data.collectors.join("、")}
+              </AppText>
+            </View>
+          ) : null}
+        </Card>
+      ) : null}
+      <OrderTimeline order={data} />
     </Screen>
   );
 }
@@ -105,8 +111,9 @@ export default function OrderScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { alignItems: "center", gap: space.sm, paddingVertical: space.xl },
-  amount: { fontSize: 64, lineHeight: 72, fontWeight: "900", letterSpacing: -1 },
+  hero: { alignItems: "center", gap: space.xs, paddingVertical: space.md },
+  amount: { fontSize: 60, lineHeight: 68, fontWeight: "900", letterSpacing: -1 },
+  person: { flexDirection: "row", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   codeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.md },
   code: { fontSize: 30, fontWeight: "900", letterSpacing: 2, flexShrink: 1 },
   copy: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.pill },

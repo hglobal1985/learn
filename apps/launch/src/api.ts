@@ -854,7 +854,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
   const [order] = await hydrateOrders(ctx.db, [row]);
   // 審核人員（不是本人）開啟明細會看到真實姓名：留下查看紀錄（只記誰、哪一筆，不記姓名內容）。
   if (reviewer && row.member_sub !== s.sub && row.legal_name) await audit(ctx.db, s.sub, "order.view_legal_name", "order", id).run().catch(() => undefined);
-  const [events, collectors] = await Promise.all([
+  const [events, collectors, reviewers] = await Promise.all([
     ctx.db.prepare("SELECT id, actor_sub, actor_name, actor_title, action, reason_code, message, note, created_at FROM order_events WHERE order_id = ? ORDER BY created_at, rowid").bind(id).all<{
       id: string;
       actor_sub: string;
@@ -869,6 +869,12 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
     ctx.db
       .prepare(
         "SELECT DISTINCT m.member_name FROM review_group_members m JOIN courses c ON c.review_group_id = m.group_id JOIN order_items i ON i.course_id = c.id WHERE i.order_id = ? AND m.duty = 'collect' AND m.member_name <> '' AND (m.center_key = ? OR (m.center_key = '' AND NOT EXISTS (SELECT 1 FROM review_group_members x WHERE x.group_id = m.group_id AND x.duty = 'collect' AND x.center_key = ?)))",
+      )
+      .bind(id, row.center_key ?? "\u0000", row.center_key ?? "\u0000")
+      .all<{ member_name: string }>(),
+    ctx.db
+      .prepare(
+        "SELECT DISTINCT m.member_name FROM review_group_members m JOIN courses c ON c.review_group_id = m.group_id JOIN order_items i ON i.course_id = c.id WHERE i.order_id = ? AND m.duty = 'review' AND m.member_name <> '' AND (m.center_key = ? OR (m.center_key = '' AND NOT EXISTS (SELECT 1 FROM review_group_members x WHERE x.group_id = m.group_id AND x.duty = 'review' AND x.center_key = ?)))",
       )
       .bind(id, row.center_key ?? "\u0000", row.center_key ?? "\u0000")
       .all<{ member_name: string }>(),
@@ -889,6 +895,7 @@ async function orderDetail(ctx: Ctx, id: string): Promise<Order> {
         createdAt: e.created_at,
       })),
     collectors: collectors.results.map((c) => c.member_name),
+    reviewers: reviewers.results.map((c) => c.member_name),
     canReview: reviewer && (row.member_sub !== s.sub || s.role === "admin"),
     canRevoke: s.role === "admin" && row.status === "opened" && row.total_twd > 0,
   };

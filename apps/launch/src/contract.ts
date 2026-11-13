@@ -168,6 +168,8 @@ export type Order = {
   events?: OrderEvent[];
   /** 這位學員所屬中心的收費窗口姓名。 */
   collectors?: string[];
+  /** 這場活動的負責審核人員姓名（同一個審核群組、同一中心）。 */
+  reviewers?: string[];
   canReview?: boolean;
   canRevoke?: boolean;
 };
