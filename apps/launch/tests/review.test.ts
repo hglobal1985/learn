@@ -284,7 +284,8 @@ test("完整版影片：同一支影片裁成多堂時，清單最後自動多�
   assert.deepEqual([seg.start, seg.end], [600, 1200]);
   assert.equal((await call("POST", `/courses/${c.id}/lessons/${full.id}/complete`, { token: student })).status, 200);
   assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: student })).data.completedLessons, 0, "不計入進度");
-  assert.equal((await call<CourseDetail>("GET", `/courses/${c.id}`, { token: admin })).data.lessons.length, 2, "管理員的編輯清單不加");
+  const adminLessons = (await call<CourseDetail>("GET", `/courses/${c.id}`, { token: admin })).data.lessons;
+  assert.deepEqual([adminLessons.length, adminLessons.filter((l) => l.full).length], [3, 1], "管理員也看得到完整版（編輯清單由前端濾掉）");
 });
 
 test("回報繳費方式：四種方式各自的必填欄位、只有本人能回報、紀錄留在明細、通知審核人員", async () => {

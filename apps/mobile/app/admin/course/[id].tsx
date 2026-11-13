@@ -46,7 +46,7 @@ export default function LessonManagerScreen() {
   const [detecting, setDetecting] = useState(false);
   const detected = useRef(new Set<string>());
   useEffect(() => {
-    const lessons = course.data?.lessons ?? [];
+    const lessons = (course.data?.lessons ?? []).filter((l) => !l.full);
     const todo = lessons.filter((l) => l.media?.type === "youtube" && l.media.ref && l.minutes === 0 && !detected.current.has(l.id));
     if (!todo.length || !isAdmin) return;
     let alive = true;
@@ -75,7 +75,7 @@ export default function LessonManagerScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (!course.data) return <Screen header={false}>{course.error ? <ErrorView message={course.error} onRetry={course.reload} /> : <LoadingView />}</Screen>;
-  const lessons = course.data.lessons;
+  const lessons = course.data.lessons.filter((l) => !l.full); // 「完整版」是系統自動產生的，不在編輯清單
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);

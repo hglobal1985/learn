@@ -430,9 +430,8 @@ const managesCourse = (s: Session, hostCenterKey: string | null) => s.role === "
 
 type LessonRowLite = { id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null };
 
-/** 同一支影片（或音檔）被裁成多堂時，各自補一個「完整版影片」章節放在清單最後（管理員的編輯清單不加）。 */
-function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: string, row: CourseRow, admin: boolean, _completed: Set<string>): Lesson[] {
-  if (admin) return [];
+/** 同一支影片（或音檔）被裁成多堂時，各自補一個「完整版」章節（管理員也看得到；管理員的章節編輯清單由前端濾掉 full）。 */
+function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: string, row: CourseRow, admin: boolean, watchFree: boolean): Lesson[] {
   const groups = new Map<string, LessonRowLite[]>();
   for (const l of rows) {
     if (!l.media_ref || l.media_type === "demo") continue;
@@ -452,7 +451,7 @@ function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: strin
     end: null,
     eventDate: null,
     ready: true,
-    locked: !(state.enrolled.has(courseId) || row.is_public === 1),
+    locked: !(admin || state.enrolled.has(courseId) || row.is_public === 1 || watchFree),
   }));
 }
 
@@ -496,7 +495,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       locked: !admin && !(state.enrolled.has(id) || row.is_public === 1 || watchFree),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
-    })), ...fullVersions(lessons.results, state, id, row, admin, completed)],
+    })), ...fullVersions(lessons.results, state, id, row, admin, watchFree)],
     ...(admin ? { admin: { hostCenterKey: row.host_center_key, freeFrom: row.free_from, freeUntil: row.free_until, reviewGroupId: row.review_group_id, basePriceTwd: row.price_twd } } : {}),
   };
 }
