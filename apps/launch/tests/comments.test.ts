@@ -27,7 +27,7 @@ test("會長也可報名：開啟後會長不受獎銜限制，其他人仍依�
   const c = (await call<CourseDetail>("PATCH", "/admin/courses/growth", { token: admin, body: { allowPresident: true } })).data;
   assert.equal(c.allowPresident, true);
   assert.equal((await call<CourseDetail>("GET", "/courses/growth", { token: pres })).data.eligible, true);
-  assert.equal((await call("POST", "/orders", { token: pres, body: { courseIds: ["growth"] } })).status, 200);
+  assert.equal((await call("POST", "/orders", { token: pres, body: { courseIds: ["growth"] } })).status, 409, "免費課程：打開課程頁時已自動報名");
   assert.equal((await call("POST", "/orders", { token: silver, body: { courseIds: ["growth"] } })).status, 403);
 });
 

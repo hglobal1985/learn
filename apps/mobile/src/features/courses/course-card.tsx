@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -12,7 +13,7 @@ import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
 
-export function CourseCard({ course, siblings = [], footer, onPress, onPickSibling }: { course: CourseSummary; siblings?: CourseSummary[]; footer?: React.ReactNode; onPress?: () => void; onPickSibling?: (c: CourseSummary) => void }) {
+export function CourseCard({ course, siblings = [], footer, onPress, onPickSibling, onHide }: { course: CourseSummary; siblings?: CourseSummary[]; footer?: React.ReactNode; onPress?: () => void; onPickSibling?: (c: CourseSummary) => void; onHide?: () => void }) {
   const { c } = useTheme();
   const [sheet, setSheet] = useState(false);
   const { member } = useSession();
@@ -26,6 +27,11 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         <CourseCover theme={course.theme} label={course.category} title={displayName(course)} imageUrl={course.coverUrl} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
+        {onHide ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="從學習中隱藏" onPress={onHide} hitSlop={6} style={styles.hide}>
+            <Ionicons name="close" size={30} color="#fff" />
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.titleRow}>
         <View style={{ flex: 1 }} />
@@ -90,6 +96,7 @@ export function UnitTags({ course }: { course: CourseSummary }) {
 }
 
 const styles = StyleSheet.create({
+  hide: { position: "absolute", top: 8, right: 8, width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", zIndex: 5 },
   more: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderStyle: "dashed", borderRadius: radius.md },
   coverWrap: { borderRadius: radius.md, overflow: "hidden" },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },

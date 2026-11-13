@@ -71,6 +71,8 @@ export type CourseSummary = {
   seriesEdmUrl: string | null;
   /** 設定免費、而且這位會員符合資格：不用報名就能收看。 */
   watchFree: boolean;
+  /** 學員把這門免費課程從「學習中」隱藏了（再打開課程頁會恢復）。 */
+  hiddenFromLearning: boolean;
   diamondFree: boolean;
   diamondFreeNow: boolean;
   /** 早鳥優惠（null＝沒有設定）：until 為截止日（含當天，台灣時間）；active＝現在還在優惠期間。priceTwd 在 App 為 null。 */

@@ -327,17 +327,18 @@ const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, 
   FROM courses c`;
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  const empty = { enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
+  const empty = { hidden: new Set<string>(), enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
   if (!sub) return empty;
   const [e, p, d] = await db.batch([
-    db.prepare("SELECT course_id FROM enrollments WHERE member_sub = ?").bind(sub),
+    db.prepare("SELECT course_id, hidden FROM enrollments WHERE member_sub = ?").bind(sub),
     db.prepare("SELECT i.course_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
     db.prepare("SELECT p.course_id AS course_id, COUNT(*) AS n, COALESCE(SUM(l.duration_minutes), 0) AS m FROM lesson_progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.member_sub = ? GROUP BY p.course_id").bind(sub),
   ]);
   const keys = (rows: unknown[]) => new Set((rows as { course_id: string }[]).map((r) => r.course_id));
   const pendingOrder = new Map<string, string>();
   for (const r of p.results as { course_id: string; order_id: string }[]) pendingOrder.set(r.course_id, r.order_id);
-  return { enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
+  const hidden = new Set((e.results as { course_id: string; hidden: number }[]).filter((r) => r.hidden === 1).map((r) => r.course_id));
+  return { hidden, enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
@@ -388,6 +389,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hideFromHome: row.hide_home === 1,
     series: row.series,
     seriesEdmUrl: row.series_edm_key ? pubUrl(row.series_edm_key, row.series_art_version ?? 1) : null,
+    hiddenFromLearning: state.hidden.has(row.id),
     watchFree: !!ctx.session && row.status === "published" && row.price_twd === 0 && row.price_tba !== 1 && (eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row)),
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
@@ -536,10 +538,20 @@ async function ensureFreeEnrollment(ctx: Ctx, courseId: string): Promise<void> {
   const s = ctx.session;
   if (!s || s.role === "admin") return;
   const has = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
-  if (has || !(await freeWatchable(ctx, courseId))) return;
-  const pub = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1").bind(courseId).first();
-  if (pub) return; // 完全公開的課程本來就不用報名
+  if (has) return;
+  const pubRow = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1 AND status = 'published'").bind(courseId).first();
+  if (!pubRow && !(await freeWatchable(ctx, courseId))) return;
   await createOrders(ctx, { courseIds: [courseId] }, true).catch(() => undefined);
+}
+
+/** 學員打開免費課程的介紹頁：自動加入「學習中」（沒報名過就自動完成免費報名），之前被隱藏的也恢復顯示。 */
+async function openFreeCourse(ctx: Ctx, courseId: string): Promise<void> {
+  const s = ctx.session;
+  if (!s || s.role === "admin") return;
+  const c = await ctx.db.prepare("SELECT price_twd, price_tba FROM courses WHERE id = ? AND status = 'published'").bind(courseId).first<{ price_twd: number; price_tba: number }>();
+  if (!c || c.price_twd !== 0 || c.price_tba === 1) return;
+  await ensureFreeEnrollment(ctx, courseId);
+  await ctx.db.prepare("UPDATE enrollments SET hidden = 0 WHERE member_sub = ? AND course_id = ? AND hidden = 1").bind(s.sub, courseId).run();
 }
 
 /** 刪除課程前的影響：多少筆報名紀錄、多少人已開通、已確認收款多少（供「輸入 YES」確認畫面顯示）。 */
@@ -1709,7 +1721,27 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   ["GET", /^\/courses$/, async (ctx) => listCourses(ctx, false)],
-  ["GET", /^\/courses\/([\w-]+)$/, async (ctx, [id]) => courseDetail(ctx, id)],
+  [
+    "GET",
+    /^\/courses\/([\w-]+)$/,
+    async (ctx, [id]) => {
+      await openFreeCourse(ctx, id!).catch(() => undefined); // 打開免費課程＝自動加入學習中
+      return courseDetail(ctx, id!);
+    },
+  ],
+  [
+    "POST",
+    /^\/courses\/([\w-]+)\/hide-learning$/,
+    async (ctx, [courseId]) => {
+      const s = requireMember(ctx);
+      const c = await ctx.db.prepare("SELECT price_twd FROM courses WHERE id = ?").bind(courseId).first<{ price_twd: number }>();
+      if (!c) return fail(404, "not_found", "找不到這門課程");
+      if (c.price_twd !== 0) fail(403, "paid_course", "付費課程不能從學習中隱藏");
+      const r = await ctx.db.prepare("UPDATE enrollments SET hidden = 1 WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).run();
+      if (r.meta?.changes === 0) return fail(404, "not_enrolled", "這門課程不在你的學習中");
+      return { ok: true };
+    },
+  ],
   [
     "POST",
     /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/complete$/,

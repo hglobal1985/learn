@@ -3,12 +3,14 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { loadLastLesson, type LastLesson } from "@/lib/last-lesson";
 import { StyleSheet, View } from "react-native";
-import type { CourseSummary } from "@/api/client";
+import { api, type CourseSummary } from "@/api/client";
+import { confirmSheet } from "@/features/confirm";
 import { cleanUnit } from "@/features/format";
 import { CourseCard } from "@/features/courses/course-card";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, Section, Select } from "@/ui";
+import { showToast } from "@/ui/toast";
 
 export default function LearningScreen() {
   const { member } = useSession();
@@ -19,12 +21,23 @@ export default function LearningScreen() {
       if (member) loadLastLesson(member.sub).then(setLast);
     }, [member?.sub]), // eslint-disable-line react-hooks/exhaustive-deps
   );
+  /** 免費課程可以從「學習中」隱藏（付費課程沒有這顆 X）。 */
+  const hide = async (course: CourseSummary) => {
+    if (!(await confirmSheet({ title: "從學習中隱藏", message: "這門免費課程會從「學習中」消失，之後再打開課程頁就會回來。", confirmLabel: "隱藏", cancelLabel: "先不要" }))) return;
+    try {
+      await api("POST", `/courses/${course.id}/hide-learning`);
+      reload();
+    } catch (e) {
+      showToast((e as Error).message);
+    }
+  };
+  const canHide = (c: CourseSummary) => c.enrollment === "opened" && (c.watchFree || c.isPublic);
   const [kind, setKind] = useState("");
   const [unit, setUnit] = useState("");
-  const enrolled = useMemo(() => (data ?? []).filter((c) => c.enrollment === "opened" || c.enrollment === "pending"), [data]);
+  const enrolled = useMemo(() => (data ?? []).filter((c) => (c.enrollment === "opened" && !c.hiddenFromLearning) || c.enrollment === "pending"), [data]);
   const units = useMemo(() => [...new Set(enrolled.flatMap((c) => c.hostUnit.split("、")).filter(Boolean))], [enrolled]);
   const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (unit === "" || c.hostUnit.split("、").includes(unit)));
-  const mine = shown.filter((c) => c.enrollment === "opened");
+  const mine = shown.filter((c) => c.enrollment === "opened" && !c.hiddenFromLearning);
   const pending = shown.filter((c) => c.enrollment === "pending");
   const inProgress = mine.filter((c) => c.completedLessons < c.lessonCount);
   const finished = mine.filter((c) => c.lessonCount > 0 && c.completedLessons >= c.lessonCount);
@@ -70,14 +83,14 @@ export default function LearningScreen() {
       {inProgress.length ? (
         <View style={styles.list}>
           {inProgress.map((course) => (
-            <CourseCard key={course.id} course={course} />
+            <CourseCard key={course.id} course={course} onHide={canHide(course) ? () => hide(course) : undefined} />
           ))}
         </View>
       ) : null}
       {finished.length ? (
         <Section title="已完成">
           {finished.map((course) => (
-            <CourseCard key={course.id} course={course} />
+            <CourseCard key={course.id} course={course} onHide={canHide(course) ? () => hide(course) : undefined} />
           ))}
         </Section>
       ) : null}

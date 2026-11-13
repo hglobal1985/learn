@@ -334,3 +334,16 @@ test("線上課程與報名明細的課程資訊：地點顯示、勾線上課�
   await call("PATCH", "/admin/courses/lead", { token: admin, body: { isOnline: false, locationNone: true } });
   assert.equal((await call<Order>("GET", `/orders/${o.id}`, { token: student })).data.items[0]!.place, null, "勾「無」就不顯示");
 });
+
+test("學習中：免費課程可隱藏（再打開課程頁恢復）、付費課程不能隱藏", async () => {
+  const { call, login } = setup();
+  const student = await login("demo-student");
+  const state = async (id: string) => (await call<CourseSummary[]>("GET", "/courses", { token: student })).data.find((c) => c.id === id)!;
+  await call("GET", "/courses/start", { token: student }); // 打開免費課程頁＝自動加入
+  assert.deepEqual([(await state("start")).enrollment, (await state("start")).hiddenFromLearning], ["opened", false]);
+  assert.equal((await call("POST", "/courses/start/hide-learning", { token: student })).status, 200);
+  assert.equal((await state("start")).hiddenFromLearning, true);
+  await call("GET", "/courses/start", { token: student }); // 再打開就恢復
+  assert.equal((await state("start")).hiddenFromLearning, false);
+  assert.equal((await call("POST", "/courses/lead/hide-learning", { token: student })).status, 403, "付費課程不能隱藏");
+});

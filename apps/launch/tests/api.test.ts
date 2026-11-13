@@ -120,11 +120,12 @@ test("播放與進度：付費課程需先開通；設定免費且符合資格�
   await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: false } });
   // 設定免費、符合資格：不用報名就能看
   const before = (await call<CourseDetail>("GET", "/courses/start", { token })).data;
-  assert.deepEqual([before.watchFree, before.enrollment, before.lessons.every((l) => !l.locked)], [true, null, true]);
+  assert.deepEqual([before.watchFree, before.lessons.every((l) => !l.locked)], [true, true]);
+  assert.equal(before.enrollment, "opened", "打開免費課程頁時已自動加入學習中");
   const p = await call<{ url: string }>("GET", "/courses/start/lessons/start-welcome/playback", { token });
   assert.equal(p.data.url, "/media/orientation.mp4");
   assert.equal((await call("GET", "/courses/start/lessons/talk-welcome/playback", { token })).status, 404, "章節必須屬於該課程");
-  // 第一次播放後自動完成免費報名（學習中、進度、成就才記得到）
+  // 打開課程頁或第一次播放後自動完成免費報名（學習中、進度、成就才記得到）
   assert.equal((await call<CourseDetail>("GET", "/courses/start", { token })).data.enrollment, "opened");
   const notices = (await call<{ title: string }[]>("GET", "/notifications", { token })).data;
   assert.equal(notices.some((n) => n.title === "課程已開通"), false, "自動報名不發通知");
