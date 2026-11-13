@@ -32,6 +32,7 @@ import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
+import { collectAppStats } from "./app-stats.ts";
 import { collectMuxStats } from "./mux-stats.ts";
 import { audioUrl, fileUrl, sniffImage, verifyAudioUrl, verifyFileUrl } from "./media.ts";
 import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
@@ -1608,6 +1609,15 @@ const routes: [string, RegExp, Handler][] = [
       const s = requireMember(ctx);
       if (!(await canViewStats(ctx, s))) fail(403, "forbidden", "沒有查看統計分析的權限");
       return collectMuxStats(ctx.env);
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/stats\/app$/,
+    async (ctx) => {
+      const s = requireMember(ctx);
+      if (!(await canViewStats(ctx, s))) fail(403, "forbidden", "沒有查看統計分析的權限");
+      return collectAppStats(ctx.db);
     },
   ],
   ["GET", /^\/me\/achievements$/, async (ctx) => grantAchievements(ctx, requireMember(ctx).sub)],

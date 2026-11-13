@@ -86,14 +86,65 @@ function Block({ b }: { b: StatBlock }) {
   );
 }
 
-/** 統計分析（Mux）：超級管理員、總部秘書，以及被超級管理員指定的職務可以看。最常用的在最上面，進階的收在最後。 */
+/** 一個統計來源的區塊：預設收起，點開才讀取；裡面最常用的在上面，進階的再收一層。 */
+function Source({ title, from, path, advancedTitle }: { title: string; from: string; path: string; advancedTitle?: string }) {
+  const { c } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { data, error, loading, reload } = useApi<MuxStats>(open ? path : null);
+  const core = (data?.blocks ?? []).filter((b) => b.level === "core");
+  const more = (data?.blocks ?? []).filter((b) => b.level === "more");
+  const adv = (data?.blocks ?? []).filter((b) => b.level === "advanced");
+  return (
+    <View style={{ gap: space.sm }}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((v) => !v)} style={[styles.toggle, { borderColor: c.border, backgroundColor: c.surface, minHeight: 64 }]}>
+        <View style={{ flex: 1, gap: 2 }}>
+          <AppText variant="headline">{title}</AppText>
+          <AppText variant="caption" tone="muted">
+            {from}
+          </AppText>
+        </View>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={22} color={c.textMuted} />
+      </Pressable>
+      {open ? (
+        <>
+          <View style={styles.between}>
+            <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
+              {data ? `更新時間 ${dateTime(data.generatedAt)}（${from}）` : from}
+            </AppText>
+            <Button variant="secondary" label="重新整理" icon="refresh-outline" onPress={reload} />
+          </View>
+          {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
+          {loading && !data ? <LoadingView /> : null}
+          {data ? (
+            <>
+              {core.map((b) => <Block key={b.id} b={b} />)}
+              {more.map((b) => <Block key={b.id} b={b} />)}
+              {adv.length ? (
+                <>
+                  <Pressable accessibilityRole="button" onPress={() => setShowAdvanced((v) => !v)} style={[styles.toggle, { borderColor: c.border, backgroundColor: c.surface }]}>
+                    <AppText variant="headline" style={{ flex: 1 }}>
+                      {advancedTitle ?? "進階統計"}
+                    </AppText>
+                    <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={22} color={c.textMuted} />
+                  </Pressable>
+                  {showAdvanced ? adv.map((b) => <Block key={b.id} b={b} />) : null}
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/** 統計分析：兩種來源分開顯示、互不混合（Mux 影片數據、本 App 資料庫），預設都收起；超級管理員、總部秘書與被指定的職務可以看。 */
 export default function StatsScreen() {
   const { c } = useTheme();
   const { member } = useSession();
   const { config, reload: reloadCfg } = useUiConfig();
   const allowed = !!member?.canViewStats;
-  const { data, error, loading, reload } = useApi<MuxStats>(allowed ? "/admin/stats/mux" : null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [roles, setRoles] = useState<string[] | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   if (!allowed) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="沒有查看統計分析的權限" /></Screen>;
@@ -108,32 +159,10 @@ export default function StatsScreen() {
       setMsg({ tone: "danger", text: (e as Error).message });
     }
   };
-  const core = (data?.blocks ?? []).filter((b) => b.level === "core");
-  const more = (data?.blocks ?? []).filter((b) => b.level === "more");
-  const adv = (data?.blocks ?? []).filter((b) => b.level === "advanced");
   return (
     <Screen header={false}>
-      <View style={styles.between}>
-        <AppText variant="caption" tone="muted" style={{ flex: 1 }}>
-          {data ? `更新時間 ${dateTime(data.generatedAt)}（資料來自 Mux）` : "資料來自 Mux"}
-        </AppText>
-        <Button variant="secondary" label="重新整理" icon="refresh-outline" onPress={reload} />
-      </View>
-      {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
-      {loading && !data ? <LoadingView /> : null}
-      {data ? (
-        <>
-          <Section title="最常用">{core.map((b) => <Block key={b.id} b={b} />)}</Section>
-          <Section title="其他統計">{more.map((b) => <Block key={b.id} b={b} />)}</Section>
-          <Pressable accessibilityRole="button" onPress={() => setShowAdvanced((v) => !v)} style={[styles.toggle, { borderColor: c.border, backgroundColor: c.surface }]}>
-            <AppText variant="headline" style={{ flex: 1 }}>
-              進階統計（裝置、瀏覽器、國家、播放錯誤、直播）
-            </AppText>
-            <Ionicons name={showAdvanced ? "chevron-up" : "chevron-down"} size={22} color={c.textMuted} />
-          </Pressable>
-          {showAdvanced ? adv.map((b) => <Block key={b.id} b={b} />) : null}
-        </>
-      ) : null}
+      <Source title="① Mux 影片統計" from="資料來自 Mux（影片服務）" path="/admin/stats/mux" advancedTitle="進階統計（裝置、瀏覽器、國家、播放錯誤、直播）" />
+      <Source title="② App 資料庫統計" from="資料來自本 App 自己的資料庫（D1）" path="/admin/stats/app" />
 
       {isSuper ? (
         <Section title="誰可以看這一頁（超級管理員設定）">

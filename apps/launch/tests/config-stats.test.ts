@@ -61,6 +61,12 @@ test("統計分析：超級管理員／秘書可看，其他職務要被指定�
   assert.equal(stats.data.blocks.find((b) => b.id === "assets")!.stats![0]!.value, "2");
   const levels = stats.data.blocks.map((b) => b.level);
   assert.deepEqual(levels, [...levels].sort((a, b) => ({ core: 0, more: 1, advanced: 2 })[a] - ({ core: 0, more: 1, advanced: 2 })[b]), "最常用的在前面、進階的在最後");
+  // 本 App 資料庫統計：獨立一個端點，權限相同，且不含 Mux 區塊
+  assert.equal((await call("GET", "/admin/stats/app", { token: student })).status, 403);
+  const app = await call<MuxStats>("GET", "/admin/stats/app", { token: admin });
+  assert.equal(app.status, 200);
+  assert.ok(app.data.blocks.length >= 4 && app.data.blocks.every((b) => b.id.startsWith("app_")), "資料庫統計與 Mux 統計不混合");
+  assert.ok(!app.data.blocks.some((b) => b.error), "每個區塊都讀得到");
   // 超級管理員指定會長可以看
   await call("PUT", "/admin/ui-config", { token: admin, body: { statsRoles: ["president"] } });
   assert.equal((await call("GET", "/admin/stats/mux", { token: pres })).status, 200);
