@@ -32,9 +32,9 @@ export function DateSelect({ label, value, onChange, clearable = true, defaultVa
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const set = (ny: number, nm: number, nd: number) => onChange(`${ny}-${pad(nm)}-${pad(Math.min(nd, daysIn(ny, nm)))}`);
   const years: SelectOption[] = [];
-  for (let i = Math.min(now - 1, y); i <= Math.max(now + 5, y); i++) years.push({ key: String(i), label: `${i} 年` });
-  const months: SelectOption[] = MONTH_EN.map((en, i) => ({ key: String(i + 1), label: `${i + 1} 月 ${en}` }));
-  const days: SelectOption[] = Array.from({ length: daysIn(y, mo) }, (_, i) => ({ key: String(i + 1), label: `${i + 1} 日` }));
+  for (let i = Math.min(now - 1, y); i <= Math.max(now + 5, y); i++) years.push({ key: String(i), label: `${i} 年`, short: `${i}` });
+  const months: SelectOption[] = MONTH_EN.map((en, i) => ({ key: String(i + 1), label: `${i + 1} 月 ${en}`, short: `${i + 1}月` }));
+  const days: SelectOption[] = Array.from({ length: daysIn(y, mo) }, (_, i) => ({ key: String(i + 1), label: `${i + 1} 日`, short: `${i + 1}日` }));
   return (
     <View style={styles.wrap}>
       {label ? <AppText variant="callout">{label}</AppText> : null}

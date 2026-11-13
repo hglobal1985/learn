@@ -6,7 +6,8 @@ import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText } from "./text";
 
-export type SelectOption = { key: string; label: string };
+/** short＝收起時顯示在框內的短文字（例如「11 月」），展開的選單仍顯示完整的 label。 */
+export type SelectOption = { key: string; label: string; short?: string };
 export type SelectProps = {
   label?: string;
   value: string;
@@ -32,7 +33,7 @@ export function Select({ label, value, options, onChange, placeholder = "請選�
       ) : null}
       <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => setOpen(true)} style={[styles.box, { backgroundColor: c.surface, borderColor: c.border }]}>
         <AppText variant="body" numberOfLines={1} style={{ flex: 1, color: current ? c.text : c.textMuted }}>
-          {current?.label ?? placeholder}
+          {current?.short ?? current?.label ?? placeholder}
         </AppText>
         <Ionicons name="chevron-down" size={18} color={c.textMuted} />
       </Pressable>
@@ -70,6 +71,6 @@ export function Select({ label, value, options, onChange, placeholder = "請選�
 const ITEM_H = minTouch + 4;
 const styles = StyleSheet.create({
   wrap: { gap: 4, flex: 1, minWidth: 0 },
-  box: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.xs },
+  box: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.sm, flexDirection: "row", alignItems: "center", gap: space.xs },
   item: { minHeight: minTouch + 4, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
 });

@@ -1,9 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { api, PAYMENT_METHODS, type Order, type PaymentMethodKey, type PaymentReport } from "@/api/client";
-import { confirmSheet } from "@/features/confirm";
-import { dateTime } from "@/features/format";
+import { api, PAYMENT_METHODS, type Order, type PaymentMethodKey } from "@/api/client";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
 import { AppText, Button, Card, DateSelect, NoticeBox, Section, Select, todayStr } from "@/ui";
@@ -85,7 +83,7 @@ export function PaymentForm({ order, onDone }: { order: Order; onDone: () => voi
                 style={[styles.method, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : c.surface }]}
               >
                 <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={22} color={on ? c.accent : c.textMuted} />
-                <AppText variant="headline" style={{ color: on ? c.accentText : c.text, flexShrink: 1 }} numberOfLines={1}>
+                <AppText variant="callout" style={{ color: on ? c.accentText : c.text, flexShrink: 1, fontWeight: "700" }}>
                   {m.label}
                 </AppText>
               </Pressable>
@@ -130,56 +128,9 @@ export function PaymentForm({ order, onDone }: { order: Order; onDone: () => voi
   );
 }
 
-const methodText = (p: PaymentReport) => PAYMENT_METHODS.find((m) => m.key === p.method)?.label ?? p.method;
-const detailText = (p: PaymentReport) => [p.last5 ? `末五碼 ${p.last5}` : "", p.friendName ? `朋友：${p.friendName}` : "", p.paidAt ? dateTime(p.paidAt) : ""].filter(Boolean).join("　");
-
-/** 送出的繳費回報紀錄（新的在下面），顯示在頁面下方。 */
-export function PaymentRecords({ orderId, payments, canDelete, onDone }: { orderId: string; payments: PaymentReport[]; canDelete: boolean; onDone: () => void }) {
-  const { c } = useTheme();
-  const remove = async (p: PaymentReport) => {
-    if (!(await confirmSheet({ title: "刪除這筆回報", message: `確定要刪除「${methodText(p)}」這筆繳費回報嗎？`, confirmLabel: "刪除", cancelLabel: "先不要", danger: true }))) return;
-    try {
-      await api("DELETE", `/orders/${orderId}/payments/${p.id}`);
-      showToast("已刪除");
-      onDone();
-    } catch (e) {
-      showToast((e as Error).message);
-    }
-  };
-  if (!payments.length) return null;
-  return (
-    <Section title="繳費回報紀錄">
-      <Card>
-        {payments.map((p, i) => (
-          <View key={p.id} style={[styles.record, i > 0 && { borderTopColor: c.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="headline">{methodText(p)}</AppText>
-              {detailText(p) ? (
-                <AppText variant="callout" tone="muted">
-                  {detailText(p)}
-                </AppText>
-              ) : null}
-            </View>
-            <AppText variant="caption" tone="muted">
-              送出 {dateTime(p.createdAt)}
-            </AppText>
-            {canDelete ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="刪除這筆回報" onPress={() => remove(p)} hitSlop={8} style={styles.trash}>
-                <Ionicons name="trash-outline" size={22} color={c.danger} />
-              </Pressable>
-            ) : null}
-          </View>
-        ))}
-      </Card>
-    </Section>
-  );
-}
-
 const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  method: { flexGrow: 1, flexBasis: "45%", flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.md },
+  method: { flexGrow: 1, flexBasis: "45%", flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, paddingHorizontal: space.sm, borderWidth: 1.5, borderRadius: radius.md },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
   pair: { flexDirection: "row", gap: space.sm },
-  trash: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  record: { flexDirection: "row", alignItems: "flex-start", gap: space.sm, paddingVertical: space.sm },
 });

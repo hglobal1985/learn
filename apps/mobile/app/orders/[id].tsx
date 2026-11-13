@@ -6,7 +6,7 @@ import { api, type Order } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
 import { ntd, orderStatus } from "@/features/format";
 import { MoneyArt } from "@/features/orders/money-art";
-import { PaymentForm, PaymentRecords } from "@/features/orders/payment-form";
+import { PaymentForm } from "@/features/orders/payment-form";
 import { OrderTimeline } from "@/features/orders/timeline";
 import { WebOnly } from "@/features/web-only";
 import { useApi, useSession } from "@/state/session";
@@ -99,8 +99,7 @@ function OrderDetail() {
         </Card>
       ) : null}
       {data.status === "pending" ? <PaymentForm order={data} onDone={reload} /> : null}
-      <PaymentRecords orderId={data.id} payments={data.payments ?? []} canDelete={data.status === "pending"} onDone={reload} />
-      <OrderTimeline order={data} />
+      <OrderTimeline order={data} canDeletePayments={data.status === "pending"} />
     </Screen>
   );
 }
