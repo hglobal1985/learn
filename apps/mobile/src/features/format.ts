@@ -3,10 +3,22 @@ import type { OrderStatus } from "@/api/client";
 
 export const ntd = (n: number) => `NT$${n.toLocaleString()}`;
 
+/** 日期顯示一律不補 0：2026/11/8 7:30（分鐘仍保留兩位數，7:03 不能寫成 7:3）。 */
 export function dateTime(isoText: string): string {
   const d = new Date(isoText);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${dateOnly(isoText)} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** 只顯示日期：2026/11/8（不補 0）。 */
+export function dateOnly(isoText: string): string {
+  const d = new Date(isoText);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** 「2026-11-08」→「2026/11/8」（不補 0）。 */
+export function plainDate(ymd: string): string {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(ymd);
+  return m ? `${Number(m[1])}/${Number(m[2])}/${Number(m[3])}` : ymd;
 }
 
 type Tone = "warning" | "success" | "danger" | "neutral";
@@ -41,8 +53,9 @@ export function toLocal(isoText: string | null | undefined): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** 活動日期顯示：單日「2026-11-20」，連續多天「2026-11-20～11-22」。 */
+/** 活動日期顯示（不補 0）：單日「2026/11/20」，連續多天「2026/11/20～11/22」。 */
 export function eventDays(start: string | null | undefined, end?: string | null): string {
   if (!start) return "";
-  return end && end !== start ? `${start}～${end.slice(5)}` : start;
+  if (!end || end === start) return plainDate(start);
+  return `${plainDate(start)}～${plainDate(end).split("/").slice(1).join("/")}`;
 }

@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import type { Achievement } from "@/api/client";
 import { conditionText } from "@/features/achievements/text";
-import { dateTime } from "@/features/format";
+import { dateOnly } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
@@ -42,7 +42,7 @@ export default function AchievementsScreen() {
             </AppText>
             {a.earned ? (
               <AppText variant="caption" style={{ color: c.accentText, fontWeight: "700" }}>
-                {a.earnedAt ? `${dateTime(a.earnedAt).slice(0, 10)} 取得` : "已取得"}
+                {a.earnedAt ? `${dateOnly(a.earnedAt)} 取得` : "已取得"}
               </AppText>
             ) : a.type === "course_completed" ? (
               <AppText variant="caption" tone="muted">
