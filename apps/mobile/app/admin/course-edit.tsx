@@ -14,8 +14,8 @@ import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { todayStr } from "@/ui/date-select";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; subtitle: string; teacher: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", subtitle: "", teacher: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; title: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", title: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -61,8 +61,6 @@ export default function CourseEditScreen() {
         eventEnd: d.eventEnd ?? "",
         reviewGroupId: d.admin?.reviewGroupId ?? "",
         title: d.title,
-        subtitle: d.subtitle,
-        teacher: d.teacher,
         category: d.category,
         priceTwd: String(d.admin?.basePriceTwd ?? d.priceTwd ?? 0),
         minRankCode: d.minRank.code,
@@ -184,8 +182,6 @@ export default function CourseEditScreen() {
       <CourseCover theme={form.theme} label={form.category} title={form.title || "課程名稱"} imageUrl={course.data?.coverUrl ?? null} height={160} />
       <Card>
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
-        {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}
-        {field("講師／主辦", "teacher", { placeholder: "例如：寰宇總部" })}
         {field("分類", "category", { placeholder: "例如：系列課程" })}
         {categoryList.data?.length ? <Chips label="已有的分類" options={categoryList.data.map((x) => ({ key: x, label: x }))} value={form.category} onChange={set("category")} /> : null}
         {field("系列（同系列的課，全部課程清單只顯示最近的一場；不填＝不合併）", "series", { placeholder: "例如：翡翠達標班" })}

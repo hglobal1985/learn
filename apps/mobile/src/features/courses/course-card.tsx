@@ -20,7 +20,7 @@ export function CourseCard({ course, siblings = [] }: { course: CourseSummary; s
   const ribbons = ribbonsFor(course, member, config);
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
-    <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={`${course.title}，${course.teacher}`}>
+    <Card onPress={() => router.push(`/course/${course.id}`)} accessibilityLabel={course.title}>
       <View style={styles.coverWrap}>
         <CourseCover theme={course.theme} label={course.category} title={course.title} imageUrl={course.coverUrl} height={160} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
@@ -36,9 +36,6 @@ export function CourseCard({ course, siblings = [] }: { course: CourseSummary; s
           </AppText>
         ) : null}
       </View>
-      <AppText variant="callout" tone="muted" numberOfLines={2}>
-        {course.subtitle}
-      </AppText>
       <UnitTags course={course} />
       {course.location && !course.locationNone ? (
         <AppText variant="caption" tone="muted" numberOfLines={1}>
