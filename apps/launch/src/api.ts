@@ -2396,6 +2396,19 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireCourseCreator(ctx))],
   [
     "GET",
+    /^\/admin\/categories$/,
+    async (ctx) => {
+      const who = requireCourseCreator(ctx);
+      const own = who.role !== "admin";
+      const { results } = await ctx.db
+        .prepare(`SELECT DISTINCT category FROM courses WHERE category <> ''${own ? " AND host_center_key = ?" : ""} ORDER BY category`)
+        .bind(...(own ? [who.center?.key ?? ""] : []))
+        .all<{ category: string }>();
+      return results.map((r) => r.category);
+    },
+  ],
+  [
+    "GET",
     /^\/admin\/series$/,
     async (ctx) => {
       const who = requireCourseCreator(ctx);

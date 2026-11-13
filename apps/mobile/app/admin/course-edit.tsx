@@ -29,6 +29,7 @@ export default function CourseEditScreen() {
   const centers = useApi<string[]>(isAdmin ? "/centers" : null);
   const groups = useApi<ReviewGroup[]>(canManage ? "/admin/review-groups" : null);
   const seriesList = useApi<string[]>(canManage ? "/admin/series" : null);
+  const categoryList = useApi<string[]>(canManage ? "/admin/categories" : null);
   const [form, setForm] = useState<Form>(() => ({ ...empty, eventStart: todayStr(), ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -186,6 +187,7 @@ export default function CourseEditScreen() {
         {field("副標題", "subtitle", { placeholder: "一句話說明這門課" })}
         {field("講師／主辦", "teacher", { placeholder: "例如：寰宇總部" })}
         {field("分類", "category", { placeholder: "例如：系列課程" })}
+        {categoryList.data?.length ? <Chips label="已有的分類" options={categoryList.data.map((x) => ({ key: x, label: x }))} value={form.category} onChange={set("category")} /> : null}
         {field("系列（同系列的課，全部課程清單只顯示最近的一場；不填＝不合併）", "series", { placeholder: "例如：翡翠達標班" })}
         {seriesList.data?.length ? <Chips label="已有的系列" options={[{ key: "", label: "不合併" }, ...seriesList.data.map((x) => ({ key: x, label: x }))]} value={form.series} onChange={set("series")} /> : null}
         {id ? (

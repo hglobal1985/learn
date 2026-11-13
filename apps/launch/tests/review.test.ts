@@ -182,3 +182,11 @@ test("系列：存系列名稱、列出系列；複製這門課建立下一梯�
   assert.equal(c2.series, lead.series);
   assert.notEqual(lead.series, "");
 });
+
+test("已有的分類清單：管理員看全部、學員不行", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  await call("PATCH", "/admin/courses/share", { token: admin, body: { category: "達標班" } });
+  assert.ok((await call<string[]>("GET", "/admin/categories", { token: admin })).data.includes("達標班"));
+  assert.equal((await call("GET", "/admin/categories", { token: student })).status, 403);
+});
