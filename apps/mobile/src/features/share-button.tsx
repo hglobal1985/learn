@@ -18,7 +18,7 @@ export function HeaderShare({ title, path }: { title: string; path: string }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="分享這一頁" onPress={share} hitSlop={8} style={{ minWidth: minTouch, height: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 6 }}>
       <ShareIcon size={22} color={c.text} />
-      <Text style={{ color: c.text, fontSize: 14, fontWeight: "600" }}>分享</Text>
+      <Text style={{ color: c.text, fontSize: 17, fontWeight: "600" }}>分享</Text>
     </Pressable>
   );
 }
