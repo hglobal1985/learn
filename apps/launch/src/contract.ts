@@ -69,6 +69,8 @@ export type CourseSummary = {
   series: string;
   /** 系列專屬 EDM 網址（沒上傳為 null）。 */
   seriesEdmUrl: string | null;
+  /** 設定免費、而且這位會員符合資格：不用報名就能收看。 */
+  watchFree: boolean;
   diamondFree: boolean;
   diamondFreeNow: boolean;
   /** 早鳥優惠（null＝沒有設定）：until 為截止日（含當天，台灣時間）；active＝現在還在優惠期間。priceTwd 在 App 為 null。 */

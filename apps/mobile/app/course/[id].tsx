@@ -105,7 +105,7 @@ export default function CourseDetailScreen() {
 
         {course.enrollment === "pending" ? (
           pendingRow()
-        ) : course.enrollment === null && !course.isPublic ? (
+        ) : course.enrollment === null && !course.isPublic && !course.watchFree ? (
           registerButton(course.free, "course")
         ) : null}
 

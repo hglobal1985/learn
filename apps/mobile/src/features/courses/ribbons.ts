@@ -52,7 +52,7 @@ export function ribbonsFor(course: CourseSummary, member: Member | null, cfg: Ui
   else if (course.enrollment === "opened") left = spec(cfg, completed ? "completed" : "learning");
   else if (course.enrollment === "pending") left = spec(cfg, "pending");
   else if (!course.eligible) left = spec(cfg, "ineligible");
-  else if (course.isPublic) left = null; // 公開免費的課程不用報名
+  else if (course.isPublic || course.watchFree) left = null; // 公開免費、或設定免費且符合資格的課程不用報名
   else if (course.priceTba) left = spec(cfg, "price_tba");
   else left = spec(cfg, "can_register");
   const ds = dateState(course);

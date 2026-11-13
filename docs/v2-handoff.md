@@ -369,3 +369,4 @@
 - 完整版影片：同一支影片被裁成多堂（有起訖時間）時，學員看到的章節清單最後自動多「完整版影片」（id full_<第一堂id>，整支播放；不計入章節進度與總數；管理員編輯清單不加；多支被裁的影片依序『完整版影片 1、2』）。
 - 深色模式強調色由亮黃綠 #CEE49F 改為深綠：accent #2F8A5B、accentText #5DB383、accentSoft #1D3226、textOnAccent 白。
 - 深色模式再降低其他亮綠：success #4FA774、successSoft #1B3022、sage 封面主題文字 #8CC4A0。
+- 設定免費（費用 0、非尚未公布）且符合資格的課程：不需報名直接看（canWatch／freeWatchable；摘要 watchFree；課程頁不顯示報名按鈕、卡片不顯示可以報名緞帶）。第一次播放或記錄完成時自動完成免費報名（ensureFreeEnrollment→createOrders），學習中、進度、成就照常記錄。限時免費與鑽石免費不在此列（仍需報名）。

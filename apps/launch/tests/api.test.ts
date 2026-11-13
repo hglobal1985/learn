@@ -109,14 +109,23 @@ test("App（iOS/Android）不回傳價格，也不能建立付費訂單", async 
   assert.equal((await call("POST", "/orders", { token, body: { courseIds: ["lead"] }, platform: "android" })).status, 403);
 });
 
-test("播放與進度需先開通課程", async () => {
+test("播放與進度：付費課程需先開通；設定免費且符合資格的課程直接看（第一次播放自動完成免費報名）", async () => {
   const { call, login } = setup();
-  const token = await login("demo-student");
+  const [token, admin] = await Promise.all(["demo-student", "demo-admin"].map(login));
+  // 付費課程：未開通不能看
+  assert.equal((await call("GET", "/courses/lead/lessons/lead-welcome/playback", { token })).status, 403);
+  // 費用尚未公布：免費的直接看不適用
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: true } });
   assert.equal((await call("GET", "/courses/start/lessons/start-welcome/playback", { token })).status, 403);
-  await call("POST", "/orders", { token, body: { courseIds: ["start"] } });
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: false } });
+  // 設定免費、符合資格：不用報名就能看
+  const before = (await call<CourseDetail>("GET", "/courses/start", { token })).data;
+  assert.deepEqual([before.watchFree, before.enrollment, before.lessons.every((l) => !l.locked)], [true, null, true]);
   const p = await call<{ url: string }>("GET", "/courses/start/lessons/start-welcome/playback", { token });
   assert.equal(p.data.url, "/media/orientation.mp4");
   assert.equal((await call("GET", "/courses/start/lessons/talk-welcome/playback", { token })).status, 404, "章節必須屬於該課程");
+  // 第一次播放後自動完成免費報名（學習中、進度、成就才記得到）
+  assert.equal((await call<CourseDetail>("GET", "/courses/start", { token })).data.enrollment, "opened");
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
   await call("POST", "/courses/start/lessons/start-welcome/complete", { token });
   assert.equal((await call<CourseDetail>("GET", "/courses/start", { token })).data.completedLessons, 1);

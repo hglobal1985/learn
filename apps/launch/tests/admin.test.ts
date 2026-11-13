@@ -162,7 +162,9 @@ test("音檔：分段上傳到 R2、只有開通學員拿得到簽名網址、�
   assert.equal(lesson.kind, "audio");
   assert.equal(lesson.minutes, 3);
 
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: true } }); // 費用尚未公布：免費課程的「符合資格直接看」不適用
   assert.equal((await call("GET", "/courses/start/lessons/start-review/playback", { token: student })).status, 403, "未報名");
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: false } });
   await call("POST", "/orders", { token: student, body: { courseIds: ["start"] } });
   const p = (await call<{ kind: string; url: string }>("GET", "/courses/start/lessons/start-review/playback", { token: student })).data;
   assert.equal(p.kind, "audio");
@@ -195,7 +197,9 @@ test("附件教材：只有管理員能上傳、已開通學員才拿得到下�
   assert.equal(r2.objects.size, 1);
 
   const path = "/courses/start/lessons/start-review/attachments";
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: true } }); // 費用尚未公布：免費課程的「符合資格直接看」不適用
   assert.equal((await call("GET", path, { token: student })).status, 403, "未報名");
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: false } });
   await call("POST", "/orders", { token: student, body: { courseIds: ["start"] } });
   const list = (await call<{ id: string; name: string; url: string }[]>("GET", path, { token: student })).data;
   assert.equal(list.length, 1);
@@ -250,7 +254,9 @@ test("網址附件：自動判斷類型、自訂標題、只收 https、可改�
   assert.equal(custom.name, "第4堂 簡報");
 
   const path = "/courses/start/lessons/start-review/attachments";
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: true } }); // 費用尚未公布：免費課程的「符合資格直接看」不適用
   assert.equal((await call("GET", path, { token: student })).status, 403, "未報名看不到");
+  await call("PATCH", "/admin/courses/start", { token: admin, body: { priceTba: false } });
   await call("POST", "/orders", { token: student, body: { courseIds: ["start"] } });
   const list = (await call<A[]>("GET", path, { token: student })).data;
   assert.ok(list.some((a) => a.id === custom.id && a.url === "https://www.canva.com/design/x"));

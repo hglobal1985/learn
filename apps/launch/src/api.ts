@@ -385,6 +385,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hideFromHome: row.hide_home === 1,
     series: row.series,
     seriesEdmUrl: row.series_edm_key ? pubUrl(row.series_edm_key, row.series_art_version ?? 1) : null,
+    watchFree: !!ctx.session && row.status === "published" && row.price_twd === 0 && row.price_tba !== 1 && (eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row)),
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
     earlyBird: row.early_bird === 1 && row.early_price_twd != null && !!row.early_until ? { priceTwd: web ? row.early_price_twd : null, until: row.early_until, active: earlyNow } : null,
@@ -464,6 +465,8 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
+  const summaryNow = summarize(row, ctx, rankMap, state, await eligibilityFor(s, rankMap, [row.min_rank_code, DIAMOND]));
+  const watchFree = summaryNow.watchFree;
   const freeNow = row.price_twd > 0 && inFreeWindow(row);
   const web = ctx.platform === "web";
   const admin = !!s && managesCourse(s, row.host_center_key);
@@ -483,7 +486,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
       ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
       // 完全公開的課程：任何人（含訪客與會員）都可以看章節，不需要報名。
-      locked: !admin && !(state.enrolled.has(id) || row.is_public === 1),
+      locked: !admin && !(state.enrolled.has(id) || row.is_public === 1 || watchFree),
       // 影片來源只給管理員（編輯用）；學員一律透過 playback API 取得授權後的播放資訊。
       ...(admin ? { media: { type: l.media_type, ref: l.media_ref } } : {}),
     })), ...fullVersions(lessons.results, state, id, row, admin, completed)],
@@ -506,7 +509,33 @@ async function canWatch(ctx: Ctx, courseId: string): Promise<boolean> {
     if (c && managesCourse(s, c.host_center_key)) return true;
   }
   const row = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
-  return !!row;
+  if (row) return true;
+  return freeWatchable(ctx, courseId); // 設定免費的課程：符合資格就能直接看，不用報名
+}
+
+/** 設定免費（費用 0、不是「尚未公布」）、已上架、而且這位會員符合資格：不需報名就能收看。 */
+async function freeWatchable(ctx: Ctx, courseId: string): Promise<boolean> {
+  const s = ctx.session;
+  if (!s) return false;
+  const c = await ctx.db
+    .prepare("SELECT min_rank_code, allow_president, price_twd, price_tba FROM courses WHERE id = ? AND status = 'published'")
+    .bind(courseId)
+    .first<{ min_rank_code: string; allow_president: number; price_twd: number; price_tba: number }>();
+  if (!c || c.price_twd !== 0 || c.price_tba === 1) return false;
+  if (byPresident(s, c)) return true;
+  const eligibility = await eligibilityFor(s, await ranks(ctx.db), [c.min_rank_code]);
+  return eligibility.get(c.min_rank_code) === true;
+}
+
+/** 第一次開始看設定免費的課程時，自動幫他完成免費報名（這樣「學習中」、進度、學習成就都會正常記錄）。已經報名過的不會重複。 */
+async function ensureFreeEnrollment(ctx: Ctx, courseId: string): Promise<void> {
+  const s = ctx.session;
+  if (!s || s.role === "admin") return;
+  const has = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ? LIMIT 1").bind(s.sub, courseId).first();
+  if (has || !(await freeWatchable(ctx, courseId))) return;
+  const pub = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE id = ? AND is_public = 1").bind(courseId).first();
+  if (pub) return; // 完全公開的課程本來就不用報名
+  await createOrders(ctx, { courseIds: [courseId] }).catch(() => undefined);
 }
 
 /** 刪除課程前的影響：多少筆報名紀錄、多少人已開通、已確認收款多少（供「輸入 YES」確認畫面顯示）。 */
@@ -1626,6 +1655,7 @@ const routes: [string, RegExp, Handler][] = [
       const target = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
       if (lessonId.startsWith(FULL_PREFIX)) return { ok: true }; // 完整版影片不計入章節進度
+      await ensureFreeEnrollment(ctx, courseId);
       await ctx.db
         .prepare("INSERT OR IGNORE INTO lesson_progress (member_sub, lesson_id, course_id) VALUES (?, ?, ?)")
         .bind(s.sub, lessonId, courseId)
@@ -1641,6 +1671,7 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx, [courseId, lessonId]) => {
       const lesson = await lessonOf(ctx, courseId, lessonId);
       if (!(await canWatch(ctx, courseId))) fail(ctx.session ? 403 : 401, ctx.session ? "not_enrolled" : "unauthenticated", ctx.session ? "請先報名並通過審核" : "請先登入");
+      await ensureFreeEnrollment(ctx, courseId);
       const seg = { start: lesson.start_seconds, end: lesson.end_seconds };
       if (lesson.media_type === "youtube" && lesson.media_ref) return { kind: "youtube", videoId: lesson.media_ref, ...seg };
       if (lesson.media_type === "mux" && lesson.media_ref) {
