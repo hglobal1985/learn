@@ -53,3 +53,6 @@ export function collapseSeries(list: CourseSummary[], all: CourseSummary[]): Ser
     .filter((c) => !c.series || best.get(c.series) === c)
     .map((c) => ({ course: c, siblings: c.series ? all.filter((x) => x.series === c.series && x.id !== c.id).sort((a, b) => (startOf(b) ?? "").localeCompare(startOf(a) ?? "")) : [] }));
 }
+
+/** 課程在卡片、封面、首頁上顯示的名稱：有系列就顯示系列名稱，沒有系列才顯示課程名稱。 */
+export const displayName = (c: { series: string; title: string }): string => c.series || c.title;

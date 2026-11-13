@@ -68,6 +68,11 @@ export default function AdminCoursesScreen() {
 
   const manage = (course: CourseSummary) => (
     <View style={styles.manage}>
+      {course.series ? (
+        <AppText variant="callout" style={{ fontWeight: "700" }}>
+          課程名稱：{course.title}
+        </AppText>
+      ) : null}
       <View style={styles.head}>
         <AppText variant="callout" tone="muted">
           最低獎銜

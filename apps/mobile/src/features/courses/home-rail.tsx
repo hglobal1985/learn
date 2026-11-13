@@ -7,6 +7,7 @@ import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, Icon, type IconName } from "@/ui";
 import { CoursePriceTag } from "./course-card";
+import { displayName } from "./sort";
 
 /** EDM 填滿整個框（不留空白）、靠上對齊：先依寬度放大，不夠高再依高度放大；只會裁到下方與左右，不會裁到上方文字。 */
 function TopFillImage({ uri, w, h }: { uri: string; w: number; h: number }) {
@@ -33,7 +34,7 @@ function Slide({ course, w, h }: { course: CourseSummary; w: number; h: number }
     <TopFillImage uri={resolveUrl(course.edmUrl)} w={w} h={h} />
   ) : (
     <View style={{ width: w, height: h, borderRadius: radius.md, overflow: "hidden" }}>
-      <CourseCover theme={course.theme} label={course.category} title={course.title} fill />
+      <CourseCover theme={course.theme} label={course.category} title={displayName(course)} fill />
     </View>
   );
 }
@@ -109,7 +110,7 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
             <View style={{ width: box.w, height: box.h, overflow: "hidden", ...(Platform.OS === "web" ? ({ touchAction: "pan-y", userSelect: "none" } as object) : {}) }} {...pan.panHandlers}>
               <Animated.View style={{ flexDirection: "row", width: box.w * courses.length, height: box.h, transform: [{ translateX: x }] }}>
                 {courses.map((course) => (
-                  <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={course.title} style={{ width: box.w, height: box.h }}>
+                  <Pressable key={course.id} onPress={() => router.push(`/course/${course.id}`)} accessibilityRole="button" accessibilityLabel={displayName(course)} style={{ width: box.w, height: box.h }}>
                     <Slide course={course} w={box.w} h={box.h} />
                   </Pressable>
                 ))}
@@ -136,7 +137,7 @@ export function HomeRail({ title, icon, tone, note, courses, empty, progress }: 
       {cur ? (
         <Pressable onPress={() => router.push(`/course/${cur.id}`)} accessibilityRole="link" style={styles.info}>
           <AppText variant="callout" numberOfLines={2} style={{ fontWeight: "700" }}>
-            {cur.title}
+            {displayName(cur)}
           </AppText>
           {cur.hostUnit ? (
             <AppText variant="caption" tone="muted" numberOfLines={2}>

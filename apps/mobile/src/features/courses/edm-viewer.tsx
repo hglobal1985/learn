@@ -4,6 +4,7 @@ import { Animated, Image, Modal, PanResponder, Platform, Pressable, StyleSheet, 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { resolveUrl, type CourseSummary } from "@/api/client";
 import { downloadImage, shareImage } from "@/lib/share";
+import { displayName } from "./sort";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, CourseCover, ShareIcon, StageFrame } from "@/ui";
@@ -17,7 +18,7 @@ export function EdmStage({ course }: { course: CourseSummary }) {
   const [open, setOpen] = useState(false);
   return (
     <StageFrame>
-      {course.edmUrl ? <EdmPan uri={resolveUrl(course.edmUrl)} viewY={course.edmViewY} onOpen={() => setOpen(true)} /> : <CourseCover theme={course.theme} label={course.category} title={course.title} fill />}
+      {course.edmUrl ? <EdmPan uri={resolveUrl(course.edmUrl)} viewY={course.edmViewY} onOpen={() => setOpen(true)} /> : <CourseCover theme={course.theme} label={course.category} title={displayName(course)} fill />}
       {course.edmUrl && open ? <EdmLightbox uri={course.edmUrl} title={course.title} onClose={() => setOpen(false)} /> : null}
     </StageFrame>
   );

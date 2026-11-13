@@ -7,6 +7,7 @@ import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
 import { SeriesSheet } from "./series-sheet";
+import { displayName } from "./sort";
 import { useTheme } from "@/theme/theme";
 import { radius, space } from "@/theme/tokens";
 import { AppText, Card, CornerRibbon, CourseCover, Pill } from "@/ui";
@@ -20,15 +21,15 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
   const ribbons = ribbonsFor(course, member, config);
   const ratio = course.lessonCount ? course.completedLessons / course.lessonCount : 0;
   return (
-    <Card onPress={onPress ?? (() => router.push(`/course/${course.id}`))} accessibilityLabel={course.title}>
+    <Card onPress={onPress ?? (() => router.push(`/course/${course.id}`))} accessibilityLabel={displayName(course)}>
       <View style={styles.coverWrap}>
-        <CourseCover theme={course.theme} label={course.category} title={course.title} imageUrl={course.coverUrl} height={160} />
+        <CourseCover theme={course.theme} label={course.category} title={displayName(course)} imageUrl={course.coverUrl} height={160} />
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
       <View style={styles.titleRow}>
         <AppText variant="headline" style={{ flex: 1 }}>
-          {course.title}
+          {displayName(course)}
         </AppText>
         {course.eventStart ? (
           <AppText variant="callout" tone="muted" style={styles.date}>
