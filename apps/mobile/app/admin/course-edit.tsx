@@ -30,6 +30,7 @@ export default function CourseEditScreen() {
   const groups = useApi<ReviewGroup[]>(canManage ? "/admin/review-groups" : null);
   const seriesList = useApi<string[]>(canManage ? "/admin/series" : null);
   const categoryList = useApi<string[]>(canManage ? "/admin/categories" : null);
+  const locationList = useApi<string[]>(canManage ? "/admin/locations" : null);
   const [form, setForm] = useState<Form>(() => ({ ...empty, eventStart: todayStr(), ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -260,6 +261,7 @@ export default function CourseEditScreen() {
               <AppText variant="body">無</AppText>
             </Pressable>
           </View>
+          {!form.locationNone && locationList.data?.length ? <Chips label="已有的場地" options={locationList.data.map((x) => ({ key: x, label: x }))} value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} /> : null}
         </View>
         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.hideFromHome }} onPress={() => setForm((f) => ({ ...f, hideFromHome: !f.hideFromHome }))} style={styles.check}>
           <Ionicons name={form.hideFromHome ? "checkbox" : "square-outline"} size={28} color={form.hideFromHome ? c.accent : c.textMuted} />

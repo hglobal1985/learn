@@ -1127,6 +1127,43 @@ async function createCourse(ctx: Ctx, admin: Session) {
   return courseDetail(ctx, id);
 }
 
+// ---------- 關鍵字（分類、系列、場地）：超級管理員集中管理 ----------
+const KEYWORD_COLUMN = { category: "category", series: "series", location: "location" } as const;
+type KeywordKind = keyof typeof KEYWORD_COLUMN;
+const keywordKind = (v: unknown): KeywordKind => (v === "category" || v === "series" || v === "location" ? v : fail(400, "invalid_kind", "關鍵字類型不正確"));
+const keywordText = (v: unknown): string => {
+  const t = typeof v === "string" ? v.trim().slice(0, 60) : "";
+  return t || fail(400, "invalid_keyword", "請輸入關鍵字");
+};
+
+/** 課程編輯頁「已有的…」選項：課程已經用過的值＋超級管理員預先建立的（centerKey 不為 null 時，已用過的只算自己中心的課程）。 */
+async function keywordChoices(ctx: Ctx, kind: KeywordKind, centerKey: string | null): Promise<string[]> {
+  const col = KEYWORD_COLUMN[kind];
+  const used = await ctx.db
+    .prepare(`SELECT DISTINCT ${col} AS v FROM courses WHERE ${col} <> ''${centerKey !== null ? " AND host_center_key = ?" : ""}`)
+    .bind(...(centerKey !== null ? [centerKey] : []))
+    .all<{ v: string }>();
+  const preset = await ctx.db.prepare("SELECT value AS v FROM keywords WHERE kind = ?").bind(kind).all<{ v: string }>();
+  return [...new Set([...used.results.map((r) => r.v), ...preset.results.map((r) => r.v)])].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+}
+
+type KeywordItem = { value: string; count: number; preset: boolean };
+async function listKeywords(ctx: Ctx): Promise<Record<KeywordKind, KeywordItem[]>> {
+  const out = {} as Record<KeywordKind, KeywordItem[]>;
+  for (const kind of Object.keys(KEYWORD_COLUMN) as KeywordKind[]) {
+    const col = KEYWORD_COLUMN[kind];
+    const [used, preset] = await Promise.all([
+      ctx.db.prepare(`SELECT ${col} AS v, COUNT(*) AS n FROM courses WHERE ${col} <> '' GROUP BY ${col}`).all<{ v: string; n: number }>(),
+      ctx.db.prepare("SELECT value AS v FROM keywords WHERE kind = ?").bind(kind).all<{ v: string }>(),
+    ]);
+    const map = new Map<string, KeywordItem>();
+    for (const r of used.results) map.set(r.v, { value: r.v, count: r.n, preset: false });
+    for (const r of preset.results) map.set(r.v, { value: r.v, count: map.get(r.v)?.count ?? 0, preset: true });
+    out[kind] = [...map.values()].sort((a, b) => a.value.localeCompare(b.value, "zh-Hant"));
+  }
+  return out;
+}
+
 /** 複製這門課，建立下一梯：基本資料、章節架構照搬；活動日期、早鳥與限時免費、EDM／封面、附件、音檔不帶（避免共用同一份檔案）。新課程是草稿。 */
 async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
   const row = await ctx.db.prepare("SELECT * FROM courses WHERE id = ?").bind(id).first<Record<string, unknown>>();
@@ -2396,28 +2433,60 @@ const routes: [string, RegExp, Handler][] = [
   ["POST", /^\/admin\/courses$/, async (ctx) => createCourse(ctx, requireCourseCreator(ctx))],
   [
     "GET",
-    /^\/admin\/categories$/,
-    async (ctx) => {
+    /^\/admin\/(categories|series|locations)$/,
+    async (ctx, [what]) => {
       const who = requireCourseCreator(ctx);
-      const own = who.role !== "admin";
-      const { results } = await ctx.db
-        .prepare(`SELECT DISTINCT category FROM courses WHERE category <> ''${own ? " AND host_center_key = ?" : ""} ORDER BY category`)
-        .bind(...(own ? [who.center?.key ?? ""] : []))
-        .all<{ category: string }>();
-      return results.map((r) => r.category);
+      const kind = what === "categories" ? "category" : what === "series" ? "series" : "location";
+      return keywordChoices(ctx, kind, who.role !== "admin" ? (who.center?.key ?? "") : null);
+    },
+  ],
+  ["GET", /^\/admin\/keywords$/, async (ctx) => (requireSuperAdmin(ctx), listKeywords(ctx))],
+  [
+    "POST",
+    /^\/admin\/keywords$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const kind = keywordKind(body.kind);
+      const value = keywordText(body.value);
+      await ctx.db.batch([ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES (?, ?)").bind(kind, value), audit(ctx.db, s.sub, "keyword.add", "keyword", kind, value)]);
+      return listKeywords(ctx);
     },
   ],
   [
-    "GET",
-    /^\/admin\/series$/,
+    "PATCH",
+    /^\/admin\/keywords$/,
     async (ctx) => {
-      const who = requireCourseCreator(ctx);
-      const own = who.role !== "admin";
-      const { results } = await ctx.db
-        .prepare(`SELECT DISTINCT series FROM courses WHERE series <> ''${own ? " AND host_center_key = ?" : ""} ORDER BY series`)
-        .bind(...(own ? [who.center?.key ?? ""] : []))
-        .all<{ series: string }>();
-      return results.map((r) => r.series);
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const kind = keywordKind(body.kind);
+      const from = keywordText(body.from);
+      const to = keywordText(body.to);
+      const col = KEYWORD_COLUMN[kind];
+      await ctx.db.batch([
+        ctx.db.prepare(`UPDATE courses SET ${col} = ? WHERE ${col} = ?`).bind(to, from),
+        ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, from),
+        ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES (?, ?)").bind(kind, to),
+        audit(ctx.db, s.sub, "keyword.rename", "keyword", kind, `${from} → ${to}`),
+      ]);
+      return listKeywords(ctx);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/keywords\/remove$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const kind = keywordKind(body.kind);
+      const value = keywordText(body.value);
+      const col = KEYWORD_COLUMN[kind];
+      await ctx.db.batch([
+        ctx.db.prepare(`UPDATE courses SET ${col} = '' WHERE ${col} = ?`).bind(value),
+        ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, value),
+        audit(ctx.db, s.sub, "keyword.remove", "keyword", kind, value),
+      ]);
+      return listKeywords(ctx);
     },
   ],
   [

@@ -408,3 +408,13 @@ export type StatBlock = {
   rows?: string[][];
 };
 export type MuxStats = { generatedAt: string; freeMinutes: number; blocks: StatBlock[] };
+
+// ---------- 關鍵字管理（超級管理員）----------
+export type KeywordKind = "category" | "series" | "location";
+export type KeywordItem = { value: string; count: number; preset: boolean };
+export type KeywordLists = Record<KeywordKind, KeywordItem[]>;
+export const KEYWORD_INFO: Record<KeywordKind, { title: string; hint: string }> = {
+  category: { title: "分類", hint: "課程的分類，例如：達標班、會議" },
+  series: { title: "系列", hint: "同系列的課，全部課程清單只顯示最近的一場" },
+  location: { title: "場地", hint: "課程的上課地點" },
+};

@@ -190,3 +190,28 @@ test("已有的分類清單：管理員看全部、學員不行", async () => {
   assert.ok((await call<string[]>("GET", "/admin/categories", { token: admin })).data.includes("達標班"));
   assert.equal((await call("GET", "/admin/categories", { token: student })).status, 403);
 });
+
+test("關鍵字管理：只有超級管理員；新增、改名會一併更新課程、刪除會清空課程欄位", async () => {
+  const { call, login } = setup();
+  const [admin, student] = await Promise.all(["demo-admin", "demo-student"].map(login));
+  type KW = Record<"category" | "series" | "location", { value: string; count: number; preset: boolean }[]>;
+  assert.equal((await call("GET", "/admin/keywords", { token: student })).status, 403);
+  await call("PATCH", "/admin/courses/share", { token: admin, body: { category: "達標班", series: "翡翠達標班", location: "台北教室" } });
+  await call("PATCH", "/admin/courses/lead", { token: admin, body: { category: "達標班" } });
+  let kw = (await call<KW>("GET", "/admin/keywords", { token: admin })).data;
+  assert.deepEqual(kw.category.find((k) => k.value === "達標班"), { value: "達標班", count: 2, preset: false });
+  // 預先新增（還沒有課程使用）
+  kw = (await call<KW>("POST", "/admin/keywords", { token: admin, body: { kind: "location", value: "高雄教室" } })).data;
+  assert.deepEqual(kw.location.find((k) => k.value === "高雄教室"), { value: "高雄教室", count: 0, preset: true });
+  assert.ok((await call<string[]>("GET", "/admin/locations", { token: admin })).data.includes("高雄教室"), "預先建立的也會出現在課程編輯頁的選項");
+  // 改名：課程跟著變
+  kw = (await call<KW>("PATCH", "/admin/keywords", { token: admin, body: { kind: "category", from: "達標班", to: "達標系列班" } })).data;
+  assert.equal(kw.category.find((k) => k.value === "達標系列班")?.count, 2);
+  assert.equal(kw.category.some((k) => k.value === "達標班"), false);
+  assert.equal((await call<{ category: string }>("GET", "/courses/share", { token: admin })).data.category, "達標系列班");
+  // 刪除：課程欄位清空
+  kw = (await call<KW>("POST", "/admin/keywords/remove", { token: admin, body: { kind: "series", value: "翡翠達標班" } })).data;
+  assert.equal(kw.series.some((k) => k.value === "翡翠達標班"), false);
+  assert.equal((await call<{ series: string }>("GET", "/courses/share", { token: admin })).data.series, "");
+  assert.equal((await call("POST", "/admin/keywords", { token: admin, body: { kind: "bad", value: "x" } })).status, 400);
+});
