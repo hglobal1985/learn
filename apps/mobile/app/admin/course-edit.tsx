@@ -292,7 +292,7 @@ export default function CourseEditScreen() {
           </View>
           <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.isOnline }} onPress={() => setForm((f) => ({ ...f, isOnline: !f.isOnline }))} style={styles.check}>
             <Ionicons name={form.isOnline ? "checkbox" : "square-outline"} size={28} color={form.isOnline ? c.accent : c.textMuted} />
-            <AppText variant="body">線上課程（地點顯示為「線上課程」）</AppText>
+            <AppText variant="body">線上課程</AppText>
           </Pressable>
           {!form.locationNone && !form.isOnline && locationList.data?.length ? <Chips label="已有的場地" options={locationList.data.map((x) => ({ key: x, label: x }))} value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} /> : null}
         </View>
