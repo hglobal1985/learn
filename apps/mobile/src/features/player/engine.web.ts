@@ -35,9 +35,23 @@ let bg = false;
 let coverUrl: string | null = null;
 let fsTarget: HTMLElement | null = null;
 
+let pipActive = false;
+let pipLeftAt = 0;
+
 const active = (): HTMLMediaElement | null => (bg ? audio : video);
 
 function wire(el: HTMLMediaElement) {
+  el.addEventListener("enterpictureinpicture", () => (pipActive = true));
+  el.addEventListener("leavepictureinpicture", () => {
+    pipActive = false;
+    pipLeftAt = Date.now();
+    // 離開浮動視窗時頁面仍在背景、影片已被暫停＝按了 ✕ 關閉：停止播放。
+    if (document.hidden && el.paused && !bg) {
+      intent = false;
+      if (bgTimer) clearTimeout(bgTimer);
+      bgTimer = null;
+    }
+  });
   const mine = () => el === active();
   el.addEventListener("play", () => {
     if (!mine()) return;
@@ -48,6 +62,9 @@ function wire(el: HTMLMediaElement) {
     if (!mine()) return;
     // 畫面在前景時的暫停＝使用者暫停；在背景時的暫停＝瀏覽器自動暫停（之後要接回去）。
     if (!document.hidden && !bg) intent = false;
+    // 在系統浮動視窗裡按 ✕ 關閉＝使用者要停止，不要改由通知欄的音訊接手。
+    const closedPip = pipActive || Date.now() - pipLeftAt < 1000;
+    if (closedPip && !bg) intent = false;
     emit({ playing: false });
     // 縮小視窗時瀏覽器自己把影片暫停了（手機常見）：改由 <audio> 接手繼續播。
     if (document.hidden && !bg && intent) toBackground();
