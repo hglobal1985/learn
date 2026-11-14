@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
+import { RankTitleRow, useRankOptions } from "@/features/admin/person-extra";
 import { AttachmentManager } from "@/features/attachments";
 import { confirmAsk } from "@/features/confirm";
 import { detectYoutubeSeconds } from "@/features/admin/youtube-duration";
@@ -10,7 +11,7 @@ import { canManageCourses } from "@/lib/roles";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
-import { AppText, Button, Card, DateSelect, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen, todayStr } from "@/ui";
+import { AppText, Button, Card, DateSelect, EmptyState, ErrorView, Icon, LoadingView, NoticeBox, Pill, Screen, todayStr, type SelectOption } from "@/ui";
 
 const kinds: { key: MediaType; label: string }[] = [
   { key: "demo", label: "示範短片" },
@@ -72,6 +73,13 @@ export default function LessonManagerScreen() {
   }, [course.data, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newTitle, setNewTitle] = useState("");
   const [newSharer, setNewSharer] = useState("");
+  const [newRank, setNewRank] = useState("");
+  const [newJob, setNewJob] = useState("");
+  const rankOptions = useRankOptions();
+  const tName = course.data?.teacher ?? "";
+  const tRank = course.data?.teacherRank ?? "";
+  const tJob = course.data?.teacherTitle ?? "";
+  const newSame = !!tName && newSharer === tName && newRank === tRank && newJob === tJob;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
@@ -109,11 +117,14 @@ export default function LessonManagerScreen() {
       {msg ? <NoticeBox tone="danger" text={msg} /> : null}
       {lessons.map((l, i) => (
         <LessonEditor
-          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.sharer}:${l.minutes}:${l.eventDate}`}
+          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.sharer}:${l.sharerRank}:${l.sharerTitle}:${l.minutes}:${l.eventDate}`}
           lesson={l}
           prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
-          teacher={course.data?.teacher ?? ""}
+          teacher={tName}
+          teacherRank={tRank}
+          teacherTitle={tJob}
+          rankOptions={rankOptions}
           courseDate={course.data?.eventStart ?? undefined}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
@@ -140,14 +151,15 @@ export default function LessonManagerScreen() {
               style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
             />
           </View>
-          <SharerField value={newSharer} onChange={setNewSharer} teacher={course.data?.teacher ?? ""} label="新章節分享者" />
+          <SharerField value={newSharer} onChange={setNewSharer} teacher={tName} same={newSame} onToggleSame={() => (setNewSharer(newSame ? "" : tName), setNewRank(newSame ? "" : tRank), setNewJob(newSame ? "" : tJob))} label="新章節分享者" />
         </View>
+        <RankTitleRow rank={newRank} title={newJob} onRank={setNewRank} onTitle={setNewJob} rankOptions={rankOptions} readOnly={newSame} who="新章節分享者" />
         <Button
           label="新增章節"
           icon="add"
           loading={busy}
           disabled={!newTitle.trim()}
-          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle, sharer: newSharer, eventDate: todayStr() })).then(() => (setNewTitle(""), setNewSharer("")))}
+          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle, sharer: newSharer, sharerRank: newRank, sharerTitle: newJob, eventDate: todayStr() })).then(() => (setNewTitle(""), setNewSharer(""), setNewRank(""), setNewJob("")))}
         />
       </Card>
     </Screen>
@@ -155,9 +167,8 @@ export default function LessonManagerScreen() {
 }
 
 /** 分享者欄位：右側「同主講人」勾選（課程有填主講人才出現）；勾選＝分享者就是主講人，輸入框收起來。 */
-function SharerField({ value, onChange, teacher, label }: { value: string; onChange: (v: string) => void; teacher: string; label: string }) {
+function SharerField({ value, onChange, teacher, same, onToggleSame, label }: { value: string; onChange: (v: string) => void; teacher: string; same: boolean; onToggleSame: () => void; label: string }) {
   const { c } = useTheme();
-  const same = !!teacher && value === teacher;
   return (
     <View style={{ flex: 2, gap: space.xs }}>
       <AppText variant="callout" tone="muted">
@@ -180,7 +191,7 @@ function SharerField({ value, onChange, teacher, label }: { value: string; onCha
         />
       )}
       {teacher ? (
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: same }} accessibilityLabel="分享者同主講人" onPress={() => onChange(same ? "" : teacher)} style={styles.sharerCheck}>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: same }} accessibilityLabel="分享者同主講人" onPress={onToggleSame} style={styles.sharerCheck}>
           <Icon name={same ? "checkbox" : "square-outline"} size={28} color={same ? c.accent : c.textMuted} />
           <AppText variant="callout">同主講人</AppText>
         </Pressable>
@@ -229,15 +240,21 @@ function LessonEditor({
   allowMux,
   prevDate,
   teacher,
+  teacherRank,
+  teacherTitle,
   courseDate,
+  rankOptions,
 }: {
   allowMux: boolean;
   /** 上一堂的活動日期（有才會顯示「同上」勾選）。 */
   prevDate?: string;
   /** 課程的活動日期（開始日；「同課程日期」勾選用，沒設定就不顯示勾選）。 */
   courseDate?: string;
-  /** 課程主講人（「同主講人」勾選用）。 */
+  /** 課程主講人（姓名、獎銜、職稱；「同主講人」勾選用）。 */
   teacher: string;
+  teacherRank: string;
+  teacherTitle: string;
+  rankOptions: SelectOption[];
   lesson: Lesson;
   onSaved: () => void;
   onUp?: () => void;
@@ -248,6 +265,9 @@ function LessonEditor({
   const { c } = useTheme();
   const [title, setTitle] = useState(lesson.title);
   const [sharer, setSharer] = useState(lesson.sharer ?? "");
+  const [sharerRank, setSharerRank] = useState(lesson.sharerRank ?? "");
+  const [sharerTitle, setSharerTitle] = useState(lesson.sharerTitle ?? "");
+  const sameT = !!teacher && sharer === teacher && sharerRank === teacherRank && sharerTitle === teacherTitle;
   const [kind, setKind] = useState<MediaType>(lesson.media?.type ?? "demo");
   const [ref, setRef] = useState(lesson.media?.type === "youtube" ? lesson.media.ref ?? "" : "");
   const [start, setStart] = useState(toHms(lesson.start));
@@ -270,7 +290,7 @@ function LessonEditor({
     setBusy("save");
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { title, sharer, startSeconds: s, endSeconds: e, eventDate: eventDate || null };
+      const body: Record<string, unknown> = { title, sharer, sharerRank, sharerTitle, startSeconds: s, endSeconds: e, eventDate: eventDate || null };
       if (kind === "demo" || kind === "youtube") body.mediaType = kind;
       if (kind === "youtube") body.mediaRef = ref;
       await api("PATCH", `/admin/lessons/${lesson.id}`, body);
@@ -333,8 +353,9 @@ function LessonEditor({
             style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
           />
         </View>
-        <SharerField value={sharer} onChange={setSharer} teacher={teacher} label={`第 ${lesson.position} 堂分享者`} />
+        <SharerField value={sharer} onChange={setSharer} teacher={teacher} same={sameT} onToggleSame={() => (setSharer(sameT ? "" : teacher), setSharerRank(sameT ? "" : teacherRank), setSharerTitle(sameT ? "" : teacherTitle))} label={`第 ${lesson.position} 堂分享者`} />
       </View>
+      <RankTitleRow rank={sharerRank} title={sharerTitle} onRank={setSharerRank} onTitle={setSharerTitle} rankOptions={rankOptions} readOnly={sameT} who={`第 ${lesson.position} 堂分享者`} />
       <View style={styles.dateHead}>
         <AppText variant="callout" style={{ flex: 1 }}>
           活動日期

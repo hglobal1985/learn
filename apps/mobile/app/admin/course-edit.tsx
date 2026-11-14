@@ -12,10 +12,11 @@ import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { courseThemes, minTouch, radius, space, type } from "@/theme/tokens";
 import { todayStr } from "@/ui/date-select";
+import { RankTitleRow, useRankOptions } from "@/features/admin/person-extra";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; isOnline: boolean; showFull: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; teacher: string; title: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, isOnline: false, showFull: true, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", teacher: "", title: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; isOnline: boolean; showFull: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; teacher: string; teacherRank: string; teacherTitle: string; title: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, isOnline: false, showFull: true, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", teacher: "", teacherRank: "", teacherTitle: "", title: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -32,6 +33,7 @@ export default function CourseEditScreen() {
   const categoryList = useApi<string[]>(canManage ? "/admin/categories" : null);
   const locationList = useApi<string[]>(canManage ? "/admin/locations" : null);
   const [form, setForm] = useState<Form>(() => ({ ...empty, eventStart: todayStr(), ...(member?.role !== "admin" && member?.center ? { guidanceUnit: member.center, hostUnit: member.center } : {}) }));
+  const rankOptions = useRankOptions();
   const [rankOpen, setRankOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
@@ -65,6 +67,8 @@ export default function CourseEditScreen() {
         reviewGroupId: d.admin?.reviewGroupId ?? "",
         title: d.title,
         teacher: d.teacher ?? "",
+        teacherRank: d.teacherRank ?? "",
+        teacherTitle: d.teacherTitle ?? "",
         category: d.category,
         priceTwd: String(d.admin?.basePriceTwd ?? d.priceTwd ?? 0),
         minRankCode: d.minRank.code,
@@ -193,6 +197,7 @@ export default function CourseEditScreen() {
       </Card>
       <Card>
         {field("主講人", "teacher", { placeholder: "例如：王大明（選填）" })}
+        <RankTitleRow rank={form.teacherRank} title={form.teacherTitle} onRank={set("teacherRank")} onTitle={set("teacherTitle")} rankOptions={rankOptions} who="主講人" />
         {field("課程名稱（必填）", "title", { placeholder: "例如：翡翠達標班" })}
         {field("分類（可複選，多個用「、」分開）", "category", { placeholder: "例如：達標班、會議" })}
         {categoryList.data?.length ? (

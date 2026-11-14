@@ -355,8 +355,8 @@ export async function centralWriteField(token: string, key: "legal_name" | "disp
   return { ok: true, status: b?.status ?? null };
 }
 
-/** 關聯詞建議（培訓系統、地區教育中心）。 */
-export async function centralSuggest(token: string, pool: "education_system" | "education_center", q: string): Promise<string[]> {
+/** 關聯詞建議（培訓系統、地區教育中心、職稱）。職稱不強迫選，只是建議，會員可自己輸入。 */
+export async function centralSuggest(token: string, pool: "education_system" | "education_center" | "job_title", q: string): Promise<string[]> {
   const res = await callCentral(token, `/v1/vocab/suggestions?pool=${pool}&q=${encodeURIComponent(q.slice(0, 30))}`);
   if (!res?.ok) return [];
   const b = (await res.json().catch(() => null)) as { suggestions?: unknown[] } | null;

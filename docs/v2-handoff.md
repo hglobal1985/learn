@@ -436,3 +436,4 @@
 - 2026-11-14 學習中頁：依最近一次學習時間由新到舊排序（課程摘要新增 lastLearnedAt＝播放紀錄／完成章節／開始學習取最新；從沒學習過的排後面）；「主辦單位」下拉改為「系列」下拉（全部系列＋學習中課程所屬系列）。
 - 2026-11-14 課程資訊卡：已報名（已開通／審核中）的付費課程多一個「付費課程」標籤（不寫金額，樣式同其他標籤）；課程摘要新增 paid（原價>0；限時免費、早鳥、鑽石免費仍算付費課程）。規則已更新 CLAUDE.md。
 - 2026-11-14 修正課程卡標籤：已開通不再顯示「已開通」，價格位置改顯示「付費課程」（不寫金額）或「免費」，恆為三個標籤（主講人、主辦、價格）；審核中仍顯示「待審核」。原本新增的第四個「付費課程」標籤已移除。
+- 2026-11-14 主講人／分享者新增「獎銜」「職稱」：courses.teacher_rank／teacher_title、lessons.sharer_rank／sharer_title（migration 0039）。獎銜＝下拉，選單來自會員中心（GET /admin/central-options 轉接 rankOptionList，存中央獎銜代碼，後端 assertCentralRank 驗證；測試帳號用本地階梯）；職稱＝文字，輸入時呼叫 GET /me/vocab?pool=job_title（centralSuggest 轉接中央 /v1/vocab/suggestions?pool=job_title，只是建議可自己打；職稱欄位是中央『職稱』詞庫，不在行動大學另建）。共用元件 features/admin/person-extra.tsx（RankTitleRow、useRankOptions）：課程資料表單與章節新增／編輯都用；「同主講人」勾選會連獎銜與職稱一起帶入。學員端章節清單副標顯示『分享者：姓名 獎銜 職稱』（sharerLine）；課程卡的主講人標籤仍只顯示姓名（卡片格式規則不變）。注意：中央『職稱』是會員個人基本資料欄位（job_title），這裡的職稱是『課程上主講人／分享者的職稱』，只使用中央詞庫建議，沒有讀寫任何會員的個人職稱資料。

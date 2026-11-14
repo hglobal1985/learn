@@ -35,8 +35,24 @@ test("章節分享者與課程主講人：新增、修改、複製課程都會�
   d = (await call<CourseDetail>("GET", `/courses/${id}`, admin)).data;
   assert.equal(d.lessons.find((x) => x.id === l.id)?.sharer, "");
 
+  // 獎銜（選單）與職稱
+  const opts = (await call<{ ranks: { value: string; label: string }[] }>("GET", "/admin/central-options", admin)).data.ranks;
+  assert.ok(opts.length > 3 && !opts.some((o) => o.value === "none"));
+  const rank = opts[2]!;
+  await call("PATCH", `/admin/courses/${id}`, admin, { teacherRank: rank.value, teacherTitle: " 經理 " });
+  await call("PATCH", `/admin/lessons/${l.id}`, admin, { sharer: "複製我", sharerRank: rank.value, sharerTitle: "講師" });
+  d = (await call<CourseDetail>("GET", `/courses/${id}`, admin)).data;
+  assert.equal(d.teacherRank, rank.value);
+  assert.equal(d.teacherRankName, rank.label);
+  assert.equal(d.teacherTitle, "經理");
+  const l1 = d.lessons.find((x) => x.id === l.id)!;
+  assert.deepEqual([l1.sharerRank, l1.sharerRankName, l1.sharerTitle], [rank.value, rank.label, "講師"]);
+  await call("PATCH", `/admin/lessons/${l.id}`, admin, { title: "只改名" }); // 沒帶就不動
+  assert.equal((await call<CourseDetail>("GET", `/courses/${id}`, admin)).data.lessons.find((x) => x.id === l.id)?.sharerTitle, "講師");
+  assert.equal((await call("GET", "/admin/central-options", await (async () => (await call<{ token: string }>("POST", "/auth/demo", undefined, { sub: "demo-student" })).data.token)())).status, 403);
   await call("PATCH", `/admin/lessons/${l.id}`, admin, { sharer: "複製我" });
   const copy = (await call<CourseDetail>("POST", `/admin/courses/${id}/duplicate`, admin)).data;
   assert.equal(copy.teacher, "王老師");
-  assert.ok(copy.lessons.some((x) => x.sharer === "複製我"));
+  assert.ok(copy.lessons.some((x) => x.sharer === "複製我" && x.sharerRank === rank.value && x.sharerTitle === "講師"));
+  assert.deepEqual([copy.teacherRank, copy.teacherTitle], [rank.value, "經理"]);
 });

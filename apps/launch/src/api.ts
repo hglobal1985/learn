@@ -30,7 +30,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { amwayMe, centerKey, centerList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, reportIntegration, saveContactEmail, validEmail, verifyWebhook, APP_ID, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, reportIntegration, saveContactEmail, validEmail, verifyWebhook, APP_ID, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
@@ -286,6 +286,8 @@ type CourseRow = {
   title: string;
   subtitle: string;
   teacher: string;
+  teacher_rank: string;
+  teacher_title: string;
   category: string;
   price_twd: number;
   min_rank_code: string;
@@ -324,7 +326,7 @@ type CourseRow = {
   zero_minute_lessons: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.show_full, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.teacher_rank, c.teacher_title, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.show_full, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id AND l.duration_minutes = 0) AS zero_minute_lessons
@@ -378,6 +380,9 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     title: row.title,
     subtitle: row.subtitle,
     teacher: row.teacher,
+    teacherRank: row.teacher_rank,
+    teacherRankName: rankMap.get(row.teacher_rank)?.name ?? "",
+    teacherTitle: row.teacher_title,
     category: row.category,
     priceTwd: web ? price : null,
     originalPriceTwd: web ? row.price_twd : null,
@@ -475,6 +480,9 @@ function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: strin
     end: null,
     eventDate: null,
     sharer: "",
+    sharerRank: "",
+    sharerRankName: "",
+    sharerTitle: "",
     ready: true,
     locked: !(admin || state.enrolled.has(courseId) || row.is_public === 1 || watchFree),
   }));
@@ -490,9 +498,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     ranks(ctx.db),
     memberCourseState(ctx.db, s?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, sharer, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, sharer, sharer_rank, sharer_title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; sharer: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
+      .all<{ id: string; position: number; title: string; sharer: string; sharer_rank: string; sharer_title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
     s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
@@ -513,6 +521,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       end: l.end_seconds,
       eventDate: l.event_date,
       sharer: l.sharer,
+      sharerRank: l.sharer_rank,
+      sharerRankName: rankMap.get(l.sharer_rank)?.name ?? "",
+      sharerTitle: l.sharer_title,
       // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
       ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
       // 完全公開的課程：任何人（含訪客與會員）都可以看章節，不需要報名。
@@ -1192,9 +1203,14 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
     const raw = Array.isArray(body.category) ? body.category.filter((x): x is string => typeof x === "string").join(CAT_SEP) : typeof body.category === "string" ? body.category : "";
     sets.push(["category", joinCats(splitCats(raw)).slice(0, 120)]);
   }
-  for (const [k, col, max] of [["subtitle", "subtitle", 200], ["teacher", "teacher", 60], ["description", "description", 5000]] as const) {
+  for (const [k, col, max] of [["subtitle", "subtitle", 200], ["teacher", "teacher", 60], ["teacherTitle", "teacher_title", 50], ["description", "description", 5000]] as const) {
     const v = text(body[k], max);
     if (v !== undefined) sets.push([col, v]);
+  }
+  const teacherRank = text(body.teacherRank, 40);
+  if (teacherRank !== undefined) {
+    await assertCentralRank(ctx, teacherRank);
+    sets.push(["teacher_rank", teacherRank]);
   }
   if (body.priceTwd !== undefined) {
     const n = Number(body.priceTwd);
@@ -1315,6 +1331,14 @@ async function createCourse(ctx: Ctx, admin: Session) {
 }
 
 /** 中心名稱必須是會員中心清單裡的（行動大學不可自行新增）；示範登入不檢查。 */
+/** 獎銜只能是會員中心選單裡的代碼（空字串＝不填）。中央查不到清單時不擋（以免中央暫時故障無法存檔）；測試帳號不檢查。 */
+async function assertCentralRank(ctx: Ctx, code: string): Promise<void> {
+  const s = ctx.session;
+  if (!code || !s || s.kind !== "central") return;
+  const list = await rankOptionList(s.token);
+  if (list.length && !list.some((o) => o.value === code)) fail(400, "invalid_rank", "獎銜不在會員中心的選單內");
+}
+
 async function assertCentralCenters(ctx: Ctx, labels: string[]): Promise<void> {
   const s = ctx.session;
   if (!s || s.kind !== "central" || !labels.length) return;
@@ -1401,13 +1425,13 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
   const row = await ctx.db.prepare("SELECT * FROM courses WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!row) return fail(404, "not_found", "找不到這門課程");
   const { results: lessons } = await ctx.db
-    .prepare("SELECT title, sharer, position, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
+    .prepare("SELECT title, sharer, sharer_rank, sharer_title, position, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
     .bind(id)
-    .all<{ title: string; sharer: string; position: number; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
+    .all<{ title: string; sharer: string; sharer_rank: string; sharer_title: string; position: number; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
   const newId = `c${randomId(7)}`;
   const series = String(row.series || "").trim() || String(row.title ?? "").slice(0, 60);
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
-  const keep = ["subtitle", "teacher", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online", "show_full"];
+  const keep = ["subtitle", "teacher", "teacher_rank", "teacher_title", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online", "show_full"];
   const cols = ["id", "sort_order", "status", "title", "series", ...keep];
   const vals = [newId, (max?.m ?? 0) + 1, "draft", `${String(row.title ?? "")}（複製）`.slice(0, 120), series, ...keep.map((k) => row[k] ?? null)];
   const stmts: D1PreparedStatement[] = [
@@ -1415,8 +1439,8 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
     ...lessons.map((l) => {
       const audio = l.media_type === "audio"; // 音檔是這門課自己的檔案，不共用
       return ctx.db
-        .prepare("INSERT INTO lessons (id, course_id, position, title, sharer, duration_minutes, media_type, media_ref, start_seconds, end_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(`${newId}-${randomId(6)}`, newId, l.position, l.title, l.sharer, audio ? 0 : l.duration_minutes, audio ? "demo" : l.media_type, audio ? null : l.media_ref, audio ? null : l.start_seconds, audio ? null : l.end_seconds);
+        .prepare("INSERT INTO lessons (id, course_id, position, title, sharer, sharer_rank, sharer_title, duration_minutes, media_type, media_ref, start_seconds, end_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(`${newId}-${randomId(6)}`, newId, l.position, l.title, l.sharer, l.sharer_rank, l.sharer_title, audio ? 0 : l.duration_minutes, audio ? "demo" : l.media_type, audio ? null : l.media_ref, audio ? null : l.start_seconds, audio ? null : l.end_seconds);
     }),
     audit(ctx.db, admin.sub, "course.duplicate", "course", newId, id),
   ];
@@ -1459,7 +1483,7 @@ const seconds = (v: unknown): number | null | undefined => {
 
 /** 修改章節：名稱、影片來源（示範／YouTube／Mux）、時間軸區間。音檔由上傳流程設定。 */
 async function updateLesson(ctx: Ctx, id: string, admin: Session) {
-  const body = await readJson<{ eventDate?: unknown; title?: unknown; sharer?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
+  const body = await readJson<{ eventDate?: unknown; title?: unknown; sharer?: unknown; sharerRank?: unknown; sharerTitle?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
   if (body.mediaType === "mux" && admin.role !== "admin") fail(403, "forbidden", "Mux 影片由總部管理，請改用 YouTube 或音檔，或請總部協助");
   const cur = await ctx.db
     .prepare("SELECT media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE id = ?")
@@ -1474,6 +1498,13 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
   }
   const sharer = text(body.sharer, 60);
   if (sharer !== undefined) sets.push(["sharer", sharer]);
+  const sharerTitle = text(body.sharerTitle, 50);
+  if (sharerTitle !== undefined) sets.push(["sharer_title", sharerTitle]);
+  const sharerRank = text(body.sharerRank, 40);
+  if (sharerRank !== undefined) {
+    await assertCentralRank(ctx, sharerRank);
+    sets.push(["sharer_rank", sharerRank]);
+  }
   if (body.eventDate !== undefined) sets.push(["event_date", dayOrNull(body.eventDate)]);
   let type = cur.media_type;
   if (body.mediaType !== undefined) {
@@ -2464,7 +2495,7 @@ const routes: [string, RegExp, Handler][] = [
       const s = requireMember(ctx);
       if (s.kind !== "central") return [];
       const pool = ctx.url.searchParams.get("pool");
-      if (pool !== "education_system" && pool !== "education_center") return fail(400, "invalid_pool", "不支援這個詞庫");
+      if (pool !== "education_system" && pool !== "education_center" && pool !== "job_title") return fail(400, "invalid_pool", "不支援這個詞庫");
       return centralSuggest(s.token, pool, ctx.url.searchParams.get("q") ?? "");
     },
   ],
@@ -2804,6 +2835,19 @@ const routes: [string, RegExp, Handler][] = [
       return listShortLinks(ctx);
     },
   ],
+  [
+    "GET",
+    /^\/admin\/central-options$/,
+    async (ctx) => {
+      const s = requireCourseCreator(ctx);
+      // 獎銜選單與會員中心相同（正本）；測試帳號用本地階梯。
+      if (s.kind === "central") {
+        const list = await rankOptionList(s.token);
+        if (list.length) return { ranks: list.filter((o) => o.value !== "none") };
+      }
+      return { ranks: [...(await ranks(ctx.db)).values()].filter((r) => r.code !== "none").map((r) => ({ value: r.code, label: r.name })) };
+    },
+  ],
   ["GET", /^\/admin\/keywords$/, async (ctx) => (requireSuperAdmin(ctx), listKeywords(ctx))],
   [
     "POST",
@@ -2947,8 +2991,11 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/courses\/([\w-]+)\/lessons$/,
     async (ctx, [courseId]) => {
       const admin = await requireCourseManager(ctx, courseId);
-      const body = await readJson<{ title?: unknown; sharer?: unknown; eventDate?: unknown }>(ctx.req);
+      const body = await readJson<{ title?: unknown; sharer?: unknown; sharerRank?: unknown; sharerTitle?: unknown; eventDate?: unknown }>(ctx.req);
       const sharer = typeof body.sharer === "string" ? body.sharer.trim().slice(0, 60) : "";
+      const sharerTitle = typeof body.sharerTitle === "string" ? body.sharerTitle.trim().slice(0, 50) : "";
+      const sharerRank = typeof body.sharerRank === "string" ? body.sharerRank.trim().slice(0, 40) : "";
+      await assertCentralRank(ctx, sharerRank);
       const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
       if (!title) fail(400, "title_required", "請輸入章節名稱");
       const eventDate = body.eventDate === undefined ? null : dayOrNull(body.eventDate);
@@ -2956,7 +3003,7 @@ const routes: [string, RegExp, Handler][] = [
       if (!course) return fail(404, "not_found", "找不到這門課程");
       const id = `${courseId}-${randomId(6)}`;
       await ctx.db.batch([
-        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, sharer, duration_minutes, media_type, event_date) VALUES (?, ?, ?, ?, ?, 0, 'demo', ?)").bind(id, courseId, course.maxpos + 1, title, sharer, eventDate),
+        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, sharer, sharer_rank, sharer_title, duration_minutes, media_type, event_date) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'demo', ?)").bind(id, courseId, course.maxpos + 1, title, sharer, sharerRank, sharerTitle, eventDate),
         audit(ctx.db, admin.sub, "lesson.create", "lesson", id, title),
       ]);
       return courseDetail(ctx, courseId);

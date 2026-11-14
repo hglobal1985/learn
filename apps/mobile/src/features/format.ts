@@ -63,6 +63,12 @@ export function eventDays(start: string | null | undefined, end?: string | null)
 /** 單位名稱不顯示教育中心的數字代碼：「飛登 013」→「飛登」。 */
 export const cleanUnit = (u: string): string => u.replace(/\s*\d+\s*$/, "").trim();
 
+/** 章節的分享者顯示：「分享者：李講師 白金 經理」（姓名、獎銜、職稱，沒填的略過；三者都沒填回空字串）。 */
+export function sharerLine(l: { sharer: string; sharerRankName: string; sharerTitle: string }): string {
+  const t = [l.sharer, l.sharerRankName, l.sharerTitle].map((x) => x.trim()).filter(Boolean).join(" ");
+  return t ? `分享者：${t}` : "";
+}
+
 /** 只有主辦單位的顯示：「台中主辦」（首頁區塊用，不含指導單位）。 */
 export function hostLine(c: { hostUnit: string }): string {
   const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);

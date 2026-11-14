@@ -39,6 +39,10 @@ export type CourseSummary = {
   title: string;
   subtitle: string;
   teacher: string;
+  /** 主講人的獎銜（中央獎銜代碼，沒填為空字串）與顯示名稱、職稱。 */
+  teacherRank: string;
+  teacherRankName: string;
+  teacherTitle: string;
   category: string;
   /** iOS/Android 請求時一律為 null（商店規範：App 內不顯示價格）。 */
   priceTwd: number | null;
@@ -118,6 +122,10 @@ export type Lesson = {
   eventDate: string | null;
   /** 這一堂的分享者（沒有填為空字串）。 */
   sharer: string;
+  /** 分享者的獎銜（中央獎銜代碼）與顯示名稱、職稱。 */
+  sharerRank: string;
+  sharerRankName: string;
+  sharerTitle: string;
   /** 內容已準備好（已上傳影片／音檔或設定好來源）；false＝敬請期待。 */
   ready: boolean;
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */

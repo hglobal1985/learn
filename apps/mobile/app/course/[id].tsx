@@ -7,7 +7,7 @@ import { CommentBoard } from "@/features/comments/comment-board";
 import { confirmSheet } from "@/features/confirm";
 import { EdmStage } from "@/features/courses/edm-viewer";
 import { PageHeader } from "@/features/page-header";
-import { eventDays } from "@/features/format";
+import { eventDays, sharerLine } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Screen, Section } from "@/ui";
@@ -123,7 +123,7 @@ export default function CourseDetailScreen() {
                     key={lesson.id}
                     icon={soon ? "hourglass-outline" : lesson.completed ? "checkmark-circle" : lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
                     title={`${lesson.position}. ${lesson.title}`}
-                    subtitle={soon ? "敬請期待" : [lesson.sharer ? `分享者：${lesson.sharer}` : "", lesson.minutes ? `${lesson.minutes} 分鐘` : "", lesson.completed ? "已完成" : ""].filter(Boolean).join(" · ") || undefined}
+                    subtitle={soon ? "敬請期待" : [sharerLine(lesson), lesson.minutes ? `${lesson.minutes} 分鐘` : "", lesson.completed ? "已完成" : ""].filter(Boolean).join(" · ") || undefined}
                     right={lesson.eventDate ? <AppText variant="callout" tone="muted">{eventDays(lesson.eventDate, null)}</AppText> : undefined}
                     dense
                     onPress={lesson.locked || soon ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
@@ -157,7 +157,7 @@ export default function CourseDetailScreen() {
                     key={lesson.id}
                     icon={lesson.locked ? "lock-closed-outline" : lesson.kind === "audio" ? "musical-notes-outline" : "play-circle-outline"}
                     title={lesson.title}
-                    subtitle={[lesson.sharer ? `分享者：${lesson.sharer}` : "", lesson.minutes ? `${lesson.minutes} 分鐘` : ""].filter(Boolean).join(" · ") || undefined}
+                    subtitle={[sharerLine(lesson), lesson.minutes ? `${lesson.minutes} 分鐘` : ""].filter(Boolean).join(" · ") || undefined}
                     onPress={lesson.locked ? undefined : () => router.push(`/learn/${course.id}/${lesson.id}`)}
                   />
                 ))}
