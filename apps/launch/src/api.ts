@@ -1724,6 +1724,8 @@ const routes: [string, RegExp, Handler][] = [
     async (ctx) => {
       const s = ctx.session;
       if (!s) return { member: null };
+      // fresh=1（開啟 App／重新整理／回到前景時）：丟掉這位會員在記憶體裡的會員中心資料快取，獎銜等資料立刻拿最新的。
+      if (s.kind === "central" && ctx.url.searchParams.get("fresh") === "1") forgetMember(s.sub);
       const { results } = await ctx.db.prepare("SELECT DISTINCT duty FROM review_group_members WHERE member_sub = ?").bind(s.sub).all<{ duty: Duty }>();
       // 被指派為窗口的人登入時，補上／更新名單上的姓名。
       if (results.length) await ctx.db.prepare("UPDATE review_group_members SET member_name = ? WHERE member_sub = ? AND member_name <> ?").bind(s.name, s.sub, s.name).run();

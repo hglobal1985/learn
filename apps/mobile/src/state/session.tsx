@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { clearCentral, handleWebSsoReturn, hasCentralSession, signInWithGoogle, signOutCentral, webSsoCheck, webSsoLogout } from "@/api/central";
 import { api, loadToken, saveToken, type Member } from "@/api/client";
 
@@ -35,7 +35,8 @@ const CART_KEY = "hglobal:learn:cart";
 async function fetchMember(): Promise<Member | null | "offline"> {
   for (let i = 0; i < 2; i++) {
     try {
-      return (await api<{ member: Member | null }>("GET", "/me")).member;
+      // fresh=1：每次開啟 App、重新整理、回到前景都向會員中心拿最新資料（獎銜剛審核通過時才會立刻更新）。
+      return (await api<{ member: Member | null }>("GET", "/me?fresh=1")).member;
     } catch {
       await new Promise((r) => setTimeout(r, 600));
     }
@@ -84,6 +85,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMember(known(await fetchMember()));
     invalidate();
   }, [invalidate]);
+  // 回到 App／網頁（切回分頁、從背景回來）時，重新向伺服器（會員中心）拿一次最新的會員資料與獎銜；30 秒內不重複。
+  const memberSub = member?.sub;
+  useEffect(() => {
+    if (!memberSub) return;
+    let last = Date.now();
+    const refresh = async () => {
+      if (Date.now() - last < 30_000) return;
+      last = Date.now();
+      const m = await fetchMember();
+      if (m && m !== "offline" && m.sub === memberSub) {
+        setMember(m);
+        invalidate();
+      }
+    };
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void refresh());
+    const onVisible = () => globalThis.document?.visibilityState === "visible" && void refresh();
+    globalThis.document?.addEventListener?.("visibilitychange", onVisible);
+    return () => {
+      sub.remove();
+      globalThis.document?.removeEventListener?.("visibilitychange", onVisible);
+    };
+  }, [memberSub, invalidate]);
   const signInGoogle = useCallback(async (returnTo = "/") => {
     await saveToken(null);
     const result = await signInWithGoogle(returnTo);

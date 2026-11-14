@@ -167,14 +167,18 @@ export async function legalNameOf(token: string): Promise<string> {
 }
 
 /** 會員中心資料是否完整（只回「缺什麼」的名稱，不保存任何值）：聯絡信箱；勾選「我是 Amway 會員」時，Amway 欄位有沒有空白。 */
-export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[]> {
-  return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async () => {
+export async function profileGaps(sub: string, token: string, email: string | null | undefined): Promise<string[] | undefined> {
+  // 會員中心暫時查不到（例如剛註冊、資料還沒建好）時回 undefined：不快取，下次進來再問，才不會把「沒有缺漏」記住。
+  return cached(`gaps:${sub}:${email ? 1 : 0}`, 60_000, async (): Promise<string[] | undefined> => {
     const gaps: string[] = [];
     // Email 不列入提醒：會員用 Google 登入，信箱由會員中心預設帶入 Google 信箱（見交接文件）。
     void email;
     {
       const b = await amwayMe(sub, token);
-      if (b?.enabled) {
+      if (!b) return undefined;
+      // 新會員還沒勾選「我是 Amway 會員」也要提醒（視窗會引導到會員中心勾選並填寫）。
+      if (b.enabled !== true) gaps.push("Amway 會員資料");
+      else {
         // 只檢查核心三欄（培訓系統、地區教育中心、獎銜）；推薦人與各上手因人而異（可能沒有），不列入提醒。
         const core = ["education_system", "education_center", "rank"];
         const empty = core.some((k) => {
@@ -246,7 +250,7 @@ export async function rankEligibility(sub: string, token: string, minRanks: stri
     const allowed = results[i]?.allowed === true;
     out.set(r, allowed);
     // 只快取成功的結果 10 分鐘（規範上限 1 日）；失敗不快取，下次重試。
-    if (res?.ok) memo.set(`elig:${sub}:${r}`, { value: allowed, until: Date.now() + 600_000 });
+    if (res?.ok) memo.set(`elig:${sub}:${r}`, { value: allowed, until: Date.now() + 120_000 });
   });
   return out;
 }
