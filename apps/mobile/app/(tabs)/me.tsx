@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams, type Href } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams, type Href } from "expo-router";
+import { useCallback, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { confirmAsk } from "@/features/confirm";
 import { MemberHeader } from "@/features/member-header";
@@ -30,7 +30,13 @@ function SiteFooter() {
 }
 
 export default function MeScreen() {
-  const { member, ready, signInGoogle, signInDemo, signOut, deleteAccount } = useSession();
+  const { member, ready, signInGoogle, signInDemo, signOut, deleteAccount, refreshMember } = useSession();
+  // 進入設定頁就向會員中心更新一次獎銜與資料（1 分鐘內不重複）：App 沒有重新整理鈕，這裡是最自然的更新時機。
+  useFocusEffect(
+    useCallback(() => {
+      void refreshMember(60_000);
+    }, [refreshMember]),
+  );
   const { next } = useLocalSearchParams<{ next?: string }>();
   const back = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
   const config = useApi<AppConfig>("/config");

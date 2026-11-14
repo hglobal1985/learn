@@ -18,6 +18,8 @@ type Session = {
   signInDemo: (sub: string) => Promise<void>;
   /** Web 登入回來後（/auth/done）重新載入會員。 */
   reloadMember: () => Promise<void>;
+  /** 重新向會員中心拿最新的會員資料與獎銜（下拉重新整理、進入設定頁用）；距離上次更新不到 minGapMs 毫秒就略過。 */
+  refreshMember: (minGapMs?: number) => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   version: number;
@@ -81,32 +83,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setCartState(ids);
     AsyncStorage.setItem(CART_KEY, JSON.stringify(ids)).catch(() => undefined);
   }, []);
+  const lastFetch = useRef(Date.now());
   const reloadMember = useCallback(async () => {
+    lastFetch.current = Date.now();
     setMember(known(await fetchMember()));
     invalidate();
   }, [invalidate]);
-  // 回到 App／網頁（切回分頁、從背景回來）時，距離上次更新超過 10 分鐘才重新向伺服器（會員中心）拿一次最新的會員資料與獎銜；獎銜很少變動，不用頻繁詢問。開啟、重新整理一律立刻更新。
   const memberSub = member?.sub;
-  useEffect(() => {
-    if (!memberSub) return;
-    let last = Date.now();
-    const refresh = async () => {
-      if (Date.now() - last < 10 * 60_000) return;
-      last = Date.now();
+  const refreshMember = useCallback(
+    async (minGapMs = 0) => {
+      if (!memberSub || Date.now() - lastFetch.current < minGapMs) return;
+      lastFetch.current = Date.now();
       const m = await fetchMember();
       if (m && m !== "offline" && m.sub === memberSub) {
         setMember(m);
         invalidate();
       }
-    };
-    const sub = AppState.addEventListener("change", (st) => st === "active" && void refresh());
-    const onVisible = () => globalThis.document?.visibilityState === "visible" && void refresh();
+    },
+    [memberSub, invalidate],
+  );
+  // 回到 App／網頁（切回分頁、從背景回來）時，距離上次更新超過 10 分鐘才重新向伺服器（會員中心）拿一次最新的會員資料與獎銜；獎銜很少變動，不用頻繁詢問。
+  // 開啟、重新整理一律立刻更新；App 沒有重新整理鈕，改用「下拉重新整理」（Screen）與「進入設定頁」（me.tsx）。
+  useEffect(() => {
+    if (!memberSub) return;
+    const sub = AppState.addEventListener("change", (st) => st === "active" && void refreshMember(10 * 60_000));
+    const onVisible = () => globalThis.document?.visibilityState === "visible" && void refreshMember(10 * 60_000);
     globalThis.document?.addEventListener?.("visibilitychange", onVisible);
     return () => {
       sub.remove();
       globalThis.document?.removeEventListener?.("visibilitychange", onVisible);
     };
-  }, [memberSub, invalidate]);
+  }, [memberSub, refreshMember]);
   const signInGoogle = useCallback(async (returnTo = "/") => {
     await saveToken(null);
     const result = await signInWithGoogle(returnTo);
@@ -154,8 +161,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [invalidate, setCart, member?.demo]);
 
   const value = useMemo(
-    () => ({ ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext }),
-    [ready, member, signInGoogle, signInDemo, reloadMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext],
+    () => ({ ready, member, signInGoogle, signInDemo, reloadMember, refreshMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext }),
+    [ready, member, signInGoogle, signInDemo, reloadMember, refreshMember, signOut, deleteAccount, version, invalidate, cart, setCart, ssoNext],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
