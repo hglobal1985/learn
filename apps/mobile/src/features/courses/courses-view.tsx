@@ -7,7 +7,7 @@ import { CourseCard } from "./course-card";
 import { byNearest } from "./series-sheet";
 import { SeriesTile } from "./series-tile";
 import { ViewToggle, type CourseViewMode } from "./view-toggle";
-import { ChapterList, type ChapterGroup } from "./chapter-list";
+import { ChapterList, type ChapterItem } from "./chapter-list";
 import { buildSearchIndex, matchCourses, matchLessons, suggestTerms, type SearchLesson } from "./course-search";
 import { SEARCH_ICON_W, SearchBox } from "./search-box";
 import { groupBySeries, sortCourses } from "./sort";
@@ -51,7 +51,10 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
   }, []);
   const pickMode = (m: CourseViewMode) => {
     setMode(m);
-    if (m === "chapter") setWantIndex(true);
+    if (m === "chapter") {
+      setWantIndex(true);
+      setShuffleSeed(Math.floor(Math.random() * 2 ** 31)); // 切到章節模式就重新洗牌
+    }
     AsyncStorage.setItem(MODE_KEY, m).catch(() => undefined);
   };
   const [rowW, setRowW] = useState(0);
@@ -75,30 +78,28 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
     setPicked(next);
   };
   const groups = useMemo(() => groupBySeries(list, courses), [list, courses]);
-  // 章節模式：符合條件的章節，依系列分組（組的順序＝課程清單排序；組內課程由近到遠、章節依順序）。
-  const chapterGroups = useMemo<ChapterGroup[]>(() => {
+  // 章節模式：符合條件的章節，不分組、不顯示系列標題，順序隨機（每次打開頁面、切到章節模式就重新洗牌；
+  // 同一次瀏覽中打字搜尋、換分類時，相對順序保持不變，畫面不會跳動）。
+  const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random() * 2 ** 31));
+  const chapterItems = useMemo<ChapterItem[]>(() => {
     if (!chapterMode) return [];
     const byId = new Map(courses.map((x) => [x.id, x]));
     const hit = searchIndex ? matchLessons(searchIndex, q) : null;
     const canWatch = (x: (typeof courses)[number]) => member?.role === "admin" || x.enrollment === "opened" || x.isPublic || x.watchFree;
-    const out = new Map<string, ChapterGroup>();
-    const order = new Map(courses.map((x, i) => [x.id, i]));
-    for (const l of [...(searchData.data?.lessons ?? [])].sort((a, b) => (order.get(a.courseId) ?? 0) - (order.get(b.courseId) ?? 0) || a.position - b.position)) {
+    const rand = (id: string) => {
+      let h = shuffleSeed | 0;
+      for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 2654435761);
+      return (h ^ (h >>> 15)) >>> 0;
+    };
+    const out: ChapterItem[] = [];
+    for (const l of searchData.data?.lessons ?? []) {
       const co = byId.get(l.courseId);
       if (!co) continue;
       if (hit ? !hit.has(l.id) : category !== ALL && !co.category.split("、").includes(category)) continue;
-      const key = co.series ? `s:${co.series}` : `c:${co.id}`;
-      const g = out.get(key) ?? { key, title: co.series || co.title, items: [] };
-      g.items.push({ lesson: l, course: co, locked: !canWatch(co) });
-      out.set(key, g);
+      out.push({ lesson: l, course: co, locked: !canWatch(co) });
     }
-    // 組內：課程日期由近到遠（還沒結束的在前），同一課程內照章節順序。
-    for (const g of out.values()) {
-      const rank = new Map(byNearest(g.items.map((i) => i.course).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i)).map((x, i) => [x.id, i]));
-      g.items.sort((a, b) => (rank.get(a.course.id) ?? 0) - (rank.get(b.course.id) ?? 0) || a.lesson.position - b.lesson.position);
-    }
-    return [...out.values()];
-  }, [chapterMode, courses, searchData.data, searchIndex, q, category, member]);
+    return out.sort((a, b) => rand(a.lesson.id) - rand(b.lesson.id));
+  }, [chapterMode, courses, searchData.data, searchIndex, q, category, member, shuffleSeed]);
   // 一排放幾張：手機 2 張，寬一點的畫面 3 張，同一頁容納更多。
   const cols = boxW >= 520 ? 3 : 2;
   const tileW = boxW ? Math.floor((boxW - GAP * (cols - 1)) / cols) : 0;
@@ -170,8 +171,8 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
       {chapterMode ? (
         <>
           {data && searchData.loading && !searchData.data ? <LoadingView /> : null}
-          {data && searchData.data && !chapterGroups.length ? <EmptyState icon="library-outline" title={q.trim() ? "找不到符合的章節" : "沒有符合條件的章節"} /> : null}
-          <ChapterList groups={chapterGroups} />
+          {data && searchData.data && !chapterItems.length ? <EmptyState icon="library-outline" title={q.trim() ? "找不到符合的章節" : "沒有符合條件的章節"} /> : null}
+          <ChapterList items={chapterItems} />
         </>
       ) : (
         <>
