@@ -114,6 +114,7 @@ export default function LessonManagerScreen() {
           prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
           teacher={course.data?.teacher ?? ""}
+          courseDate={course.data?.eventStart ?? undefined}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
           onDown={i < lessons.length - 1 ? () => move(i, i + 1) : undefined}
@@ -228,10 +229,13 @@ function LessonEditor({
   allowMux,
   prevDate,
   teacher,
+  courseDate,
 }: {
   allowMux: boolean;
   /** 上一堂的活動日期（有才會顯示「同上」勾選）。 */
   prevDate?: string;
+  /** 課程的活動日期（開始日；「同課程日期」勾選用，沒設定就不顯示勾選）。 */
+  courseDate?: string;
   /** 課程主講人（「同主講人」勾選用）。 */
   teacher: string;
   lesson: Lesson;
@@ -250,6 +254,7 @@ function LessonEditor({
   const [end, setEnd] = useState(toHms(lesson.end));
   const [eventDate, setEventDate] = useState(lesson.eventDate ?? "");
   const sameAsPrev = !!prevDate && eventDate === prevDate;
+  const sameAsCourse = !!courseDate && eventDate === courseDate;
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
@@ -334,22 +339,22 @@ function LessonEditor({
         <AppText variant="callout" style={{ flex: 1 }}>
           活動日期
         </AppText>
+        {courseDate ? (
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: sameAsCourse }} accessibilityLabel="日期同課程日期" onPress={() => setEventDate(sameAsCourse ? "" : courseDate)} style={styles.sameCheck}>
+            <Icon name={sameAsCourse ? "checkbox" : "square-outline"} size={28} color={sameAsCourse ? c.accent : c.textMuted} />
+            <AppText variant="body">同課程日期</AppText>
+          </Pressable>
+        ) : null}
         {prevDate ? (
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: sameAsPrev }}
-            accessibilityLabel="日期同上一堂"
-            onPress={() => setEventDate(sameAsPrev ? "" : prevDate)}
-            style={styles.sameCheck}
-          >
+          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: sameAsPrev }} accessibilityLabel="日期同上一堂" onPress={() => setEventDate(sameAsPrev ? "" : prevDate)} style={styles.sameCheck}>
             <Icon name={sameAsPrev ? "checkbox" : "square-outline"} size={28} color={sameAsPrev ? c.accent : c.textMuted} />
             <AppText variant="body">同上</AppText>
           </Pressable>
         ) : null}
       </View>
-      {sameAsPrev ? (
+      {sameAsPrev || sameAsCourse ? (
         <AppText variant="body" tone="muted">
-          {eventDate.replace(/-/g, "/")}（與上一堂相同）
+          {eventDate.replace(/-/g, "/")}（{sameAsCourse ? "同課程日期" : "與上一堂相同"}）
         </AppText>
       ) : (
         <DateSelect value={eventDate} onChange={setEventDate} />
