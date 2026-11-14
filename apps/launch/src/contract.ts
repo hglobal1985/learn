@@ -79,6 +79,8 @@ export type CourseSummary = {
   hiddenFromLearning: boolean;
   /** 播放過這門課超過 1%（或已有完成章節）：即使沒有報名紀錄也會列入「學習中」。 */
   started: boolean;
+  /** 課程勾選「章節各自設定封面」：章節編輯時才會出現封面設定。 */
+  chapterCovers: boolean;
   /** 付費課程（原價大於 0；限時免費、早鳥、鑽石免費仍算）。學習中的課程卡用來顯示「付費課程」標籤（不寫金額）。 */
   paid: boolean;
   /** 最近一次學習（播放、完成章節）的時間（ISO）；從沒學習過是 null。「學習中」依這個由新到舊排序。 */
@@ -135,6 +137,9 @@ export type Lesson = {
   locked: boolean;
   /** 「完整版」（同一支影片被裁成多段時自動多出的整支播放區塊），不列入章節總數與學習進度。 */
   full?: boolean;
+  /** 章節自己的封面：橫式 16:9（清單縮圖）與直式；沒設定為 null（改用課程封面）。 */
+  coverUrl?: string | null;
+  posterUrl?: string | null;
   /** 只有管理員會拿到（編輯影片來源用）。 */
   media?: { type: MediaType; ref: string | null };
 };

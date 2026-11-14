@@ -100,6 +100,14 @@ export async function api<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
   return data as T;
 }
 
+/** 取得需要登入的圖片（例如 Mux 影片截圖）：回傳 Blob。只在 Web 使用。 */
+export async function apiBlob(path: string): Promise<Blob> {
+  const bearer = token ?? (await centralToken());
+  const res = await fetch(`${API_BASE}/api/v2${path}`, { headers: { "x-client-platform": "web", ...(bearer ? { authorization: `Bearer ${bearer}` } : {}) } });
+  if (!res.ok) throw new RequestError(res.status, "blob", "取得影片截圖失敗，請稍後再試");
+  return res.blob();
+}
+
 /** 下載需要登入的檔案（例如 CSV 報表）；只在 Web 使用。 */
 export async function download(path: string, fileName: string): Promise<void> {
   const bearer = token ?? (await centralToken());

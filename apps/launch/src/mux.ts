@@ -81,6 +81,20 @@ export async function muxPlaybackUrl(env: Env, playbackId: string, seconds = 6 *
   return token ? `https://stream.mux.com/${encodeURIComponent(playbackId)}.m3u8?token=${token}` : null;
 }
 
+/** 影片某一秒的截圖（Mux 縮圖 API，簽名 JWT aud "t"）：管理員挑章節封面時用。回傳圖片位元組；金鑰未設定或 Mux 拒絕時回 null。 */
+export async function muxThumbnail(env: Env, playbackId: string, timeSeconds: number, width = 1280): Promise<{ bytes: Uint8Array<ArrayBuffer>; type: string } | null> {
+  const token = await signToken(env, playbackId, "t", 300);
+  if (!token) return null;
+  const t = Math.max(0, Math.round(timeSeconds * 10) / 10);
+  try {
+    const res = await muxFetch(`https://image.mux.com/${encodeURIComponent(playbackId)}/thumbnail.jpg?time=${t}&width=${Math.min(1920, Math.max(160, Math.round(width)))}&token=${token}`, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    return { bytes: new Uint8Array(await res.arrayBuffer()), type: res.headers.get("content-type") ?? "image/jpeg" };
+  } catch {
+    return null;
+  }
+}
+
 /** 管理員「播放檢查」：從伺服器向 Mux 取得簽名播放清單，回報 Mux 是否接受。 */
 export async function checkMuxPlayback(env: Env, playbackId: string): Promise<{ ok: boolean; message: string }> {
   const url = await muxPlaybackUrl(env, playbackId);

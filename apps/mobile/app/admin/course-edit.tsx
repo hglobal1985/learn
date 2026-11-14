@@ -15,8 +15,8 @@ import { todayStr } from "@/ui/date-select";
 import { RankTitleRow, useRankOptions } from "@/features/admin/person-extra";
 import { AppText, Button, Card, Chips, CourseCover, DateSelect, Field, EmptyState, LoadingView, NoticeBox, Pill, Screen, Section } from "@/ui";
 
-type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; isOnline: boolean; showFull: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; teacher: string; teacherRank: string; teacherTitle: string; title: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
-const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, isOnline: false, showFull: true, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", teacher: "", teacherRank: "", teacherTitle: "", title: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
+type Form = { allowPresident: boolean; isPublic: boolean; priceTba: boolean; hideFromHome: boolean; diamondFree: boolean; series: string; earlyBird: boolean; earlyPriceTwd: string; earlyUntil: string; location: string; locationNone: boolean; isOnline: boolean; showFull: boolean; chapterCovers: boolean; guidanceUnit: string; hostUnit: string; freeFrom: string; freeUntil: string; eventStart: string; eventEnd: string; reviewGroupId: string; teacher: string; teacherRank: string; teacherTitle: string; title: string; category: string; priceTwd: string; minRankCode: string; theme: string; description: string };
+const empty: Form = { allowPresident: false, isPublic: false, priceTba: false, hideFromHome: false, diamondFree: false, series: "", earlyBird: false, earlyPriceTwd: "", earlyUntil: "", location: "", locationNone: false, isOnline: false, showFull: true, chapterCovers: false, guidanceUnit: HQ_UNIT, hostUnit: "", freeFrom: "", freeUntil: "", eventStart: "", eventEnd: "", reviewGroupId: "", teacher: "", teacherRank: "", teacherTitle: "", title: "", category: "", priceTwd: "0", minRankCode: "none", theme: "sage", description: "" };
 
 /** 管理員：新增或修改課程（沒有 id 參數時為新增）。 */
 export default function CourseEditScreen() {
@@ -58,6 +58,7 @@ export default function CourseEditScreen() {
         locationNone: d.locationNone,
         isOnline: d.isOnline,
         showFull: d.showFull,
+        chapterCovers: d.chapterCovers,
         guidanceUnit: d.guidanceUnit,
         hostUnit: d.hostUnit,
         freeFrom: toLocal(d.admin?.freeFrom),
@@ -80,7 +81,7 @@ export default function CourseEditScreen() {
   if (!canManage) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
   if (id && !course.data) return <Screen header={false}>{course.error ? <NoticeBox tone="danger" text={course.error} /> : <LoadingView />}</Screen>;
 
-  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "diamondFree" | "earlyBird" | "earlyUntil" | "location" | "locationNone" | "isOnline" | "showFull">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "diamondFree" | "earlyBird" | "earlyUntil" | "location" | "locationNone" | "isOnline" | "showFull" | "chapterCovers">) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
   const price = Number(form.priceTwd);
   /** 複製這門課成為新的草稿（日期、EDM、音檔不帶），然後直接到新課程的編輯頁。 */
   const duplicate = async () => {
@@ -164,7 +165,7 @@ export default function CourseEditScreen() {
     }
   };
 
-  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "diamondFree" | "earlyBird" | "earlyPriceTwd" | "earlyUntil" | "location" | "locationNone" | "isOnline" | "showFull">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
+  const field = (label: string, k: Exclude<keyof Form, "allowPresident" | "isPublic" | "priceTba" | "hideFromHome" | "diamondFree" | "earlyBird" | "earlyPriceTwd" | "earlyUntil" | "location" | "locationNone" | "isOnline" | "showFull" | "chapterCovers">, opts: { placeholder?: string; multiline?: boolean; numeric?: boolean } = {}) => (
     <View style={{ gap: space.xs }}>
       <AppText variant="callout" tone="muted">
         {label}
@@ -307,6 +308,10 @@ export default function CourseEditScreen() {
         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.showFull }} onPress={() => setForm((f) => ({ ...f, showFull: !f.showFull }))} style={styles.check}>
           <Ionicons name={form.showFull ? "checkbox" : "square-outline"} size={28} color={form.showFull ? c.accent : c.textMuted} />
           <AppText variant="body">顯示完整版</AppText>
+        </Pressable>
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.chapterCovers }} onPress={() => setForm((f) => ({ ...f, chapterCovers: !f.chapterCovers }))} style={styles.check}>
+          <Ionicons name={form.chapterCovers ? "checkbox" : "square-outline"} size={28} color={form.chapterCovers ? c.accent : c.textMuted} />
+          <AppText variant="body">章節各自設定封面</AppText>
         </Pressable>
         <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: form.hideFromHome }} onPress={() => setForm((f) => ({ ...f, hideFromHome: !f.hideFromHome }))} style={styles.check}>
           <Ionicons name={form.hideFromHome ? "checkbox" : "square-outline"} size={28} color={form.hideFromHome ? c.accent : c.textMuted} />

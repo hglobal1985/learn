@@ -1,7 +1,7 @@
 import type { CourseSummary } from "@/api/client";
 
 /** 搜尋索引（後端 GET /search-index）裡每一堂章節的資料。 */
-export type SearchLesson = { id: string; courseId: string; position: number; title: string; sharer: string; sharerRankName: string; sharerTitle: string; eventDate: string | null; minutes: number; ready: boolean; completed: boolean };
+export type SearchLesson = { id: string; courseId: string; position: number; title: string; sharer: string; sharerRankName: string; sharerTitle: string; eventDate: string | null; minutes: number; ready: boolean; completed: boolean; /** 章節自己的橫式封面（沒設定為 null＝用課程封面）。 */ coverUrl: string | null };
 /** 關聯詞（輸入時列出的建議）：種類＋文字。 */
 export type SearchTerm = { kind: "系列" | "課程" | "主講人" | "獎銜" | "職稱" | "章節" | "日期"; text: string };
 export type SearchIndex = { haystack: Map<string, string>; /** 章節模式用：每一堂自己的搜尋文字（含所屬課程的主講人、系列、日期）。 */ lessonHay: Map<string, string>; terms: SearchTerm[] };

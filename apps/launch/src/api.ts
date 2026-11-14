@@ -39,7 +39,7 @@ import { collectCfStats } from "./cf-stats.ts";
 import { collectAppStats } from "./app-stats.ts";
 import { collectMuxStats } from "./mux-stats.ts";
 import { audioUrl, fileUrl, sniffImage, verifyAudioUrl, verifyFileUrl } from "./media.ts";
-import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl } from "./mux.ts";
+import { checkMuxPlayback, listMuxAssets, MuxApiError, muxPlaybackUrl, muxThumbnail } from "./mux.ts";
 
 const SESSION_DAYS = 30;
 const DEMO_VIDEO_PATH = "/media/orientation.mp4";
@@ -317,6 +317,7 @@ type CourseRow = {
   location_none: number;
   is_online: number;
   show_full: number;
+  chapter_covers: number;
   cover_key: string | null;
   edm_view_y: number;
   edm_key: string | null;
@@ -326,7 +327,7 @@ type CourseRow = {
   zero_minute_lessons: number;
 };
 
-const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.teacher_rank, c.teacher_title, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.show_full, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
+const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.teacher_rank, c.teacher_title, c.category, c.price_twd, c.min_rank_code, c.theme, c.status, c.description, c.guidance_unit, c.host_unit, c.host_center_key, c.free_from, c.free_until, c.review_group_id, c.allow_president, c.event_start, c.event_end, c.is_public, c.price_tba, c.hide_home, c.diamond_free, c.series, (SELECT a.edm_key FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_edm_key, (SELECT a.art_version FROM series_art a WHERE a.series = c.series AND c.series <> '') AS series_art_version, c.early_bird, c.early_price_twd, c.early_until, c.location, c.location_none, c.is_online, c.show_full, c.chapter_covers, c.edm_key, c.cover_key, c.edm_view_y, c.art_version,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lesson_count,
   (SELECT COALESCE(SUM(duration_minutes), 0) FROM lessons l WHERE l.course_id = c.id) AS total_minutes,
   (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id AND l.duration_minutes = 0) AS zero_minute_lessons
@@ -418,6 +419,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     locationNone: row.location_none === 1,
     isOnline: row.is_online === 1,
     showFull: row.show_full === 1,
+    chapterCovers: row.chapter_covers === 1,
     lessonCount: row.lesson_count,
     totalMinutes: row.total_minutes,
     eligible: eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row),
@@ -498,9 +500,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     ranks(ctx.db),
     memberCourseState(ctx.db, s?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, sharer, sharer_rank, sharer_title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, sharer, sharer_rank, sharer_title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date, cover_key, poster_key, art_version FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; sharer: string; sharer_rank: string; sharer_title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
+      .all<{ id: string; position: number; title: string; sharer: string; sharer_rank: string; sharer_title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null; cover_key: string | null; poster_key: string | null; art_version: number }>(),
     s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
@@ -524,6 +526,8 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       sharerRank: l.sharer_rank,
       sharerRankName: rankMap.get(l.sharer_rank)?.name ?? "",
       sharerTitle: l.sharer_title,
+      coverUrl: l.cover_key ? pubUrl(l.cover_key, l.art_version) : null,
+      posterUrl: l.poster_key ? pubUrl(l.poster_key, l.art_version) : null,
       // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
       ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
       // 完全公開的課程：任何人（含訪客與會員）都可以看章節，不需要報名。
@@ -1237,6 +1241,7 @@ async function courseFields(ctx: Ctx, body: Record<string, unknown>, creating: b
   if (body.locationNone !== undefined) sets.push(["location_none", body.locationNone === true ? 1 : 0]);
   if (body.isOnline !== undefined) sets.push(["is_online", body.isOnline === true ? 1 : 0]);
   if (body.showFull !== undefined) sets.push(["show_full", body.showFull === true ? 1 : 0]);
+  if (body.chapterCovers !== undefined) sets.push(["chapter_covers", body.chapterCovers === true ? 1 : 0]);
   if (body.earlyBird !== undefined) {
     if (body.earlyBird === true) {
       const price = Number(body.earlyPriceTwd);
@@ -1431,7 +1436,7 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
   const newId = `c${randomId(7)}`;
   const series = String(row.series || "").trim() || String(row.title ?? "").slice(0, 60);
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
-  const keep = ["subtitle", "teacher", "teacher_rank", "teacher_title", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online", "show_full"];
+  const keep = ["subtitle", "teacher", "teacher_rank", "teacher_title", "category", "price_twd", "min_rank_code", "theme", "description", "guidance_unit", "host_unit", "host_center_key", "review_group_id", "allow_president", "is_public", "price_tba", "hide_home", "diamond_free", "location", "location_none", "is_online", "show_full", "chapter_covers"];
   const cols = ["id", "sort_order", "status", "title", "series", ...keep];
   const vals = [newId, (max?.m ?? 0) + 1, "draft", `${String(row.title ?? "")}（複製）`.slice(0, 120), series, ...keep.map((k) => row[k] ?? null)];
   const stmts: D1PreparedStatement[] = [
@@ -1918,10 +1923,10 @@ const routes: [string, RegExp, Handler][] = [
       const sub = ctx.session?.sub ?? "";
       const { results } = await ctx.db
         .prepare(
-          "SELECT l.id AS id, l.course_id AS courseId, l.position AS position, l.title, l.sharer, l.sharer_rank AS sharerRank, l.sharer_title AS sharerTitle, l.event_date AS eventDate, l.duration_minutes AS minutes, l.media_type AS mediaType, l.media_ref AS mediaRef, (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.member_sub = ?) AS done FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.status = 'published' ORDER BY l.course_id, l.position",
+          "SELECT l.id AS id, l.course_id AS courseId, l.position AS position, l.title, l.sharer, l.sharer_rank AS sharerRank, l.sharer_title AS sharerTitle, l.event_date AS eventDate, l.duration_minutes AS minutes, l.media_type AS mediaType, l.media_ref AS mediaRef, l.cover_key AS coverKey, l.art_version AS artVersion, (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.member_sub = ?) AS done FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.status = 'published' ORDER BY l.course_id, l.position",
         )
         .bind(sub)
-        .all<{ id: string; courseId: string; position: number; title: string; sharer: string; sharerRank: string; sharerTitle: string; eventDate: string | null; minutes: number; mediaType: string; mediaRef: string | null; done: number | null }>();
+        .all<{ id: string; courseId: string; position: number; title: string; sharer: string; sharerRank: string; sharerTitle: string; eventDate: string | null; minutes: number; mediaType: string; mediaRef: string | null; coverKey: string | null; artVersion: number; done: number | null }>();
       return {
         lessons: results.map((r) => ({
           id: r.id,
@@ -1933,6 +1938,7 @@ const routes: [string, RegExp, Handler][] = [
           sharerTitle: r.sharerTitle,
           eventDate: r.eventDate,
           minutes: r.minutes,
+          coverUrl: r.coverKey ? pubUrl(r.coverKey, r.artVersion) : null,
           ready: (r.mediaType !== "demo" && !!r.mediaRef) || r.minutes > 0,
           completed: r.done === 1,
         })),
@@ -2285,6 +2291,8 @@ const routes: [string, RegExp, Handler][] = [
       const lesson = await ctx.db.prepare("SELECT course_id, media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ course_id: string; media_type: string; media_ref: string | null }>();
       if (!lesson) return fail(404, "not_found", "找不到這個章節");
       const files = await attachmentKeys(ctx.db, "lesson_id", id);
+      const lart = await ctx.db.prepare("SELECT cover_key, poster_key FROM lessons WHERE id = ?").bind(id).first<{ cover_key: string | null; poster_key: string | null }>();
+      files.push(...[lart?.cover_key, lart?.poster_key].filter((k): k is string => !!k));
       await ctx.db.batch([ctx.db.prepare("DELETE FROM lessons WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "lesson.delete", "lesson", id)]);
       await renumber(ctx.db, lesson.course_id);
       if (lesson.media_type === "audio" && lesson.media_ref) await ctx.env.MEDIA?.delete(lesson.media_ref).catch(() => undefined);
@@ -2675,8 +2683,8 @@ const routes: [string, RegExp, Handler][] = [
       // 課程封面與 EDM 是公開圖片（課程列表本來就要顯示；EDM 開放下載）。只服務資料庫裡仍在使用的檔案。
       const key = ctx.url.searchParams.get("k") ?? "";
       const bucket = ctx.env.MEDIA;
-      if (!bucket || !/^(edm|cover|series)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
-      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ? UNION SELECT 1 FROM series_art WHERE edm_key = ?").bind(key, key, key).first();
+      if (!bucket || !/^(edm|cover|series|lesson)\/[\w-]+\/[\w.-]+$/.test(key)) return new Response("Not found", { status: 404 });
+      const used = await ctx.db.prepare("SELECT 1 AS ok FROM courses WHERE edm_key = ? OR cover_key = ? UNION SELECT 1 FROM series_art WHERE edm_key = ? UNION SELECT 1 FROM lessons WHERE cover_key = ? OR poster_key = ?").bind(key, key, key, key, key).first();
       const obj = used ? await bucket.get(key) : null;
       if (!obj) return new Response("Not found", { status: 404 });
       return new Response(obj.body, {
@@ -2751,6 +2759,63 @@ const routes: [string, RegExp, Handler][] = [
       await ctx.db.batch([ctx.db.prepare("UPDATE courses SET cover_key = NULL, art_version = art_version + 1 WHERE id = ?").bind(id), audit(ctx.db, s.sub, "course.cover_remove", "course", id)]);
       if (old?.k) await ctx.env.MEDIA?.delete(old.k).catch(() => undefined);
       return { ok: true };
+    },
+  ],
+  [
+    "PUT",
+    /^\/admin\/lessons\/([\w-]+)\/art$/,
+    async (ctx, [id]) => {
+      // 章節封面（課程要先勾選「章節各自設定封面」）：part=cover（橫式 16:9）或 poster（直式）；圖片已在瀏覽器裁切、壓縮。
+      const s = requireMember(ctx);
+      const part = ctx.url.searchParams.get("part");
+      if (part !== "cover" && part !== "poster") return fail(400, "invalid_part", "封面類型不正確");
+      const lesson = await ctx.db.prepare("SELECT l.course_id, l.cover_key, l.poster_key, c.chapter_covers FROM lessons l JOIN courses c ON c.id = l.course_id WHERE l.id = ?").bind(id).first<{ course_id: string; cover_key: string | null; poster_key: string | null; chapter_covers: number }>();
+      if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      await requireCourseArt(ctx, s, lesson.course_id);
+      if (lesson.chapter_covers !== 1) fail(409, "chapter_covers_off", "這門課程尚未勾選「章節各自設定封面」");
+      const bucket = ctx.env.MEDIA ?? fail(503, "storage_not_ready", "圖片儲存空間尚未啟用");
+      const data = new Uint8Array(await ctx.req.arrayBuffer());
+      if (!data.byteLength || data.byteLength > 3 * 1024 * 1024) fail(413, "invalid_size", "封面大小需在 3MB 以內（上傳時會自動壓縮）");
+      const img = sniffImage(data) ?? fail(400, "invalid_image", "請上傳 JPG、PNG 或 WebP 圖片");
+      const key = `lesson/${id}/${crypto.randomUUID()}.${img.ext}`;
+      await bucket.put(key, data.buffer as ArrayBuffer, { httpMetadata: { contentType: img.type } });
+      const col = part === "cover" ? "cover_key" : "poster_key";
+      const old = part === "cover" ? lesson.cover_key : lesson.poster_key;
+      await ctx.db.batch([ctx.db.prepare(`UPDATE lessons SET ${col} = ?, art_version = art_version + 1 WHERE id = ?`).bind(key, id), audit(ctx.db, s.sub, `lesson.${part}_upload`, "lesson", id, key)]);
+      if (old) await bucket.delete(old).catch(() => undefined);
+      return { ok: true, url: pubUrl(key, 0) };
+    },
+  ],
+  [
+    "DELETE",
+    /^\/admin\/lessons\/([\w-]+)\/art$/,
+    async (ctx, [id]) => {
+      const s = requireMember(ctx);
+      const part = ctx.url.searchParams.get("part");
+      if (part !== "cover" && part !== "poster") return fail(400, "invalid_part", "封面類型不正確");
+      const lesson = await ctx.db.prepare("SELECT course_id, cover_key, poster_key FROM lessons WHERE id = ?").bind(id).first<{ course_id: string; cover_key: string | null; poster_key: string | null }>();
+      if (!lesson) return fail(404, "not_found", "找不到這個章節");
+      await requireCourseArt(ctx, s, lesson.course_id);
+      const col = part === "cover" ? "cover_key" : "poster_key";
+      const old = part === "cover" ? lesson.cover_key : lesson.poster_key;
+      await ctx.db.batch([ctx.db.prepare(`UPDATE lessons SET ${col} = NULL, art_version = art_version + 1 WHERE id = ?`).bind(id), audit(ctx.db, s.sub, `lesson.${part}_remove`, "lesson", id)]);
+      if (old) await ctx.env.MEDIA?.delete(old).catch(() => undefined);
+      return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/admin\/lessons\/([\w-]+)\/mux-frame$/,
+    async (ctx, [id]) => {
+      // Mux 影片任一秒的截圖（簽名縮圖），讓管理員挑章節封面。只代理圖片，不回傳 Playback ID。
+      await requireLessonManager(ctx, id);
+      const l = await ctx.db.prepare("SELECT media_type, media_ref FROM lessons WHERE id = ?").bind(id).first<{ media_type: string; media_ref: string | null }>();
+      if (!l || l.media_type !== "mux" || !l.media_ref) return fail(400, "not_mux", "這個章節不是 Mux 影片");
+      const t = Number(ctx.url.searchParams.get("time"));
+      if (!Number.isFinite(t) || t < 0 || t > 86400) return fail(400, "invalid_time", "時間不正確");
+      const frame = await muxThumbnail(ctx.env, l.media_ref, t);
+      if (!frame) return fail(502, "mux_frame_failed", "取得影片截圖失敗，請稍後再試");
+      return new Response(frame.bytes, { headers: { "content-type": frame.type, "cache-control": "no-store" } });
     },
   ],
   [
@@ -3001,6 +3066,8 @@ const routes: [string, RegExp, Handler][] = [
       if (impact.registrations > 0 && body.confirm !== "YES") fail(409, "confirm_required", `這門課程已有 ${impact.registrations} 筆報名紀錄；刪除需輸入 YES 確認`);
       const audio = await ctx.db.prepare("SELECT media_ref FROM lessons WHERE course_id = ? AND media_type = 'audio' AND media_ref IS NOT NULL").bind(id).all<{ media_ref: string }>();
       const files = await attachmentKeys(ctx.db, "course_id", id);
+      const lessonArt = await ctx.db.prepare("SELECT cover_key, poster_key FROM lessons WHERE course_id = ?").bind(id).all<{ cover_key: string | null; poster_key: string | null }>();
+      for (const r of lessonArt.results) files.push(...[r.cover_key, r.poster_key].filter((k): k is string => !!k));
       const art = await ctx.db.prepare("SELECT edm_key, cover_key FROM courses WHERE id = ?").bind(id).first<{ edm_key: string | null; cover_key: string | null }>(); // cover_key 是舊版封面（已不再使用，刪課程時順便清掉）
       // 只含這門課的報名紀錄整筆刪除；同時報名多門課的紀錄只移除這門課並扣掉金額。
       const onlyThis = "id IN (SELECT order_id FROM order_items WHERE course_id = ?1) AND NOT EXISTS (SELECT 1 FROM order_items x WHERE x.order_id = orders.id AND x.course_id <> ?1)";

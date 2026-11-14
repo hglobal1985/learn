@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
+import { LessonArt } from "@/features/admin/lesson-art";
 import { RankTitleRow, useRankOptions } from "@/features/admin/person-extra";
 import { AttachmentManager } from "@/features/attachments";
 import { confirmAsk } from "@/features/confirm";
@@ -117,7 +118,7 @@ export default function LessonManagerScreen() {
       {msg ? <NoticeBox tone="danger" text={msg} /> : null}
       {lessons.map((l, i) => (
         <LessonEditor
-          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.sharer}:${l.sharerRank}:${l.sharerTitle}:${l.minutes}:${l.eventDate}`}
+          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.sharer}:${l.sharerRank}:${l.sharerTitle}:${l.coverUrl}:${l.posterUrl}:${l.minutes}:${l.eventDate}`}
           lesson={l}
           prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
@@ -125,6 +126,7 @@ export default function LessonManagerScreen() {
           teacherRank={tRank}
           teacherTitle={tJob}
           rankOptions={rankOptions}
+          chapterCovers={!!course.data?.chapterCovers}
           courseDate={course.data?.eventStart ?? undefined}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
@@ -244,6 +246,7 @@ function LessonEditor({
   teacherTitle,
   courseDate,
   rankOptions,
+  chapterCovers,
 }: {
   allowMux: boolean;
   /** 上一堂的活動日期（有才會顯示「同上」勾選）。 */
@@ -255,6 +258,8 @@ function LessonEditor({
   teacherRank: string;
   teacherTitle: string;
   rankOptions: SelectOption[];
+  /** 課程勾選「章節各自設定封面」時才顯示封面設定。 */
+  chapterCovers: boolean;
   lesson: Lesson;
   onSaved: () => void;
   onUp?: () => void;
@@ -356,6 +361,7 @@ function LessonEditor({
         <SharerField value={sharer} onChange={setSharer} teacher={teacher} same={sameT} onToggleSame={() => (setSharer(sameT ? "" : teacher), setSharerRank(sameT ? "" : teacherRank), setSharerTitle(sameT ? "" : teacherTitle))} label={`第 ${lesson.position} 堂分享者`} />
       </View>
       <RankTitleRow rank={sharerRank} title={sharerTitle} onRank={setSharerRank} onTitle={setSharerTitle} rankOptions={rankOptions} readOnly={sameT} who={`第 ${lesson.position} 堂分享者`} />
+      {chapterCovers ? <LessonArt lesson={lesson} onChanged={onSaved} /> : null}
       <View style={styles.dateHead}>
         <AppText variant="callout" style={{ flex: 1 }}>
           活動日期

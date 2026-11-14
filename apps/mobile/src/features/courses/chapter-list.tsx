@@ -42,8 +42,8 @@ export function ChapterList({ groups }: { groups: ChapterGroup[] }) {
                 style={[styles.row, { backgroundColor: c.surface, borderColor: c.border }]}
               >
                 <View style={styles.thumb}>
-                  {course.coverUrl || course.edmUrl ? (
-                    <Image source={{ uri: resolveUrl((course.coverUrl || course.edmUrl) as string) }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
+                  {lesson.coverUrl || course.coverUrl || course.edmUrl ? (
+                    <Image source={{ uri: resolveUrl((lesson.coverUrl || course.coverUrl || course.edmUrl) as string) }} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
                   ) : (
                     <CourseCover theme={course.theme} label="" title={course.series || course.title} fill />
                   )}

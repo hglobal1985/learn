@@ -43,8 +43,8 @@ export default function LessonScreen() {
   const c = course.data;
   const lessonRow = c?.lessons.find((l) => l.id === lessonId);
   const track = useMemo(
-    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: c.edmUrl }) : null),
-    [playback, c?.id, c?.title, lessonRow?.id, lessonRow?.title, legacyYoutube],
+    () => (playback && c && lessonRow && !legacyYoutube ? buildTrack(playback, { courseId: c.id, lessonId: lessonRow.id, title: lessonRow.title, subtitle: c.title, artwork: lessonRow.posterUrl || lessonRow.coverUrl || c.edmUrl }) : null),
+    [playback, c?.id, c?.title, lessonRow?.id, lessonRow?.title, lessonRow?.coverUrl, lessonRow?.posterUrl, legacyYoutube],
   );
   useEffect(() => {
     if (member && c && lessonRow) saveLastLesson(member.sub, { courseId: c.id, lessonId: lessonRow.id, lessonTitle: lessonRow.title, courseTitle: c.title });
