@@ -9,7 +9,7 @@ export default function SeriesPage() {
   return (
     <>
       <PageHeader title={series} path={`/series/${encodeURIComponent(series)}`} />
-      <CoursesView series={series} />
+      <CoursesView series={series} inStack />
     </>
   );
 }

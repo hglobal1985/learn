@@ -18,7 +18,7 @@ const ALL = "";
 const GAP = space.md;
 
 /** 全部課程清單。initialCategory／series 由網址（短網址 /c、/s 或 ?category=、?series=）帶入；series 篩選時上方有可清除的標籤。 */
-export function CoursesView({ initialCategory = "", series = "" }: { initialCategory?: string; series?: string }) {
+export function CoursesView({ initialCategory = "", series = "", inStack = false }: { initialCategory?: string; series?: string; inStack?: boolean }) {
   const { data, error, loading, reload } = useApi<CourseSummary[]>("/courses");
   const [category, setCategory] = useState(initialCategory || ALL);
   const seriesFilter = series;
@@ -66,7 +66,7 @@ export function CoursesView({ initialCategory = "", series = "" }: { initialCate
   if (seriesFilter) {
     const all = byNearest(courses.filter((x) => x.series === seriesFilter));
     return (
-      <Screen>
+      <Screen header={!inStack}>
         {filterRow}
         {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
         {loading && !data ? <LoadingView /> : null}
@@ -78,7 +78,7 @@ export function CoursesView({ initialCategory = "", series = "" }: { initialCate
     );
   }
   return (
-    <Screen>
+    <Screen header={!inStack}>
       {filterRow}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}

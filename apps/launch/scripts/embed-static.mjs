@@ -47,7 +47,14 @@ if (files["/index.html"]) {
     '<meta property="og:image" content="https://learn.hglobal1985.com/icon-512.png"/>',
   ].join("");
   const html = Buffer.from(files["/index.html"].data, "base64").toString("utf8");
-  if (!html.includes("apple-touch-icon")) files["/index.html"].data = Buffer.from(html.replace("</head>", `${tags}</head>`), "utf8").toString("base64");
+  let out = html;
+  if (!out.includes("apple-touch-icon")) out = out.replace("</head>", `${tags}</head>`);
+  // iPhone 的瀏海／狀態列／底部橫條「安全區」：viewport-fit=cover 才能讓 App 內量到安全區；狀態列用半透明樣式，畫面延伸到狀態列底下，
+  // 由 App 自己（app/_layout.tsx）把標題列與狀態列底色處理好。100dvh：手機網址列伸縮時，畫面高度跟著可視範圍，底部選單不會被推出畫面或留白。
+  out = out.replace(/<meta name="viewport"[^>]*>/, '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>');
+  if (!out.includes("apple-mobile-web-app-status-bar-style")) out = out.replace("</head>", '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/></head>');
+  if (!out.includes("hg-dvh")) out = out.replace("</head>", '<style id="hg-dvh">@supports (height:100dvh){html,body,#root{height:100dvh}}</style></head>');
+  files["/index.html"].data = Buffer.from(out, "utf8").toString("base64");
 }
 if (!files["/index.html"]) throw Error("找不到 apps/mobile/dist/index.html，請先執行 npm run build:web -w @learn/mobile");
 mkdirSync(new URL("../.generated/", import.meta.url), { recursive: true });

@@ -28,7 +28,7 @@ export function ShortLinkScreen() {
   return (
     <>
       <PageHeader title={data.value} path={`/${slug}`} />
-      {data.kind === "category" ? <CoursesView initialCategory={data.value} /> : <CoursesView series={data.value} />}
+      {data.kind === "category" ? <CoursesView initialCategory={data.value} inStack /> : <CoursesView series={data.value} inStack />}
     </>
   );
 }
