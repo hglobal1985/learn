@@ -5,7 +5,6 @@ import { loadLastLesson, type LastLesson } from "@/lib/last-lesson";
 import { StyleSheet, View } from "react-native";
 import { api, type CourseSummary } from "@/api/client";
 import { confirmSheet } from "@/features/confirm";
-import { cleanUnit } from "@/features/format";
 import { CourseCard } from "@/features/courses/course-card";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -36,11 +35,14 @@ export default function LearningScreen() {
   // 學習中＝已開通的課程，或播放超過 1% 的課程（含免費、沒有報名紀錄的）；等待審核的另外顯示。
   const inLearning = (c: CourseSummary) => (c.enrollment === "opened" || c.started) && !c.hiddenFromLearning;
   const [kind, setKind] = useState("");
-  const [unit, setUnit] = useState("");
+  const [seriesSel, setSeriesSel] = useState("");
   const enrolled = useMemo(() => (data ?? []).filter((c) => inLearning(c) || c.enrollment === "pending"), [data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const units = useMemo(() => [...new Set(enrolled.flatMap((c) => c.hostUnit.split("、")).filter(Boolean))], [enrolled]);
-  const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (unit === "" || c.hostUnit.split("、").includes(unit)));
-  const mine = shown.filter(inLearning);
+  // 系列篩選：列出學習中課程所屬的系列。
+  const seriesList = useMemo(() => [...new Set(enrolled.map((c) => c.series).filter(Boolean))], [enrolled]);
+  const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (seriesSel === "" || c.series === seriesSel));
+  // 依最近一次學習的時間排序（最近的在上面）；還沒學習過的排後面。
+  const byRecent = (a: CourseSummary, b: CourseSummary) => (b.lastLearnedAt ?? "").localeCompare(a.lastLearnedAt ?? "");
+  const mine = shown.filter(inLearning).sort(byRecent);
   const pending = shown.filter((c) => c.enrollment === "pending");
   const inProgress = mine.filter((c) => c.completedLessons < c.lessonCount);
   const finished = mine.filter((c) => c.lessonCount > 0 && c.completedLessons >= c.lessonCount);
@@ -61,7 +63,7 @@ export default function LearningScreen() {
       {enrolled.length ? (
         <View style={styles.filters}>
           <Select label="費用" value={kind} options={[{ key: "", label: "全部（免費與付費）" }, { key: "free", label: "免費" }, { key: "paid", label: "付費" }]} onChange={setKind} />
-          <Select label="主辦單位" value={unit} options={[{ key: "", label: "全部單位" }, ...units.map((u) => ({ key: u, label: cleanUnit(u) }))]} onChange={setUnit} />
+          <Select label="系列" value={seriesSel} options={[{ key: "", label: "全部系列" }, ...seriesList.map((x) => ({ key: x, label: x }))]} onChange={setSeriesSel} />
         </View>
       ) : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}

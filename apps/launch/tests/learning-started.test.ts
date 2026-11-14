@@ -69,6 +69,8 @@ test("播放進度：沒看完的章節也讓課程進度前進（只進不退�
   assert.equal(await pct(), 0);
   assert.equal((await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: 0.5 })).status, 200);
   assert.equal(await pct(), 25); // 20 分鐘裡看了 5 分鐘
+  const mine = (await call<CourseSummary[]>("GET", "/courses", student)).data.find((c) => c.id === created.id)!;
+  assert.match(mine.lastLearnedAt ?? "", /^\d{4}-\d{2}-\d{2}T/); // 最近一次學習時間（學習中依此排序）
   await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: 0.2 }); // 倒轉重看：不退步
   assert.equal(await pct(), 25);
   await call("POST", `/courses/${created.id}/lessons/${b.id}/watch`, student, { ratio: 1 });
