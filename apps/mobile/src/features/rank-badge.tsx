@@ -7,7 +7,7 @@ export const BADGE_SIZE = 92;
 const K = BADGE_SIZE / 72; // 閃光球的大小以 72 高為基準，隨徽章等比縮放
 const BADGE_W = Math.round((BADGE_SIZE * 380) / 720);
 
-/** 各徽章圖案在 720 高畫布裡的上下範圍（像素；量自 24 張圖）。閃光球只出現在圖案上。 */
+/** 暫時備援：本地舊圖庫各徽章圖案在 720 高畫布裡的上下範圍（像素）。正式以會員中心給的 badge 範圍為準，中央穩定後整張表會刪除。 */
 const ART_Y: Record<string, [number, number]> = {
   "01": [257, 463], "02": [235, 488], "03": [235, 488], "04": [181, 552], "05": [167, 564], "06": [181, 552], "07": [167, 564],
   "08": [167, 564], "09": [167, 564], "10": [167, 564], "11": [167, 564], "12": [167, 564], "13": [137, 593], "14": [137, 593],
@@ -60,7 +60,7 @@ function Spark({ cx, cy, size, delay, period, still }: { cx: number; cy: number;
  * 獎銜徽章圖＋星星般閃爍的閃光球：在徽章圖案上，幾顆小星形光球此起彼落地亮起、旋轉、淡出。
  * 系統開啟「減少動態效果」時只顯示靜態徽章。
  */
-export function RankBadge({ url, label, layoutHeight = BADGE_SIZE }: { url: string; label?: string | null; layoutHeight?: number }) {
+export function RankBadge({ url, label, art, layoutHeight = BADGE_SIZE }: { url: string; label?: string | null; art?: { width: number; height: number; top: number; bottom: number } | null; layoutHeight?: number }) {
   const [failed, setFailed] = useState(false);
   const breathe = useRef(new Animated.Value(0)).current;
   const [still, setStill] = useState(false);
@@ -84,11 +84,15 @@ export function RankBadge({ url, label, layoutHeight = BADGE_SIZE }: { url: stri
     return () => loop.stop();
   }, [still, failed, breathe]);
   const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
-  // 由網址的檔名編號（?f=13-Diamond → 13）找出圖案範圍，閃光球就落在圖案上
-  const [top, bottom] = useMemo(() => ART_Y[/f=(\d\d)-/.exec(url)?.[1] ?? ""] ?? [0, 720], [url]);
+  // 圖案範圍：優先用會員中心給的（badge.art_top／art_bottom、畫布高 height）；沒有時（暫時備援的本地圖庫）才用檔名編號查 ART_Y。閃光球就落在圖案上。
+  const [top, bottom, canvasH] = useMemo((): [number, number, number] => {
+    if (art && art.height > 0) return [art.top, art.bottom, art.height];
+    const r = ART_Y[/f=(\d\d)-/.exec(url)?.[1] ?? ""] ?? [0, 720];
+    return [r[0], r[1], 720];
+  }, [art, url]);
   if (failed) return null;
-  const y0 = (top / 720) * BADGE_SIZE;
-  const artH = ((bottom - top) / 720) * BADGE_SIZE;
+  const y0 = (top / canvasH) * BADGE_SIZE;
+  const artH = ((bottom - top) / canvasH) * BADGE_SIZE;
   return (
     // 外層只佔 layoutHeight 的高度（會員抬頭傳 48＝頭像高度，所以徽章放大後上下間距不變）；徽章本體（BADGE_SIZE 高）置中，上下溢出到外面。
     <View style={{ width: BADGE_W, height: layoutHeight, overflow: "visible", alignItems: "center", justifyContent: "center" }} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>

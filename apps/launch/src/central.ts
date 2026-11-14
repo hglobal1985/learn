@@ -334,6 +334,33 @@ export async function rankOptionList(token: string): Promise<RankOption[]> {
   });
 }
 
+/** 中央提供的獎銜徽章：公開完整網址＋圖案範圍（畫布 width×height 內，圖案的上下緣）。 */
+export type RankBadgeInfo = { url: string; width: number; height: number; top: number; bottom: number };
+
+/** 從 field-definitions 回應取出每個獎銜的徽章（沒有徽章＝null）。網址一律用中央給的完整網址（必須是 https）。 */
+export function parseRankBadges(b: unknown): Map<string, RankBadgeInfo | null> {
+  const out = new Map<string, RankBadgeInfo | null>();
+  const list: unknown[] = Array.isArray(b) ? b : b && typeof b === "object" ? Object.values((b as { fields?: unknown }).fields ?? b) : [];
+  const rank = list.find((f) => f && typeof f === "object" && (f as { key?: unknown }).key === "rank") as { options?: { value?: unknown; badge_url?: unknown; badge?: { width?: unknown; height?: unknown; art_top?: unknown; art_bottom?: unknown } | null }[] } | undefined;
+  for (const o of rank?.options ?? []) {
+    if (typeof o.value !== "string") continue;
+    const m = o.badge;
+    const ok = typeof o.badge_url === "string" && /^https:\/\//.test(o.badge_url) && m && [m.width, m.height, m.art_top, m.art_bottom].every((n) => typeof n === "number" && Number.isFinite(n)) && (m.height as number) > 0;
+    out.set(o.value, ok ? { url: o.badge_url as string, width: m!.width as number, height: m!.height as number, top: m!.art_top as number, bottom: m!.art_bottom as number } : null);
+  }
+  return out;
+}
+
+/** 獎銜徽章清單（中央是唯一來源）；快取 1 天、只放記憶體；讀不到回 undefined（不快取，呼叫端暫用備援）。 */
+export async function rankBadges(token: string): Promise<Map<string, RankBadgeInfo | null> | undefined> {
+  return cached<Map<string, RankBadgeInfo | null> | undefined>("rank-badges", 86_400_000, async () => {
+    const res = await callCentral(token, "/v1/amway/field-definitions");
+    if (!res?.ok) return undefined;
+    const m = parseRankBadges(await res.json().catch(() => null));
+    return m.size ? m : undefined;
+  });
+}
+
 export type AmwayFieldView = { value: string; pending: string | null; status: string };
 export type CentralProfileView = { legalName: string; nickname: string; email: string; enabled: boolean; hglobal: boolean; hglobalSystems: string[]; fields: Record<"education_system" | "education_center" | "rank", AmwayFieldView>; rankOptions: RankOption[] };
 const textOf = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && typeof (v as { option?: unknown }).option === "string" ? (v as { option: string }).option : "");

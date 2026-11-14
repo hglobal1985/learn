@@ -46,7 +46,7 @@ export function MemberHeader({ member, onPress }: { member: Member; onPress?: ()
         {/* 徽章緊貼在獎銜標籤右邊 */}
         {member.rankBadge ? (
           <View style={{ marginLeft: -space.xs }}>
-            <RankBadge url={member.rankBadge} label={member.rankLabel} layoutHeight={AVATAR} />
+            <RankBadge url={member.rankBadge} label={member.rankLabel} art={member.rankBadgeArt} layoutHeight={AVATAR} />
           </View>
         ) : null}
       </View>

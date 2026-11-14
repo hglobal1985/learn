@@ -30,7 +30,7 @@ import {
   type Rank,
 } from "./contract.ts";
 import { flushEmails } from "./email.ts";
-import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, reportIntegration, saveContactEmail, validEmail, verifyWebhook, APP_ID, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
+import { rankBadges, amwayMe, centerKey, centerList, rankOptionList, centralProfileView, centralSuggest, centralWriteField, contactEmail, forgetMember, legalNameOf, profileGaps, profileSummary, rankOptions, rankValue, reportIntegration, saveContactEmail, validEmail, verifyWebhook, APP_ID, isAdmin, looksLikeJwt, memberContext, rankEligibility, verifyAccessToken } from "./central.ts";
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
@@ -1744,19 +1744,28 @@ const routes: [string, RegExp, Handler][] = [
       const labels: Record<Duty, string> = { register: "報名窗口", collect: "收費窗口", review: "審核員" };
       // 向會員中心的幾個查詢彼此獨立，同時送出（以前是一個接一個，首頁會慢）。
       const central = s.kind === "central" ? s : null;
-      const [, rankMap, rv, opts, missing] = await Promise.all([
+      const [, rankMap, rv, opts, missing, badgeMap] = await Promise.all([
         syncContact(ctx, s).catch(() => undefined),
         ranks(ctx.db),
         central ? rankValue(central.sub, central.token).catch(() => undefined) : undefined,
         central ? rankOptions(central.token).catch(() => new Map<string, string>()) : undefined,
         central ? profileGaps(central.sub, central.token, null).catch(() => []) : undefined,
+        central ? rankBadges(central.token).catch(() => undefined) : undefined,
       ]);
       const member = memberOf(s, rankMap, { duties: results.map((r) => labels[r.duty]) });
       member.canViewStats = await canViewStats(ctx, s).catch(() => false);
       if (central) {
         // 獎銜：值為空或「無／none」顯示「安麗寶寶」；其餘用中央選項的名稱，查不到退回本地階梯名稱。
         if (rv !== undefined) member.rankLabel = rv && rv !== "none" && rv !== "無" ? (opts?.get(rv) ?? rankLabelOf(rv, rankMap)) : "安麗寶寶";
-        if (rv !== undefined) member.rankBadge = rankBadgeUrl(rv, member.rankLabel);
+        if (rv !== undefined) {
+          // 徽章以中央為準（badge_url 完整網址＋圖案範圍）；中央沒有徽章就不顯示。暫時備援：中央讀不到時才用本地 R2 的舊圖庫。
+          const b = badgeMap;
+          const info = b && rv ? b.get(rv) : undefined;
+          if (b && rv) {
+            member.rankBadge = info?.url ?? null;
+            member.rankBadgeArt = info ? { width: info.width, height: info.height, top: info.top, bottom: info.bottom } : null;
+          } else member.rankBadge = rankBadgeUrl(rv, member.rankLabel);
+        }
         // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
         member.profileMissing = missing ?? [];
         // 資料不完整時，把視窗要用的資料一起帶回去（來源都已在快取，不用再問會員中心，視窗才能立刻顯示）。
