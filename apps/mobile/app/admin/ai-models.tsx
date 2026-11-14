@@ -10,7 +10,8 @@ import { AppText, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, S
 type Kind = "speech" | "text" | "embedding";
 type Model = { id: string; name: string; vendor: string; kind: Kind; cost: string; costLevel: "低" | "中" | "高"; strengths: string; bestFor: string; needsKey: boolean };
 type Job = { key: string; label: string; desc: string; kind: Kind; default: string };
-type Usage = { freeOnly: boolean; capEnabled: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
+type ClaudeUsage = { month: string; spentUsd: number; capUsd: number; stopped: boolean; resetsAt: string; capChoices: number[] };
+type Usage = { claude: ClaudeUsage; claudeMonthlyCapUsd: number; freeOnly: boolean; capEnabled: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
 type KeyInfo = { key: string; label: string; ready: boolean; need: string; steps: string };
 type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string>; usage: Usage; keys: KeyInfo[] };
 const KIND_LABEL: Record<Kind, string> = { speech: "語音轉文字", text: "文字整理", embedding: "語意搜尋" };
@@ -54,7 +55,7 @@ export default function AiModelsScreen() {
       setTesting(null);
     }
   };
-  const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap" | "capEnabled">>, ok: string) => {
+  const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap" | "capEnabled" | "claudeMonthlyCapUsd">>, ok: string) => {
     setMsg(null);
     try {
       const r = await api<Data>("PUT", "/admin/ai-models", { settings });
@@ -150,6 +151,38 @@ export default function AiModelsScreen() {
                 </View>
                 <AppText variant="caption" tone="muted">
                   開啟時，Claude 這類沒有免費額度的模型不能選用。用量是程式自己依模型換算的估計值，正確數字請看 Cloudflare 後台的 Workers AI 頁面。
+                </AppText>
+              </Card>
+            </Section>
+          ) : null}
+          {u ? (
+            <Section title="Claude 本月預算">
+              <Card>
+                <AppText variant="headline">
+                  US${u.claude.spentUsd.toFixed(2)} ／ US${u.claude.capUsd}
+                  {u.claude.stopped ? "　已自動停止" : ""}
+                </AppText>
+                <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: "hidden" }}>
+                  <View style={{ height: 10, width: `${Math.min(100, (u.claude.spentUsd / u.claude.capUsd) * 100)}%`, backgroundColor: u.claude.stopped ? c.danger : c.accent }} />
+                </View>
+                <AppText variant="caption" tone="muted">
+                  每個月最多花這個金額，用到就完全停止呼叫 Claude（不會超過），下個月 1 日早上 8:00（台灣時間）自動恢復。上限最高 US$100，沒有關閉開關。
+                </AppText>
+                <AppText variant="callout">每月上限</AppText>
+                <View style={styles.chips}>
+                  {u.claude.capChoices.map((n) => {
+                    const on = u.claude.capUsd === n;
+                    return (
+                      <Pressable key={n} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ claudeMonthlyCapUsd: n }, `Claude 每月上限改為 US$${n}`))} style={[styles.chip, { flex: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                        <AppText variant="callout" style={{ fontWeight: on ? "700" : "400" }}>
+                          US${n}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <AppText variant="caption" tone="muted">
+                  金額是程式依 Anthropic 牌價與每次回應的實際用量換算的，每次呼叫前會先用最壞情況預留，確定不會超過才送出。要多一層保險，請同時到 Anthropic 後台把「支出上限」也設成 US$100。
                 </AppText>
               </Card>
             </Section>

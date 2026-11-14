@@ -15,6 +15,8 @@ export type AiModel = {
   bestFor: string;
   /** 用量換算成 Workers AI 的「點數」（neuron）；外部模型（Claude）沒有免費額度，所以沒有 */
   neurons?: { perMinute?: number; perMInput?: number; perMOutput?: number };
+  /** 外部模型（Claude）的美元牌價（每百萬 token）；longInput／longOutput 是單次輸入超過 10 萬 token 時的牌價（Haiku） */
+  usd?: { perMInput: number; perMOutput: number; longInput?: number; longOutput?: number };
   /** 需要另外申請金鑰（由業主在 Cloudflare 後台設定，不放程式裡） */
   needsKey: boolean;
 };
@@ -31,8 +33,8 @@ export const AI_MODELS: AiModel[] = [
   { id: "@cf/openai/whisper", name: "Whisper（標準版）", vendor: "Cloudflare（OpenAI 模型）", kind: "speech", cost: "約 US$0.0005／音訊分鐘；每天免費額度約可轉 240 分鐘", costLevel: "低", strengths: "較舊的版本，點數略省，中文準確度略低", bestFor: "免費額度快不夠、對準確度要求不高時", neurons: { perMinute: 41.14 }, needsKey: false },
   { id: "@cf/meta/llama-3.1-8b-instruct-fp8-fast", name: "Llama 3.1 8B（快速版）", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.045／百萬字進、US$0.384／百萬字出", costLevel: "低", strengths: "速度快、最省額度；中文理解普通，偶爾抓錯重點", bestFor: "大量、簡單的整理（短關鍵字）", neurons: { perMInput: 4119, perMOutput: 34868 }, needsKey: false },
   { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.293／百萬字進、US$2.253／百萬字出", costLevel: "中", strengths: "理解力與中文表現比 8B 好很多，仍在 Cloudflare 內不需金鑰", bestFor: "關鍵字、hashtag、摘要（預設）", neurons: { perMInput: 26668, perMOutput: 204805 }, needsKey: false },
-  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰，沒有每日免費額度）", costLevel: "中", strengths: "中文整理與歸納品質高、速度快", bestFor: "品質要求較高的摘要與關鍵字", needsKey: true },
-  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰，沒有每日免費額度），比 Haiku 貴", costLevel: "高", strengths: "理解與寫作最細緻，能處理很長的逐字稿", bestFor: "重要課程的精修摘要；日常不建議（較貴）", needsKey: true },
+  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", vendor: "Anthropic", kind: "text", cost: "US$0.10／百萬 token 進、US$0.50／百萬 token 出（單次輸入超過 10 萬 token 為 $0.50／$2.50）；需另外申請金鑰，沒有每日免費額度", costLevel: "低", strengths: "中文整理與歸納品質高、速度快，Claude 裡最便宜", bestFor: "品質要求較高的摘要與關鍵字", usd: { perMInput: 0.1, perMOutput: 0.5, longInput: 0.5, longOutput: 2.5 }, needsKey: true },
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vendor: "Anthropic", kind: "text", cost: "US$2／百萬 token 進、US$10／百萬 token 出；需另外申請金鑰，沒有每日免費額度", costLevel: "中", strengths: "理解與寫作最細緻，能處理很長的逐字稿", bestFor: "重要課程的精修摘要；比 Haiku 貴 20 倍，日常不建議", usd: { perMInput: 2, perMOutput: 10 }, needsKey: true },
   { id: "@cf/baai/bge-m3", name: "BGE-M3", vendor: "Cloudflare（BAAI 模型）", kind: "embedding", cost: "約 US$0.0118／百萬字", costLevel: "低", strengths: "多語言（100 多種），中文與中英混用表現好", bestFor: "語意搜尋的首選（預設）", neurons: { perMInput: 1073 }, needsKey: false },
 ];
 
@@ -43,8 +45,10 @@ export type AiSelection = Record<string, string>;
 /** Cloudflare Workers AI 每天免費 10,000 點，UTC 00:00（台灣時間 08:00）重新計算。 */
 export const FREE_DAILY_NEURONS = 10000;
 export const CAP_CHOICES = [5000, 7000, 9000] as const;
-export type AiSettings = { freeOnly: boolean; dailyCap: number; capEnabled: boolean };
-export const DEFAULT_AI_SETTINGS: AiSettings = { freeOnly: true, dailyCap: 9000, capEnabled: true };
+export type AiSettings = { freeOnly: boolean; dailyCap: number; capEnabled: boolean; claudeMonthlyCapUsd: number };
+/** Claude 每月預算上限（美元）：業主規定不可超過 100，所以選項最高 100，且沒有關閉開關。 */
+export const CLAUDE_CAP_CHOICES = [25, 50, 100] as const;
+export const DEFAULT_AI_SETTINGS: AiSettings = { freeOnly: true, dailyCap: 9000, capEnabled: true, claudeMonthlyCapUsd: 100 };
 
 export function defaultSelection(): AiSelection {
   return Object.fromEntries(AI_JOBS.map((j) => [j.key, j.default]));
@@ -82,6 +86,7 @@ export async function saveSelection(db: D1Database, sel: AiSelection): Promise<v
 export function normalizeSettings(raw: unknown, base: AiSettings = DEFAULT_AI_SETTINGS): AiSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return {
+    claudeMonthlyCapUsd: (CLAUDE_CAP_CHOICES as readonly number[]).includes(r.claudeMonthlyCapUsd as number) ? (r.claudeMonthlyCapUsd as number) : base.claudeMonthlyCapUsd,
     capEnabled: r.capEnabled === undefined ? base.capEnabled : r.capEnabled === true,
     freeOnly: r.freeOnly === undefined ? base.freeOnly : r.freeOnly === true,
     dailyCap: (CAP_CHOICES as readonly number[]).includes(r.dailyCap as number) ? (r.dailyCap as number) : base.dailyCap,
@@ -167,7 +172,11 @@ export async function usageSummary(db: D1Database, now = new Date()) {
   const st = await loadSettings(db);
   const used = await todayUsed(db, usageDay(now));
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-  return { ...st, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: st.capEnabled && used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
+  const month = monthKey(now);
+  const spent = await monthSpentMicro(db, month);
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const claude = { month, spentUsd: spent / 1e6, capUsd: st.claudeMonthlyCapUsd, stopped: spent >= st.claudeMonthlyCapUsd * 1e6, resetsAt: nextMonth.toISOString(), capChoices: CLAUDE_CAP_CHOICES };
+  return { ...st, claude, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: st.capEnabled && used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
 }
 
 // ───────────── 金鑰／連線狀態與測試 ─────────────
@@ -205,15 +214,89 @@ export async function testConnection(env: Env, db: D1Database, target: string): 
     return "Workers AI 連線成功";
   }
   if (target === "anthropic") {
-    if (!env.ANTHROPIC_API_KEY) throw new Error("尚未設定 ANTHROPIC_API_KEY");
-    await reserveAi(db, "claude-haiku-5-5", { inputTokens: 5 }); // 開啟「只用免費模型」時會被擋
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
-    });
-    if (!res.ok) throw new Error(`Claude 連線失敗（${res.status}）${res.status === 401 ? "：金鑰不正確" : ""}`);
+    await callClaude(env, db, "claude-haiku-5-5", { prompt: "hi", maxTokens: 1 });
     return "Claude 連線成功";
   }
   throw new Error("不明的測試目標");
+}
+
+// ───────────── Claude 每月美元預算（硬上限，不可超過） ─────────────
+// 單位用「微美元」整數（1 美元＝1,000,000），避免小數誤差。月份以 UTC 計（＝Anthropic 帳單月，每月 1 日台灣時間 08:00 換月）。
+
+export const monthKey = (now = new Date()): string => now.toISOString().slice(0, 7);
+
+export async function monthSpentMicro(db: D1Database, month = monthKey()): Promise<number> {
+  const row = await db.prepare("SELECT micro_usd FROM ai_spend WHERE month = ?").bind(month).first<{ micro_usd: number }>();
+  return row?.micro_usd ?? 0;
+}
+
+/** 保守估算 token 數：英數約 3 字元 1 token，中文等其他字元一字最多 2 token。 */
+export function estimateTokens(text: string): number {
+  let ascii = 0;
+  let other = 0;
+  for (const ch of text) {
+    if (ch.charCodeAt(0) < 128) ascii++;
+    else other++;
+  }
+  return Math.ceil(ascii / 3 + other * 2);
+}
+
+export type ClaudeUsage = { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number };
+
+/** 依牌價換算微美元（無條件進位）。快取讀寫的 token 一律當一般輸入計價（保守）。 */
+export function costMicroUsd(modelId: string, inputTokens: number, outputTokens: number): number {
+  const u = AI_MODELS.find((m) => m.id === modelId)?.usd;
+  if (!u) throw new Error("這個模型沒有美元牌價");
+  const long = u.longInput !== undefined && inputTokens > 100_000;
+  const pin = long ? u.longInput! : u.perMInput;
+  const pout = long ? u.longOutput! : u.perMOutput;
+  return Math.ceil(inputTokens * pin + outputTokens * pout); // 每百萬 token 的美元＝每 token 的微美元
+}
+
+export class BudgetStopped extends AiStopped {}
+
+/** 預扣：用「輸入估算＋最大輸出」的最壞情況預扣；超過本月上限就拒絕，完全不會送出請求。 */
+export async function reserveUsd(db: D1Database, modelId: string, inputTokens: number, maxOutputTokens: number, now = new Date()): Promise<{ month: string; micro: number }> {
+  const st = await loadSettings(db);
+  const micro = costMicroUsd(modelId, inputTokens, maxOutputTokens);
+  const month = monthKey(now);
+  await db.prepare("INSERT OR IGNORE INTO ai_spend (month, micro_usd) VALUES (?, 0)").bind(month).run();
+  const r = await db.prepare("UPDATE ai_spend SET micro_usd = micro_usd + ? WHERE month = ? AND micro_usd + ? <= ?").bind(micro, month, micro, st.claudeMonthlyCapUsd * 1e6).run();
+  if (r.meta?.changes === 0) throw new BudgetStopped(`本月 Claude 預算已用完（上限 US$${st.claudeMonthlyCapUsd}），下個月 1 日早上 8:00（台灣時間）自動恢復`);
+  return { month, micro };
+}
+
+/** 結算：把預扣換成實際用量（回應的 usage）；失敗且確定沒被計費時，actual 傳 0 即還清。 */
+export async function settleUsd(db: D1Database, hold: { month: string; micro: number }, actualMicro: number): Promise<void> {
+  await db.prepare("UPDATE ai_spend SET micro_usd = MAX(0, micro_usd - ? + ?) WHERE month = ?").bind(hold.micro, actualMicro, hold.month).run();
+}
+
+/**
+ * 呼叫 Claude 的唯一入口：經過「只用免費模型」檢查、每月美元預算預扣、實際用量結算。
+ * 之後所有用到 Claude 的功能都必須走這裡，不可直接 fetch。
+ */
+export async function callClaude(env: Env, db: D1Database, modelId: string, opts: { prompt: string; system?: string; maxTokens: number }): Promise<{ text: string; usage: ClaudeUsage }> {
+  if (!env.ANTHROPIC_API_KEY) throw new Error("尚未設定 ANTHROPIC_API_KEY");
+  await reserveAi(db, modelId, {}); // 「只用免費模型」開啟時在這裡被擋
+  const hold = await reserveUsd(db, modelId, estimateTokens(opts.prompt + (opts.system ?? "")) + 50, opts.maxTokens);
+  let res: Response;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: modelId, max_tokens: opts.maxTokens, ...(opts.system ? { system: opts.system } : {}), messages: [{ role: "user", content: opts.prompt }] }),
+    });
+  } catch (e) {
+    await settleUsd(db, hold, 0); // 連線失敗：請求沒送達，還清預扣
+    throw e;
+  }
+  if (!res.ok) {
+    await settleUsd(db, hold, 0); // 被拒絕的請求不計費
+    throw new Error(`Claude 連線失敗（${res.status}）${res.status === 401 ? "：金鑰不正確" : ""}`);
+  }
+  const body = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: ClaudeUsage };
+  const u = body.usage ?? {};
+  const inTok = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+  await settleUsd(db, hold, body.usage ? costMicroUsd(modelId, inTok, u.output_tokens ?? 0) : hold.micro);
+  return { text: (body.content ?? []).filter((b) => b.type === "text").map((b) => b.text ?? "").join(""), usage: u };
 }
