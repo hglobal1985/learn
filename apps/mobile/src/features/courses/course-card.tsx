@@ -34,7 +34,6 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         <View style={styles.meta}>
           {course.teacher.trim() ? <Pill label={course.teacher.trim()} /> : null}
           {hostLine(course) ? <Pill label={hostLine(course)} tone="accent" /> : null}
-          {course.paid && course.enrollment ? <Pill label="付費課程" /> : null}
           <CoursePriceTag course={course} />
         </View>
         {course.eventStart ? (
@@ -79,7 +78,8 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
 
 /** 價格標籤：iOS/Android 由 API 隱藏價格（priceTwd 為 null），只顯示「學員專屬」。 */
 export function CoursePriceTag({ course }: { course: CourseSummary }) {
-  if (course.enrollment === "opened") return <Pill label="已開通" tone="success" />;
+  // 已開通的課程不寫「已開通」：付費課程顯示「付費課程」（不寫金額），免費課程顯示「免費」。
+  if (course.enrollment === "opened") return course.paid ? <Pill label="付費課程" /> : <Pill label="免費" tone="accent" />;
   if (course.enrollment === "pending") return <Pill label="待審核" tone="warning" />;
   if (course.priceTba) return <Pill label="費用尚未公布" tone="warning" />;
   if (course.diamondFreeNow) return <Pill label="鑽石免費" tone="accent" />;
