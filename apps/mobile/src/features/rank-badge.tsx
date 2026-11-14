@@ -90,7 +90,7 @@ export function RankBadge({ url, label, layoutHeight = BADGE_SIZE }: { url: stri
   const y0 = (top / 720) * BADGE_SIZE;
   const artH = ((bottom - top) / 720) * BADGE_SIZE;
   return (
-    // 外層只佔 layoutHeight 的高度（會員抬頭傳 48＝頭像高度，所以徽章放大後上下間距不變）；徽章本體 108 高置中，上下溢出到外面。
+    // 外層只佔 layoutHeight 的高度（會員抬頭傳 48＝頭像高度，所以徽章放大後上下間距不變）；徽章本體（BADGE_SIZE 高）置中，上下溢出到外面。
     <View style={{ width: BADGE_W, height: layoutHeight, overflow: "visible", alignItems: "center", justifyContent: "center" }} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>
       <Animated.View style={[styles.box, { position: "absolute", top: (layoutHeight - BADGE_SIZE) / 2, transform: [{ scale }] }]}>
         <Image source={{ uri: resolveUrl(url) }} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
