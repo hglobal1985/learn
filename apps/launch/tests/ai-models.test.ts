@@ -72,3 +72,22 @@ test("AI 設定：只用免費額度時不能選外部模型；可調每日上�
   assert.equal(ok.data.selection.keywords, "claude-haiku-5-5");
   assert.equal((await call("PUT", "/admin/ai-models", admin, { settings: { dailyCap: 123 } })).data.usage.dailyCap, 5000); // 不合法的上限不採用
 });
+
+test("AI 金鑰狀態只回報有無；測試連線經過額度閘門", async () => {
+  const calls: string[] = [];
+  const env: Env = { DB: createTestDb(), DEMO_LOGIN: "on", AI: { run: async (m) => (calls.push(m), {}) }, ANTHROPIC_API_KEY: "sk-secret-value" };
+  const call = async (method: string, path: string, token: string, body?: unknown) => {
+    const res = await handleApi(new Request(`https://learn.test/api/v2${path}`, { method, headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: body === undefined ? undefined : JSON.stringify(body) }), env);
+    return { status: res.status, text: await res.text() };
+  };
+  const admin = ((await (await handleApi(new Request("https://learn.test/api/v2/auth/demo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sub: "demo-admin" }) }), env)).json()) as any).token;
+  const g = await call("GET", "/admin/ai-models", admin);
+  assert.ok(!g.text.includes("sk-secret-value")); // 絕不回傳金鑰內容
+  assert.deepEqual(JSON.parse(g.text).keys.map((k: any) => [k.key, k.ready]), [["workers_ai", true], ["anthropic", true]]);
+  const t = await call("POST", "/admin/ai-models/test", admin, { target: "workers_ai" });
+  assert.equal(t.status, 200);
+  assert.deepEqual(calls, ["@cf/baai/bge-m3"]);
+  assert.ok(JSON.parse(t.text).view.usage.used >= 1);
+  // 預設「只用免費模型」：Claude 測試被擋，不會真的送出
+  assert.equal((await call("POST", "/admin/ai-models/test", admin, { target: "anthropic" })).status, 429);
+});

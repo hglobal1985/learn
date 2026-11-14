@@ -169,3 +169,51 @@ export async function usageSummary(db: D1Database, now = new Date()) {
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
   return { ...st, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: st.capEnabled && used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
 }
+
+// ───────────── 金鑰／連線狀態與測試 ─────────────
+import type { Env } from "./d1.ts";
+
+export type AiKeyStatus = { key: "workers_ai" | "anthropic"; label: string; ready: boolean; need: string; steps: string };
+
+/** 只回報「有沒有設定」，絕不回傳金鑰內容。 */
+export function keyStatuses(env: Env): AiKeyStatus[] {
+  return [
+    { key: "workers_ai", label: "Cloudflare Workers AI", ready: !!env.AI, need: "不需要金鑰，只需綁定", steps: "已在程式設定檔綁定（名稱 AI），部署後即可使用；用量計入 Cloudflare 帳號的每日免費額度。" },
+    {
+      key: "anthropic",
+      label: "Anthropic（Claude）",
+      ready: !!env.ANTHROPIC_API_KEY,
+      need: "需要 API 金鑰（Secret，名稱 ANTHROPIC_API_KEY）",
+      steps: "1. 到 Anthropic 後台建立 API 金鑰　2. 到 Cloudflare 後台 → Workers 和 Pages → learn → 設定 → 變數和密碼 → 新增，類型選「密碼（Secret）」，名稱 ANTHROPIC_API_KEY，貼上金鑰後儲存　3. 回到這裡按「測試連線」。金鑰請直接貼在 Cloudflare 後台，不要貼在對話或程式裡。",
+    },
+  ];
+}
+
+/** 測試連線：送一個極小的請求（照樣經過額度閘門，用量計入今日）。成功回傳說明文字，失敗丟出 Error。 */
+export async function testConnection(env: Env, db: D1Database, target: string): Promise<string> {
+  if (target === "workers_ai") {
+    if (!env.AI) throw new Error("尚未綁定 Workers AI（需重新部署）");
+    const est = await reserveAi(db, "@cf/baai/bge-m3", { inputTokens: 5 });
+    try {
+      await env.AI.run("@cf/baai/bge-m3", { text: ["hi"] });
+    } catch (e) {
+      const msg = String((e as Error)?.message ?? e);
+      if (/3036|daily free allocation/i.test(msg)) await markExhausted(db);
+      else await refundAi(db, est);
+      throw new Error(`Workers AI 連線失敗：${msg.slice(0, 200)}`);
+    }
+    return "Workers AI 連線成功";
+  }
+  if (target === "anthropic") {
+    if (!env.ANTHROPIC_API_KEY) throw new Error("尚未設定 ANTHROPIC_API_KEY");
+    await reserveAi(db, "claude-haiku-5-5", { inputTokens: 5 }); // 開啟「只用免費模型」時會被擋
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
+    });
+    if (!res.ok) throw new Error(`Claude 連線失敗（${res.status}）${res.status === 401 ? "：金鑰不正確" : ""}`);
+    return "Claude 連線成功";
+  }
+  throw new Error("不明的測試目標");
+}

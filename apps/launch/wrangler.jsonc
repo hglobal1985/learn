@@ -9,6 +9,8 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "learn-v2", "database_id": "f1283fdd-94f1-4a43-97b4-3072d1876ced", "migrations_dir": "migrations" }
   ],
+  // Workers AI 綁定（逐字稿、關鍵字、語意搜尋）；用量由程式依「AI 模型」頁設定的每日上限控管。
+  "ai": { "binding": "AI" },
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "learn" }],
   // Cloudflare Email Service（網域 learn.hglobal1985.com 已開通寄信）；只用來寄通知，不需要金鑰。
   "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@learn.hglobal1985.com"] }],

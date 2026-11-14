@@ -48,6 +48,10 @@ export interface Env {
   CF_ZONE_ID?: string;
   /** 額外的 App 管理員（逗號分隔的中央會員 ID）；中央超級管理員不必列。 */
   LEARN_ADMIN_SUBS?: string;
+  /** Workers AI 綁定（wrangler.jsonc 的 ai 設定；不是金鑰）：逐字稿、關鍵字、語意搜尋用。 */
+  AI?: { run(model: string, input: unknown): Promise<unknown> };
+  /** Anthropic（Claude）API 金鑰（Secret，由業主在 Cloudflare 後台設定）：只有選用 Claude 模型時才需要。 */
+  ANTHROPIC_API_KEY?: string;
   /** R2 bucket「learn」：章節音檔。 */
   MEDIA?: R2Bucket;
   /** 音檔簽名網址用的 HMAC 金鑰（Secret）。 */

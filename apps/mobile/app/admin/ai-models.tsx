@@ -11,7 +11,8 @@ type Kind = "speech" | "text" | "embedding";
 type Model = { id: string; name: string; vendor: string; kind: Kind; cost: string; costLevel: "低" | "中" | "高"; strengths: string; bestFor: string; needsKey: boolean };
 type Job = { key: string; label: string; desc: string; kind: Kind; default: string };
 type Usage = { freeOnly: boolean; capEnabled: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
-type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string>; usage: Usage };
+type KeyInfo = { key: string; label: string; ready: boolean; need: string; steps: string };
+type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string>; usage: Usage; keys: KeyInfo[] };
 const KIND_LABEL: Record<Kind, string> = { speech: "語音轉文字", text: "文字整理", embedding: "語意搜尋" };
 const COLS = [
   { label: "模型", w: 150 },
@@ -38,6 +39,21 @@ export default function AiModelsScreen() {
     );
   const current = sel ?? data?.selection ?? {};
   const u = usage ?? data?.usage;
+  const [testing, setTesting] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const testKey = async (k: KeyInfo) => {
+    setTesting(k.key);
+    setMsg(null);
+    try {
+      const r = await api<{ message: string; view: Data }>("POST", "/admin/ai-models/test", { target: k.key });
+      setUsage(r.view.usage);
+      setMsg({ tone: "success", text: r.message });
+    } catch (e) {
+      setMsg({ tone: "danger", text: (e as Error).message });
+    } finally {
+      setTesting(null);
+    }
+  };
   const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap" | "capEnabled">>, ok: string) => {
     setMsg(null);
     try {
@@ -138,6 +154,39 @@ export default function AiModelsScreen() {
               </Card>
             </Section>
           ) : null}
+          <Section title="AI 金鑰與連線">
+            <Card>
+              {data.keys.map((k) => (
+                <View key={k.key} style={{ gap: space.sm }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+                    <Ionicons name={k.ready ? "checkmark-circle" : "alert-circle-outline"} size={24} color={k.ready ? c.accent : c.danger} />
+                    <View style={{ flex: 1 }}>
+                      <AppText variant="headline">{k.label}</AppText>
+                      <AppText variant="caption" tone="muted">
+                        {k.ready ? "已設定" : "尚未設定"}　{k.need}
+                      </AppText>
+                    </View>
+                    <Pressable accessibilityRole="button" disabled={!k.ready || testing !== null} onPress={() => testKey(k)} style={[styles.chip, { borderColor: c.border, opacity: k.ready ? 1 : 0.45 }]}>
+                      <AppText variant="callout">{testing === k.key ? "測試中…" : "測試連線"}</AppText>
+                    </Pressable>
+                  </View>
+                  <Pressable accessibilityRole="button" onPress={() => setOpen(open === k.key ? null : k.key)} style={{ minHeight: minTouch, justifyContent: "center" }}>
+                    <AppText variant="callout" style={{ color: c.accent }}>
+                      {open === k.key ? "收起設定步驟 ▴" : "設定步驟 ▾"}
+                    </AppText>
+                  </Pressable>
+                  {open === k.key ? (
+                    <AppText variant="caption" tone="muted">
+                      {k.steps}
+                    </AppText>
+                  ) : null}
+                </View>
+              ))}
+              <AppText variant="caption" tone="muted">
+                金鑰一律由你在 Cloudflare 後台設定，這個頁面只會顯示「有沒有設定」，不會顯示或儲存金鑰內容。測試連線會用掉極少量額度。
+              </AppText>
+            </Card>
+          </Section>
           {data.jobs.map((job) => (
             <Section key={job.key} title={job.label}>
               <Card>

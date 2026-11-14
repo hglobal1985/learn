@@ -34,7 +34,7 @@ import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
-import { AI_JOBS, AI_MODELS, loadSelection, loadSettings, normalizeSelection, normalizeSettings, saveSelection, saveSettings, usageSummary } from "./ai-models.ts";
+import { AI_JOBS, AI_MODELS, AiStopped, keyStatuses, loadSelection, testConnection, loadSettings, normalizeSelection, normalizeSettings, saveSelection, saveSettings, usageSummary } from "./ai-models.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
 import { collectCfStats } from "./cf-stats.ts";
 import { collectAppStats } from "./app-stats.ts";
@@ -1393,7 +1393,7 @@ async function rewriteCategories(ctx: Ctx, fn: (list: string[]) => string): Prom
 type ShortLinkItem = { kind: "category" | "series"; value: string; slug: string | null };
 /** 短網址設定清單：所有分類與系列（含還沒設定縮寫的），各帶目前的縮寫。 */
 async function aiModelsView(ctx: Ctx) {
-  return { jobs: AI_JOBS, models: AI_MODELS, selection: await loadSelection(ctx.db), usage: await usageSummary(ctx.db) };
+  return { jobs: AI_JOBS, models: AI_MODELS, selection: await loadSelection(ctx.db), usage: await usageSummary(ctx.db), keys: keyStatuses(ctx.env) };
 }
 
 async function listShortLinks(ctx: Ctx): Promise<ShortLinkItem[]> {
@@ -2920,6 +2920,20 @@ const routes: [string, RegExp, Handler][] = [
       await saveSettings(ctx.db, st);
       await audit(ctx.db, s.sub, "ai_models.set", "ui_settings", "ai_models", JSON.stringify({ sel, st })).run();
       return aiModelsView(ctx);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/ai-models\/test$/,
+    async (ctx) => {
+      requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      try {
+        return { ok: true, message: await testConnection(ctx.env, ctx.db, String(body.target ?? "")), view: await aiModelsView(ctx) };
+      } catch (e) {
+        if (e instanceof AiStopped) fail(429, "ai_stopped", e.message);
+        fail(502, "ai_test_failed", (e as Error).message);
+      }
     },
   ],
   ["GET", /^\/admin\/short-links$/, async (ctx) => (requireSuperAdmin(ctx), listShortLinks(ctx))],
