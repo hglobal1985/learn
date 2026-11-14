@@ -7,7 +7,7 @@ import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText } from "@/ui";
 import { engine } from "./engine";
 import { PlayerControls } from "./player-controls";
-import { formatClock, segmentOf } from "./engine.types";
+import { remainingText, segmentOf } from "./engine.types";
 import { SeekBar } from "./seek-bar";
 import { usePlayer } from "./use-player";
 
@@ -39,7 +39,7 @@ export function AudioBar({ compact }: { compact?: boolean }) {
             {t.title}
           </AppText>
           <AppText variant="caption" tone="muted" numberOfLines={1}>
-            {formatClock(at)} / {formatClock(total)}
+            {remainingText(total - at)}
             {compact ? ` · ${t.subtitle}` : ""}
           </AppText>
         </Pressable>

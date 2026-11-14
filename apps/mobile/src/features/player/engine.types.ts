@@ -56,6 +56,9 @@ export function buildTrack(p: Playback, meta: { courseId: string; lessonId: stri
 /** 這一堂的時間軸區間（秒）。 */
 export const segmentOf = (t: Track): { start: number; end: number | null } => ({ start: t.playback.start ?? 0, end: t.playback.end ?? null });
 
+/** 倒數剩餘時間：-12:34（整個網站的播放時間顯示一律用這個）。 */
+export const remainingText = (sec: number): string => `-${formatClock(Math.ceil(Math.max(0, sec)))}`;
+
 /** 秒數 → m:ss 或 h:mm:ss */
 export function formatClock(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
