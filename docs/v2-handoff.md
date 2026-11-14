@@ -445,3 +445,4 @@
 - 2026-11-14 調整（業主質疑頻率太高）：課程資格快取 TTL 改回 10 分鐘；回到前景自動更新會員資料的間隔由 30 秒改為 10 分鐘（開啟／重新整理仍一律 fresh=1 立刻更新；會員中心 member.profile_changed webhook 會清該會員快取）。
 - 2026-11-14 App 版沒有重新整理鈕：①所有捲動頁（Screen）加下拉重新整理（RefreshControl，登入後才有）＝refreshMember(0)＋invalidate，立刻向會員中心拿最新獎銜並重載清單；②進入設定頁自動 refreshMember(1 分鐘)；③回前景 10 分鐘；④開啟 App 一律 fresh。session.tsx 新增 refreshMember(minGapMs)。首頁是固定一頁不能捲動，沒有下拉（請到設定頁或下拉其他頁）。未在實機驗證。
 - 2026-11-14 首頁也能下拉重新整理（首頁外層改 ScrollView＋refreshControl，內容仍固定一頁）；下拉邏輯抽成共用 hook usePullRefresh（src/ui/pull-refresh.tsx），Screen 與首頁共用。
+- 2026-11-14 **固定底部操作列**：Screen 新增 footer 參數與 useScreenFooter(node) hook（src/ui/screen.tsx；固定在底部主選單上方、內容捲動不跟著跑，有上緣陰影）。①課程頁：『按此報名＋審核繳費／免費報名／登入後報名』與『付款審核中（點擊查看）＋取消』固定在底部（只是說明文字的 NoticeBox 如費用未公布、獎銜不符仍在內容區）；②報名明細：『取消報名（左）／送出（右）』固定在底部（PaymentForm 內用 useScreenFooter）。以本機瀏覽器 390×700 驗證捲到底按鈕位置不變（y=600）。

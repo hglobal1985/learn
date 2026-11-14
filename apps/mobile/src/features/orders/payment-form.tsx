@@ -5,6 +5,7 @@ import { api, PAYMENT_METHODS, type Order, type PaymentMethodKey } from "@/api/c
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space, type } from "@/theme/tokens";
 import { AppText, Button, Card, DateSelect, NoticeBox, Select, todayStr } from "@/ui";
+import { useScreenFooter } from "@/ui/screen";
 import { showToast } from "@/ui/toast";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -68,6 +69,16 @@ export function PaymentForm({ order, onDone, leftAction }: { order: Order; onDon
   };
   const ready = method === "cash" || (method === "transfer" && /^\d{5}$/.test(last5.trim())) || (method === "linepay" && !!date) || (method === "friend" && !!friend.trim());
 
+  // 「取消報名（左）／送出（右）」固定在頁面下方，往下填欄位、看紀錄時仍然按得到。
+  useScreenFooter(
+    <View style={styles.actions}>
+      {leftAction ? <View style={{ flex: 1 }}>{leftAction}</View> : null}
+      <View style={{ flex: 1 }}>
+        <Button label="送出" icon="send-outline" loading={busy} disabled={busy || !ready} onPress={submit} fullWidth />
+      </View>
+    </View>,
+  );
+
   return (
     <View>
       <Card>
@@ -122,12 +133,6 @@ export function PaymentForm({ order, onDone, leftAction }: { order: Order; onDon
         ) : null}
 
         {err ? <NoticeBox tone="danger" text={err} /> : null}
-        <View style={styles.actions}>
-          {leftAction ? <View style={{ flex: 1 }}>{leftAction}</View> : null}
-          <View style={{ flex: 1 }}>
-            <Button label="送出" icon="send-outline" loading={busy} disabled={busy || !ready} onPress={submit} fullWidth />
-          </View>
-        </View>
       </Card>
     </View>
   );

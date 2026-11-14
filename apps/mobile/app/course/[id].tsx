@@ -95,20 +95,21 @@ export default function CourseDetailScreen() {
   const noAccess = course.lessons.length === 0 ? course.enrollment !== "opened" && !course.isPublic && !course.admin : course.lessons.every((l) => l.locked);
   const allLocked = noAccess;
   const lockedText = course.priceTba ? "費用尚未公布，暫不開放" : member && !course.eligible ? "獎銜不符，目前無法報名" : "報名後才能觀看";
+  // 報名／審核中的操作固定在頁面下方（底部選單上方），往下看章節、留言時仍然按得到；只是說明文字的（費用未公布、獎銜不符…）留在內容區。
+  const canRegister = course.enrollment === null && !course.isPublic && !course.watchFree;
+  const registerNode = canRegister ? registerButton(course.free, "course") : null;
+  const registerIsAction = !!registerNode && (registerNode as { type?: unknown }).type === Button;
+  const stickyAction = course.enrollment === "pending" ? pendingRow() : registerIsAction ? registerNode : null;
+  const stickyNotice = registerNode && !registerIsAction ? registerNode : null;
   const needRank = member && !course.eligible ? `限${course.minRank.name}獎銜以上報名${course.allowPresident ? "（會長也可報名）" : ""}` : null;
 
   return (
     <View style={{ flex: 1 }}>
       <PageHeader title={course.title} path={`/course/${course.id}`} />
       <EdmStage course={course} />
-      <Screen header={false}>
+      <Screen header={false} footer={stickyAction}>
         {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
-
-        {course.enrollment === "pending" ? (
-          pendingRow()
-        ) : course.enrollment === null && !course.isPublic && !course.watchFree ? (
-          registerButton(course.free, "course")
-        ) : null}
+        {stickyNotice}
 
         <Section title="課程章節">
           <View>
