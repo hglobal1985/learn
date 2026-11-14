@@ -28,7 +28,9 @@ export function normalizeConfig(raw: unknown): UiConfig {
     };
   }
   const roles = Array.isArray(r.statsRoles) ? (r.statsRoles as unknown[]).filter((x): x is string => STATS_ROLE_OPTIONS.some((o) => o.key === x)) : [];
-  return { sortGroups, ribbons, statsRoles: [...new Set(roles)] };
+  // 系列手動排序：只收「s:」「c:」開頭的字串，去重、限長、最多 1000 筆。
+  const so = Array.isArray(r.seriesOrder) ? (r.seriesOrder as unknown[]).filter((x): x is string => typeof x === "string" && /^[sc]:.{1,120}$/.test(x)) : [];
+  return { sortGroups, seriesOrder: [...new Set(so)].slice(0, 1000), ribbons, statsRoles: [...new Set(roles)] };
 }
 
 export async function loadConfig(db: D1Database): Promise<UiConfig> {

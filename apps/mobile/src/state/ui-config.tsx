@@ -14,7 +14,7 @@ export function UiConfigProvider({ children }: { children: ReactNode }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     api<UiConfig>("GET", "/ui-config")
-      .then((c) => c && Array.isArray(c.sortGroups) && setConfig(c))
+      .then((c) => c && Array.isArray(c.sortGroups) && setConfig({ ...DEFAULT_UI_CONFIG, ...c }))
       .catch(() => undefined);
   }, [version, tick]);
   const value = useMemo(() => ({ config, reload: () => setTick((n) => n + 1) }), [config]);

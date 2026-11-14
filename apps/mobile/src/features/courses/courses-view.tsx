@@ -10,7 +10,7 @@ import { ViewToggle, type CourseViewMode } from "./view-toggle";
 import { ChapterList, type ChapterItem } from "./chapter-list";
 import { buildSearchIndex, matchCourses, matchLessons, suggestTerms, type SearchLesson } from "./course-search";
 import { SEARCH_ICON_W, SearchBox } from "./search-box";
-import { groupBySeries, sortCourses } from "./sort";
+import { groupBySeries, orderGroups, sortCourses } from "./sort";
 import { useApi, useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
@@ -77,7 +77,7 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
     setQ(next);
     setPicked(next);
   };
-  const groups = useMemo(() => groupBySeries(list, courses), [list, courses]);
+  const groups = useMemo(() => orderGroups(groupBySeries(list, courses), config.seriesOrder ?? []), [list, courses, config.seriesOrder]);
   // 章節模式：符合條件的章節，不分組、不顯示系列標題，順序隨機（每次打開頁面、切到章節模式就重新洗牌；
   // 同一次瀏覽中打字搜尋、換分類時，相對順序保持不變，畫面不會跳動）。
   const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random() * 2 ** 31));

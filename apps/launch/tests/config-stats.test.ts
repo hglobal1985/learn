@@ -29,7 +29,11 @@ test("畫面設定：公開讀取、只有超級管理員能改；顏色只能�
   const def = (await call<UiConfig>("GET", "/ui-config")).data;
   assert.deepEqual(def.sortGroups, DEFAULT_UI_CONFIG.sortGroups);
   assert.equal(def.ribbons.countdown.label, "倒數 {n} 天");
+  assert.deepEqual(def.seriesOrder, []);
   assert.equal((await call("PUT", "/admin/ui-config", { token: student, body: { sortGroups: [] } })).status, 403);
+  const so = await call<UiConfig>("PUT", "/admin/ui-config", { token: admin, body: { seriesOrder: ["s:B系列", "c:abc", "s:B系列", "bad", 5, "s:"] } });
+  assert.deepEqual(so.data.seriesOrder, ["s:B系列", "c:abc"], "去重、只收 s:／c: 開頭的有效代碼");
+  assert.deepEqual((await call<UiConfig>("PUT", "/admin/ui-config", { token: admin, body: { statsRoles: [] } })).data.seriesOrder, ["s:B系列", "c:abc"], "沒傳就保留");
   const put = await call<UiConfig>("PUT", "/admin/ui-config", { token: admin, body: { sortGroups: ["enrolled", "pending"], ribbons: { learning: { label: "上課中", color: "olive", enabled: true }, pending: { label: "x", color: "not-a-color", enabled: false } }, statsRoles: ["president", "hacker"] } });
   assert.equal(put.status, 200);
   assert.deepEqual(put.data.sortGroups.slice(0, 2), ["enrolled", "pending"]);

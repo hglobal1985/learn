@@ -91,3 +91,14 @@ export function groupBySeries(list: CourseSummary[], all: CourseSummary[]): Seri
   }
   return out;
 }
+
+/**
+ * 「全部課程 > 系列」小卡的手動排序（超級管理員在「課程排序與條件」設定）：
+ * 有列在 order 裡的小卡依設定的順序排前面；沒列到的（例如新增的系列）維持原本順序、接在後面。
+ */
+export function orderGroups(groups: SeriesGroup[], order: string[]): SeriesGroup[] {
+  if (!order.length) return groups;
+  const pos = new Map(order.map((k, i) => [k, i]));
+  const listed = groups.filter((g) => pos.has(g.key)).sort((a, b) => pos.get(a.key)! - pos.get(b.key)!);
+  return [...listed, ...groups.filter((g) => !pos.has(g.key))];
+}

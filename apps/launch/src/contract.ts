@@ -417,6 +417,8 @@ export const SORT_GROUP_INFO: Record<SortGroup, { title: string; hint: string }>
 
 export type UiConfig = {
   sortGroups: SortGroup[];
+  /** 「全部課程 > 系列」小卡的手動排序：由上到下的小卡代碼（系列＝s:系列名稱、單一課程＝c:課程編號）；沒列到的排在後面。 */
+  seriesOrder: string[];
   ribbons: Record<RibbonKey, { label: string; color: RibbonColor; enabled: boolean }>;
   /** 除了超級管理員、總部秘書之外，哪些職務可以看「統計分析」（職務代碼：president、sound、course、reviewer）。 */
   statsRoles: string[];
@@ -429,6 +431,7 @@ export const STATS_ROLE_OPTIONS: { key: string; title: string }[] = [
 ];
 export const DEFAULT_UI_CONFIG: UiConfig = {
   sortGroups: [...SORT_GROUPS],
+  seriesOrder: [],
   ribbons: {
     public_free: { label: "免費公開", color: "ok", enabled: true },
     learning: { label: "學習中", color: "green", enabled: true },
