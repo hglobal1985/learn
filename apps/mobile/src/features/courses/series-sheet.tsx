@@ -10,27 +10,18 @@ import { ribbonsFor } from "./ribbons";
 import { useApi, useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { startOf } from "./sort";
-import { todayStr } from "@/ui/date-select";
 
-/** 梯次排序：還沒結束的（日期最近的在上、最晚的在下）排前面，已結束的接在後面（最近結束的在前），沒有日期的放最後。 */
-export function byNearest(items: CourseSummary[]): CourseSummary[] {
-  const today = todayStr();
-  const rank = (c: CourseSummary) => {
-    const d = startOf(c);
-    if (!d) return 2;
-    return (c.eventEnd ?? d) >= today ? 0 : 1;
-  };
-  return [...items].sort((a, b) => {
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
+/**
+ * 梯次的顯示順序（梯次選單與系列「顯示全部」頁共用）：開始日期由遠到近、單一方向——最晚的在最上面，已經開過的自然在最下面；沒有日期的放最後。
+ * （以前把『已結束』固定排最前面，導致 2026 → 2027/11 → 倒數到 2027/2，方向來回跳。）
+ */
+export const farToNear = (items: CourseSummary[]): CourseSummary[] =>
+  [...items].sort((a, b) => {
     const da = startOf(a) ?? "";
     const db = startOf(b) ?? "";
-    return ra === 0 ? da.localeCompare(db) : db.localeCompare(da);
+    if (!da || !db) return Number(!da) - Number(!db); // 沒有日期的排最後
+    return db.localeCompare(da);
   });
-}
-/** 選單顯示順序：日期較遠的在上、較近的在下（與 byNearest 相反）。 */
-const farToNear = (items: CourseSummary[]) => byNearest(items).reverse();
 
 /** 狀態標籤：與課程卡左邊緞帶同步的文字與顏色；沒有左緞帶時用右邊緞帶（倒數、進行中…）。 */
 function StatusChip({ course }: { course: CourseSummary }) {

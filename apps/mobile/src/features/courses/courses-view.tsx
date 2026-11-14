@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { CourseCard } from "./course-card";
-import { byNearest } from "./series-sheet";
+import { farToNear } from "./series-sheet";
 import { SeriesTile } from "./series-tile";
 import { ViewToggle, type CourseViewMode } from "./view-toggle";
 import { ChapterList, type ChapterItem } from "./chapter-list";
@@ -148,9 +148,9 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
     ) : null}
     </View>
   );
-  // 系列單頁：只列該系列，每一梯都展開成完整課程卡，由近到遠。
+  // 系列單頁：只列該系列，每一梯都展開成完整課程卡，順序與梯次選單相同（日期由遠到近）。
   if (seriesFilter) {
-    const all = byNearest(courses.filter((x) => x.series === seriesFilter));
+    const all = farToNear(courses.filter((x) => x.series === seriesFilter));
     return (
       <Screen header={!inStack}>
         {filterRow}
