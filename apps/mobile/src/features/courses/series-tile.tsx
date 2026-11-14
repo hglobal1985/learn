@@ -29,7 +29,7 @@ function TopFill({ uri, w, h }: { uri: string; w: number; h: number }) {
 }
 
 /**
- * 「全部課程」的小卡片：只有 EDM＋「選擇梯次」下拉。
+ * 「全部課程」的小卡片：只有 EDM＋「瀏覽細節」下拉。
  * 有系列＝顯示系列的專屬 EDM，沒上傳就用系列名稱當大標題；沒有系列＝顯示課程自己的 EDM（沒有就用課程名稱）。
  * 緞帶仍然顯示，文字以日期最近的那一梯為準。不顯示任何課程資訊欄位。
  */
@@ -46,14 +46,14 @@ export function SeriesTile({ group, width }: { group: SeriesGroup; width: number
   const open = () => (group.sessions.length > 1 || inSeries ? setSheet(true) : router.push(`/course/${rep.id}`));
   return (
     <View style={{ width }}>
-      <Pressable accessibilityRole="button" accessibilityLabel={`${inSeries ? rep.series : rep.title}，選擇梯次`} onPress={open} style={[styles.art, { width, height, backgroundColor: c.surfaceMuted }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`${inSeries ? rep.series : rep.title}，瀏覽細節`} onPress={open} style={[styles.art, { width, height, backgroundColor: c.surfaceMuted }]}>
         {edm ? <TopFill uri={resolveUrl(edm)} w={width} h={height} /> : <CourseCover theme={rep.theme} label={rep.category} title={inSeries ? rep.series : rep.title} fill />}
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" scale={0.8} /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" scale={0.8} /> : null}
       </Pressable>
       <Pressable accessibilityRole="button" onPress={open} style={[styles.pick, { borderColor: c.accent }]}>
         <AppText variant="callout" style={{ color: c.accent, fontWeight: "700", flex: 1 }} numberOfLines={1}>
-          選擇梯次
+          瀏覽細節
         </AppText>
         <Ionicons name="chevron-down" size={18} color={c.accent} />
       </Pressable>
