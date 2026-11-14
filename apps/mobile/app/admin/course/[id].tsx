@@ -113,6 +113,7 @@ export default function LessonManagerScreen() {
           lesson={l}
           prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
+          teacher={course.data?.teacher ?? ""}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
           onDown={i < lessons.length - 1 ? () => move(i, i + 1) : undefined}
@@ -138,19 +139,7 @@ export default function LessonManagerScreen() {
               style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
             />
           </View>
-          <View style={{ flex: 2, gap: space.xs }}>
-            <AppText variant="callout" tone="muted">
-              分享者
-            </AppText>
-            <TextInput
-              value={newSharer}
-              onChangeText={setNewSharer}
-              placeholder="選填"
-              placeholderTextColor={c.textMuted}
-              accessibilityLabel="新章節分享者"
-              style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
-            />
-          </View>
+          <SharerField value={newSharer} onChange={setNewSharer} teacher={course.data?.teacher ?? ""} label="新章節分享者" />
         </View>
         <Button
           label="新增章節"
@@ -161,6 +150,41 @@ export default function LessonManagerScreen() {
         />
       </Card>
     </Screen>
+  );
+}
+
+/** 分享者欄位：右側「同主講人」勾選（課程有填主講人才出現）；勾選＝分享者就是主講人，輸入框收起來。 */
+function SharerField({ value, onChange, teacher, label }: { value: string; onChange: (v: string) => void; teacher: string; label: string }) {
+  const { c } = useTheme();
+  const same = !!teacher && value === teacher;
+  return (
+    <View style={{ flex: 2, gap: space.xs }}>
+      <AppText variant="callout" tone="muted">
+        分享者
+      </AppText>
+      {same ? (
+        <View style={[styles.input, { justifyContent: "center", borderColor: c.border, backgroundColor: c.surfaceMuted }]}>
+          <AppText variant="body" tone="muted" numberOfLines={1}>
+            {teacher}
+          </AppText>
+        </View>
+      ) : (
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="選填"
+          placeholderTextColor={c.textMuted}
+          accessibilityLabel={label}
+          style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+        />
+      )}
+      {teacher ? (
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: same }} accessibilityLabel="分享者同主講人" onPress={() => onChange(same ? "" : teacher)} style={styles.sharerCheck}>
+          <Icon name={same ? "checkbox" : "square-outline"} size={28} color={same ? c.accent : c.textMuted} />
+          <AppText variant="callout">同主講人</AppText>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -203,10 +227,13 @@ function LessonEditor({
   disabled,
   allowMux,
   prevDate,
+  teacher,
 }: {
   allowMux: boolean;
   /** 上一堂的活動日期（有才會顯示「同上」勾選）。 */
   prevDate?: string;
+  /** 課程主講人（「同主講人」勾選用）。 */
+  teacher: string;
   lesson: Lesson;
   onSaved: () => void;
   onUp?: () => void;
@@ -301,19 +328,7 @@ function LessonEditor({
             style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
           />
         </View>
-        <View style={{ flex: 2, gap: space.xs }}>
-          <AppText variant="callout" tone="muted">
-            分享者
-          </AppText>
-          <TextInput
-            value={sharer}
-            onChangeText={setSharer}
-            placeholder="選填"
-            placeholderTextColor={c.textMuted}
-            accessibilityLabel={`第 ${lesson.position} 堂分享者`}
-            style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
-          />
-        </View>
+        <SharerField value={sharer} onChange={setSharer} teacher={teacher} label={`第 ${lesson.position} 堂分享者`} />
       </View>
       <View style={styles.dateHead}>
         <AppText variant="callout" style={{ flex: 1 }}>
@@ -440,6 +455,7 @@ function IconButton({ icon, label, onPress, disabled, danger }: { icon: "arrow-u
 
 const styles = StyleSheet.create({
   twoCol: { flexDirection: "row", gap: space.sm },
+  sharerCheck: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: minTouch },
   dateHead: { flexDirection: "row", alignItems: "center" },
   sameCheck: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: minTouch, paddingLeft: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
