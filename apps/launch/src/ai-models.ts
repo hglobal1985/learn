@@ -214,7 +214,7 @@ export async function testConnection(env: Env, db: D1Database, target: string): 
     return "Workers AI 連線成功";
   }
   if (target === "anthropic") {
-    await callClaude(env, db, "claude-haiku-5-5", { prompt: "hi", maxTokens: 1 });
+    await callClaude(env, db, "claude-haiku-5-5", { prompt: "hi", maxTokens: 16 });
     return "Claude 連線成功";
   }
   throw new Error("不明的測試目標");
@@ -292,7 +292,9 @@ export async function callClaude(env: Env, db: D1Database, modelId: string, opts
   }
   if (!res.ok) {
     await settleUsd(db, hold, 0); // 被拒絕的請求不計費
-    throw new Error(`Claude 連線失敗（${res.status}）${res.status === 401 ? "：金鑰不正確" : ""}`);
+    // 把 Anthropic 回報的原因一併顯示（不含金鑰），例如「credit balance is too low」＝帳號還沒儲值
+    const detail = ((await res.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
+    throw new Error(`Claude 連線失敗（${res.status}）${res.status === 401 ? "：金鑰不正確" : ""}${detail ? `：${detail.slice(0, 200)}` : ""}`);
   }
   const body = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: ClaudeUsage };
   const u = body.usage ?? {};
