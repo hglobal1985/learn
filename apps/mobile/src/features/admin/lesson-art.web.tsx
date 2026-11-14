@@ -230,19 +230,45 @@ function FramePicker({ lesson, onClose, onPicked }: { lesson: Lesson; onClose: (
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [frame, setFrame] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const [playerOk, setPlayerOk] = useState(false);
+  const [reload, setReload] = useState(0);
+  const tRef = useRef(lo);
   const iframe = useRef<HTMLIFrameElement | null>(null);
 
   const cmd = (func: string, args: unknown[] = []) => iframe.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "*");
-  // YouTube：時間軸一動就跳到那一秒並暫停。
+  // YouTube：先靜音自動播放（播放器才會真的啟動、畫面才不會一直是黑的），開始播放後停在選定的那一秒；之後時間軸一動就跳過去再暫停。
+  const started = useRef(false);
   useEffect(() => {
-    if (!isYt || !ready) return;
+    if (!isYt) return;
+    const onMsg = (e: MessageEvent) => {
+      if (!/^https:\/\/www\.youtube(-nocookie)?\.com$/.test(e.origin) || e.source !== iframe.current?.contentWindow) return;
+      let d: { event?: string; info?: { playerState?: number } | number };
+      try {
+        d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+      } catch {
+        return;
+      }
+      const state = d.event === "onStateChange" ? (d.info as number) : d.event === "infoDelivery" && typeof d.info === "object" ? d.info?.playerState : undefined;
+      if (state === 1 && !started.current) {
+        started.current = true;
+        setPlayerOk(true);
+        cmd("mute");
+        cmd("seekTo", [tRef.current, true]);
+        setTimeout(() => cmd("pauseVideo"), 500);
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [isYt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isYt || !playerOk) return;
     const id = setTimeout(() => {
       cmd("seekTo", [t, true]);
-      cmd("pauseVideo");
-    }, 150);
+      cmd("playVideo");
+      setTimeout(() => cmd("pauseVideo"), 450);
+    }, 200);
     return () => clearTimeout(id);
-  }, [t, ready, isYt]);
+  }, [t, playerOk, isYt]); // eslint-disable-line react-hooks/exhaustive-deps
   // Mux：每次換秒數重新取截圖（0.4 秒後）。
   useEffect(() => {
     if (isYt) return;
@@ -278,6 +304,7 @@ function FramePicker({ lesson, onClose, onPicked }: { lesson: Lesson; onClose: (
       setBusy(false);
     }
   };
+  tRef.current = t;
   const nudge = (d: number) => setT((v) => Math.min(hi, Math.max(lo, Math.round((v + d) * 10) / 10)));
 
   return (
@@ -288,12 +315,18 @@ function FramePicker({ lesson, onClose, onPicked }: { lesson: Lesson; onClose: (
       </AppText>
       {isYt ? (
         <iframe
+          key={reload}
           ref={iframe}
           title="影片預覽"
-          onLoad={() => setReady(true)}
-          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(media.ref ?? "")}?controls=0&disablekb=1&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&enablejsapi=1&start=${Math.floor(lo)}&origin=${encodeURIComponent(location.origin)}`}
+          onLoad={() => {
+            started.current = false;
+            iframe.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
+          }}
+          src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(media.ref ?? "")}?controls=0&disablekb=1&fs=0&modestbranding=1&rel=0&iv_load_policy=3&cc_load_policy=0&playsinline=1&autoplay=1&mute=1&enablejsapi=1&start=${Math.floor(lo)}&origin=${encodeURIComponent(location.origin)}`}
           style={{ width: "100%", maxWidth: 480, aspectRatio: "16 / 9", border: 0, borderRadius: 8, background: "#000" }}
-          allow="encrypted-media; fullscreen"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
         />
       ) : frame ? (
         <img src={frame} alt={`影片 ${mmss(t)} 的畫面`} style={{ width: "100%", maxWidth: 480, aspectRatio: "16 / 9", objectFit: "contain", background: "#000", borderRadius: 8 }} />
@@ -302,6 +335,11 @@ function FramePicker({ lesson, onClose, onPicked }: { lesson: Lesson; onClose: (
           <AppText style={{ color: "#fff" }}>{busy ? "取得畫面中…" : "—"}</AppText>
         </View>
       )}
+      {isYt && !playerOk ? (
+        <AppText variant="caption" tone="muted">
+          播放器啟動中…如果超過 10 秒仍是黑畫面，請確認這支影片允許嵌入（YouTube 工作室 → 內容 → 影片 → 嵌入），或按「重新載入播放器」。也可以改用「上傳圖片」。
+        </AppText>
+      ) : null}
       <View style={styles.timeRow}>
         <AppText variant="callout" style={{ minWidth: 56, fontWeight: "700" }}>
           {mmss(t)}
@@ -320,6 +358,7 @@ function FramePicker({ lesson, onClose, onPicked }: { lesson: Lesson; onClose: (
         </AppText>
       ) : null}
       <View style={styles.buttons}>
+        {isYt ? <Button variant="secondary" label="重新載入播放器" icon="refresh-outline" onPress={() => (setPlayerOk(false), setReload((n) => n + 1))} /> : null}
         <Button variant="secondary" label="取消" disabled={busy && isYt} onPress={onClose} />
         <Button label={isYt ? "擷取這個畫面" : "使用這張畫面"} icon="camera-outline" loading={busy} disabled={busy || (!isYt && !frame)} onPress={use} />
       </View>
