@@ -1,3 +1,4 @@
+import { useFonts } from "expo-font";
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { useTheme } from "@/theme/theme";
@@ -8,6 +9,8 @@ const LIGHT = ["#0c603c", "#486c48", "#cc6c0c", "#a86408", "#486c48", "#0c603c"]
 const DARK = ["#cee49f", "#8fae78", "#f0a050", "#f2c063", "#8fae78", "#cee49f"]; // 規範深色模式色階
 const TEXT = "寰宇行動大學";
 const STEPS = 48; // 動畫取樣點數（越多越平順）
+/** 標題用極細字體：Noto Sans TC Thin（SIL OFL 授權），只含標題這 6 個字（約 3KB），網頁與 App 都內建，不依賴手機系統字型。 */
+const THIN_FONT = "BrandThin";
 
 const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
 const mix = (a: number[], b: number[], k: number) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
@@ -31,6 +34,7 @@ function colorAt(palette: string[], shine: number[], t: number, i: number, n: nu
  */
 export function BrandTitle() {
   const { scheme } = useTheme();
+  const [fontReady] = useFonts({ [THIN_FONT]: require("../../assets/fonts/NotoSansTC-Thin-brand.ttf") });
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(Animated.timing(t, { toValue: 1, duration: 4200, easing: Easing.linear, useNativeDriver: false }));
@@ -56,7 +60,7 @@ export function BrandTitle() {
       <Animated.View style={{ transform: [{ scale: logoScale }] }}>
         <Image source={require("../../assets/logo.png")} style={styles.logo} resizeMode="contain" />
       </Animated.View>
-      <View style={styles.row} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <View style={[styles.letters, { opacity: fontReady ? 1 : 0 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {letters.map((l, i) => (
           <Animated.Text
             key={i}
@@ -81,5 +85,6 @@ export function BrandTitle() {
 const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs },
   logo: { width: 52, height: 52 },
-  ch: { fontSize: 30, lineHeight: 40, fontWeight: "800", letterSpacing: 1 },
+  letters: { flexDirection: "row", alignItems: "center", justifyContent: "center" }, // 字與字貼近：不加 gap
+  ch: { fontFamily: THIN_FONT, fontSize: 32, lineHeight: 42, fontWeight: "normal", letterSpacing: -2 },
 });

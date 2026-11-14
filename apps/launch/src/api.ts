@@ -34,6 +34,7 @@ import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
+import { BADGE_FILE_RE, RANK_BADGE_FILES, rankBadgeUrl } from "./rank-badges.ts";
 import { TranscribeError, transcribeNext, transcriptView } from "./transcribe.ts";
 import { AI_JOBS, AI_MODELS, AiStopped, keyStatuses, loadSelection, testConnection, loadSettings, normalizeSelection, normalizeSettings, saveSelection, saveSettings, usageSummary } from "./ai-models.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
@@ -180,8 +181,8 @@ function memberOf(s: Session, rankMap: Map<string, Rank>, extra: { duties?: stri
   const titles = [...s.roles.map((r) => ROLE_TITLES[r]).filter(Boolean), ...(extra.duties ?? [])];
   const base = { sub: s.sub, name: s.name, role: s.role, titles: [...new Set(titles)], reviewer: s.role === "admin" || s.roles.includes("president") || !!extra.duties?.length, center: s.center?.label ?? null };
   // 中央會員的獎銜屬 Amway 資料，App 不取得也不顯示；只有模擬會員帶示範獎銜。
-  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl, rankLabel: s.rankLabel ?? (s.rankValue === undefined ? null : rankLabelOf(s.rankValue, rankMap)) };
-  return { ...base, rank: rankMap.get(s.rankCode) ?? null, demo: true };
+  if (s.kind === "central") return { ...base, rank: null, demo: false, avatarUrl: s.avatarUrl, rankLabel: s.rankLabel ?? (s.rankValue === undefined ? null : rankLabelOf(s.rankValue, rankMap)), rankBadge: rankBadgeUrl(s.rankValue, s.rankLabel) };
+  return { ...base, rank: rankMap.get(s.rankCode) ?? null, demo: true, rankBadge: rankBadgeUrl(s.rankCode) };
 }
 
 /** 各最低獎銜是否符合：模擬會員比對示範獎銜；中央會員向中央查詢（fail closed）。 */
@@ -1755,6 +1756,7 @@ const routes: [string, RegExp, Handler][] = [
       if (central) {
         // 獎銜：值為空或「無／none」顯示「安麗寶寶」；其餘用中央選項的名稱，查不到退回本地階梯名稱。
         if (rv !== undefined) member.rankLabel = rv && rv !== "none" && rv !== "無" ? (opts?.get(rv) ?? rankLabelOf(rv, rankMap)) : "安麗寶寶";
+        if (rv !== undefined) member.rankBadge = rankBadgeUrl(rv, member.rankLabel);
         // 會員中心資料有空白就提示（只傳「缺什麼」，不保存內容）。
         member.profileMissing = missing ?? [];
         // 資料不完整時，把視窗要用的資料一起帶回去（來源都已在快取，不用再問會員中心，視窗才能立刻顯示）。
@@ -2680,6 +2682,19 @@ const routes: [string, RegExp, Handler][] = [
       const [res] = await ctx.db.batch([ctx.db.prepare("DELETE FROM announcements WHERE id = ?").bind(id), audit(ctx.db, admin.sub, "announcement.delete", "announcement", id)]);
       if (res.meta?.changes === 0) return fail(404, "not_found", "找不到這則公告");
       return { ok: true };
+    },
+  ],
+  [
+    "GET",
+    /^\/media\/badge$/,
+    async (ctx) => {
+      // 獎銜徽章圖（公開，只服務 Pin-Level/ 底下白名單內的檔名）。
+      const f = ctx.url.searchParams.get("f") ?? "";
+      const bucket = ctx.env.MEDIA;
+      if (!bucket || !BADGE_FILE_RE.test(f) || !Object.values(RANK_BADGE_FILES).includes(f)) return new Response("Not found", { status: 404 });
+      const obj = await bucket.get(`Pin-Level/${f}.png`);
+      if (!obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400", "x-content-type-options": "nosniff" } });
     },
   ],
   [
