@@ -382,6 +382,7 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     priceTwd: web ? price : null,
     originalPriceTwd: web ? row.price_twd : null,
     free: price === 0 && row.price_tba !== 1,
+    paid: row.price_twd > 0, // 付費課程（原價大於 0；限時免費、早鳥、鑽石免費仍算付費課程）
     freeNow,
     freeUntil: freeNow ? row.free_until : null,
     minRank,

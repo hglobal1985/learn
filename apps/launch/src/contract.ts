@@ -75,6 +75,8 @@ export type CourseSummary = {
   hiddenFromLearning: boolean;
   /** 播放過這門課超過 1%（或已有完成章節）：即使沒有報名紀錄也會列入「學習中」。 */
   started: boolean;
+  /** 付費課程（原價大於 0；限時免費、早鳥、鑽石免費仍算）。學習中的課程卡用來顯示「付費課程」標籤（不寫金額）。 */
+  paid: boolean;
   /** 最近一次學習（播放、完成章節）的時間（ISO）；從沒學習過是 null。「學習中」依這個由新到舊排序。 */
   lastLearnedAt: string | null;
   diamondFree: boolean;

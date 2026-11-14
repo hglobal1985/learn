@@ -34,6 +34,7 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         <View style={styles.meta}>
           {course.teacher.trim() ? <Pill label={course.teacher.trim()} /> : null}
           {hostLine(course) ? <Pill label={hostLine(course)} tone="accent" /> : null}
+          {course.paid && course.enrollment ? <Pill label="付費課程" /> : null}
           <CoursePriceTag course={course} />
         </View>
         {course.eventStart ? (

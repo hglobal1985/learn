@@ -66,6 +66,7 @@ test("播放進度：沒看完的章節也讓課程進度前進（只進不退�
   await call("PATCH", `/admin/lessons/${b.id}`, admin, { minutes: 10 });
   const pct = async () => (await call<CourseSummary[]>("GET", "/courses", student)).data.find((c) => c.id === created.id)!.progressPercent;
 
+  assert.equal((await call<CourseSummary[]>("GET", "/courses", student)).data.find((c) => c.id === created.id)!.paid, false); // 價格 0＝不是付費課程
   assert.equal(await pct(), 0);
   assert.equal((await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: 0.5 })).status, 200);
   assert.equal(await pct(), 25); // 20 分鐘裡看了 5 分鐘
