@@ -264,6 +264,7 @@ export async function purgeMember(db: D1Database, sub: string, actor: string, ac
     db.prepare("DELETE FROM comment_blocks WHERE member_sub = ? OR blocked_sub = ?").bind(sub, sub),
     db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(sub),
     db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM learning_started WHERE member_sub = ?").bind(sub),
     db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(sub),
     // 審核員／窗口收到的「有新的報名待審核」等通知連到這位會員的報名紀錄，報名紀錄刪除前先清掉，免得點了找不到。
     db.prepare("DELETE FROM notifications WHERE (link LIKE '/admin/orders/%' AND substr(link, 15) IN (SELECT id FROM orders WHERE member_sub = ?1)) OR (link LIKE '/orders/%' AND substr(link, 9) IN (SELECT id FROM orders WHERE member_sub = ?1))").bind(sub),
@@ -329,18 +330,20 @@ const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, 
   FROM courses c`;
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  const empty = { hidden: new Set<string>(), enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
+  const empty = { started: new Set<string>(), startedHidden: new Set<string>(), hidden: new Set<string>(), enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
   if (!sub) return empty;
-  const [e, p, d] = await db.batch([
+  const [e, p, d, st] = await db.batch([
     db.prepare("SELECT course_id, hidden FROM enrollments WHERE member_sub = ?").bind(sub),
     db.prepare("SELECT i.course_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
     db.prepare("SELECT p.course_id AS course_id, COUNT(*) AS n, COALESCE(SUM(l.duration_minutes), 0) AS m FROM lesson_progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.member_sub = ? GROUP BY p.course_id").bind(sub),
+    db.prepare("SELECT course_id, hidden FROM learning_started WHERE member_sub = ?").bind(sub),
   ]);
   const keys = (rows: unknown[]) => new Set((rows as { course_id: string }[]).map((r) => r.course_id));
   const pendingOrder = new Map<string, string>();
   for (const r of p.results as { course_id: string; order_id: string }[]) pendingOrder.set(r.course_id, r.order_id);
   const hidden = new Set((e.results as { course_id: string; hidden: number }[]).filter((r) => r.hidden === 1).map((r) => r.course_id));
-  return { hidden, enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
+  const startedRows = st.results as { course_id: string; hidden: number }[];
+  return { started: new Set(startedRows.map((r) => r.course_id)), startedHidden: new Set(startedRows.filter((r) => r.hidden === 1).map((r) => r.course_id)), hidden, enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
@@ -391,7 +394,9 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     hideFromHome: row.hide_home === 1,
     series: row.series,
     seriesEdmUrl: row.series_edm_key ? pubUrl(row.series_edm_key, row.series_art_version ?? 1) : null,
-    hiddenFromLearning: state.hidden.has(row.id),
+    // 學習中：有報名的看報名紀錄的隱藏；沒報名但播放過的（例如管理員、公開課程）看播放紀錄的隱藏。
+    hiddenFromLearning: state.enrolled.has(row.id) ? state.hidden.has(row.id) : state.startedHidden.has(row.id),
+    started: state.started.has(row.id) || (state.done.get(row.id) ?? 0) > 0,
     watchFree: !!ctx.session && row.status === "published" && row.price_twd === 0 && row.price_tba !== 1 && (eligibility.get(row.min_rank_code) === true || byPresident(ctx.session, row)),
     diamondFree: row.diamond_free === 1,
     diamondFreeNow: diamondNow,
@@ -556,6 +561,7 @@ async function openFreeCourse(ctx: Ctx, courseId: string): Promise<void> {
   if (!c || c.price_twd !== 0 || c.price_tba === 1) return;
   await ensureFreeEnrollment(ctx, courseId);
   await ctx.db.prepare("UPDATE enrollments SET hidden = 0 WHERE member_sub = ? AND course_id = ? AND hidden = 1").bind(s.sub, courseId).run();
+  await ctx.db.prepare("UPDATE learning_started SET hidden = 0 WHERE member_sub = ? AND course_id = ? AND hidden = 1").bind(s.sub, courseId).run();
 }
 
 /** 刪除課程前的影響：多少筆報名紀錄、多少人已開通、已確認收款多少（供「輸入 YES」確認畫面顯示）。 */
@@ -1752,9 +1758,32 @@ const routes: [string, RegExp, Handler][] = [
       const s = requireMember(ctx);
       const c = await ctx.db.prepare("SELECT price_twd FROM courses WHERE id = ?").bind(courseId).first<{ price_twd: number }>();
       if (!c) return fail(404, "not_found", "找不到這門課程");
-      if (c.price_twd !== 0) fail(403, "paid_course", "付費課程不能從學習中隱藏");
-      const r = await ctx.db.prepare("UPDATE enrollments SET hidden = 1 WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).run();
-      if (r.meta?.changes === 0) return fail(404, "not_enrolled", "這門課程不在你的學習中");
+      const enrolled = await ctx.db.prepare("SELECT 1 AS ok FROM enrollments WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).first();
+      if (enrolled) {
+        if (c.price_twd !== 0) fail(403, "paid_course", "付費課程不能從學習中隱藏");
+        await ctx.db.prepare("UPDATE enrollments SET hidden = 1 WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).run();
+      } else {
+        // 沒報名、只是播放過的課程（管理員或公開課程）：隱藏播放紀錄那一筆。
+        const r = await ctx.db.prepare("UPDATE learning_started SET hidden = 1 WHERE member_sub = ? AND course_id = ?").bind(s.sub, courseId).run();
+        if (r.meta?.changes === 0) return c.price_twd !== 0 ? fail(403, "paid_course", "付費課程不能從學習中隱藏") : fail(404, "not_enrolled", "這門課程不在你的學習中");
+      }
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/started$/,
+    async (ctx, [courseId, lessonId]) => {
+      const s = requireMember(ctx);
+      await lessonOf(ctx, courseId, lessonId); // 找不到章節時會丟錯
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      await ensureFreeEnrollment(ctx, courseId);
+      // 播放超過 1%：納入學習中（已被隱藏的也恢復顯示）。
+      await ctx.db
+        .prepare("INSERT INTO learning_started (member_sub, course_id) VALUES (?, ?) ON CONFLICT(member_sub, course_id) DO UPDATE SET hidden = 0")
+        .bind(s.sub, courseId)
+        .run();
+      await ctx.db.prepare("UPDATE enrollments SET hidden = 0 WHERE member_sub = ? AND course_id = ? AND hidden = 1").bind(s.sub, courseId).run();
       return { ok: true };
     },
   ],

@@ -31,13 +31,16 @@ export default function LearningScreen() {
       showToast((e as Error).message);
     }
   };
-  const canHide = (c: CourseSummary) => c.enrollment === "opened" && (c.watchFree || c.isPublic);
+  /** 免費課程可以隱藏；沒報名紀錄、只是播放過的課程（管理員或公開課程）也可以隱藏。 */
+  const canHide = (c: CourseSummary) => (c.enrollment === "opened" && (c.watchFree || c.isPublic)) || (c.enrollment !== "opened" && c.started);
+  // 學習中＝已開通的課程，或播放超過 1% 的課程（含免費、沒有報名紀錄的）；等待審核的另外顯示。
+  const inLearning = (c: CourseSummary) => (c.enrollment === "opened" || c.started) && !c.hiddenFromLearning;
   const [kind, setKind] = useState("");
   const [unit, setUnit] = useState("");
-  const enrolled = useMemo(() => (data ?? []).filter((c) => (c.enrollment === "opened" && !c.hiddenFromLearning) || c.enrollment === "pending"), [data]);
+  const enrolled = useMemo(() => (data ?? []).filter((c) => inLearning(c) || c.enrollment === "pending"), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const units = useMemo(() => [...new Set(enrolled.flatMap((c) => c.hostUnit.split("、")).filter(Boolean))], [enrolled]);
   const shown = (data ?? []).filter((c) => (kind === "" || (kind === "free" ? c.free : !c.free)) && (unit === "" || c.hostUnit.split("、").includes(unit)));
-  const mine = shown.filter((c) => c.enrollment === "opened" && !c.hiddenFromLearning);
+  const mine = shown.filter(inLearning);
   const pending = shown.filter((c) => c.enrollment === "pending");
   const inProgress = mine.filter((c) => c.completedLessons < c.lessonCount);
   const finished = mine.filter((c) => c.lessonCount > 0 && c.completedLessons >= c.lessonCount);
@@ -64,8 +67,8 @@ export default function LearningScreen() {
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
       {pending.length ? <NoticeBox tone="warning" text={`${pending.length} 門課程等待管理員確認，開通後會通知你。`} /> : null}
-      {data && !mine.length && enrolled.some((c) => c.enrollment === "opened") ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}
-      {data && !enrolled.some((c) => c.enrollment === "opened") ? (
+      {data && !mine.length && enrolled.some(inLearning) ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}
+      {data && !enrolled.some(inLearning) ? (
         <EmptyState
           icon="play-circle-outline"
           title="還沒有開通的課程"

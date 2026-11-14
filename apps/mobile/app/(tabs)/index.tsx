@@ -46,10 +46,11 @@ export default function HomeScreen() {
   const notices = useApi<Announcement[]>("/announcements", { early: true });
   const courses = data ?? [];
   const mine = courses
-    .filter((x) => x.enrollment === "opened")
+    // 與「學習中」頁同一個規則：已開通或播放超過 1% 的課程（被隱藏的不列）。
+    .filter((x) => (x.enrollment === "opened" || x.started) && !x.hiddenFromLearning)
     .sort((a, b) => Number(b.completedLessons < b.lessonCount) - Number(a.completedLessons < a.lessonCount));
   // 會員：符合獎銜、尚未報名的課程；訪客：完全公開的課程。
-  const recommendedAll = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && !x.hideFromHome && (member ? x.eligible && !x.isPublic : x.isPublic));
+  const recommendedAll = courses.filter((x) => x.status === "published" && x.enrollment !== "opened" && !x.started && !x.hideFromHome && (member ? x.eligible && !x.isPublic : x.isPublic));
   // 同系列的課只推薦最近的一場。
   const recommended = collapseSeries(recommendedAll, recommendedAll).map((e) => e.course);
   return (

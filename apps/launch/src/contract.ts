@@ -73,6 +73,8 @@ export type CourseSummary = {
   watchFree: boolean;
   /** 學員把這門免費課程從「學習中」隱藏了（再打開課程頁會恢復）。 */
   hiddenFromLearning: boolean;
+  /** 播放過這門課超過 1%（或已有完成章節）：即使沒有報名紀錄也會列入「學習中」。 */
+  started: boolean;
   diamondFree: boolean;
   diamondFreeNow: boolean;
   /** 早鳥優惠（null＝沒有設定）：until 為截止日（含當天，台灣時間）；active＝現在還在優惠期間。priceTwd 在 App 為 null。 */

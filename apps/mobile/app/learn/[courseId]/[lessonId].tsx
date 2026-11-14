@@ -75,6 +75,18 @@ export default function LessonScreen() {
   const segLen = segEnd - segStart;
   const watched = here && segLen > 0 && (player.position - segStart) / segLen >= 0.95;
   const finished = legacyYoutube ? legacyDone : here && (player.segmentEnded || watched);
+  // 播放超過 1%：通知後端把這門課納入「學習中」（不論免費或付費、有沒有報名紀錄；每一堂每次進入頁面只回報一次）。
+  const started = here && segLen > 0 && (player.position - segStart) / segLen >= 0.01;
+  const startedSent = useRef<string | null>(null);
+  useEffect(() => {
+    if (!c || !curLesson || !member || !started || startedSent.current === curLesson.id) return;
+    startedSent.current = curLesson.id;
+    api("POST", `/courses/${c.id}/lessons/${curLesson.id}/started`)
+      .then(() => invalidate())
+      .catch(() => {
+        startedSent.current = null; // 失敗下次再試
+      });
+  }, [started, member?.sub, curLesson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!c || !curLesson || !member || !finished || curLesson.completed || autoDone.current === curLesson.id) return;
     autoDone.current = curLesson.id;
