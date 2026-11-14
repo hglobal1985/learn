@@ -1912,13 +1912,30 @@ const routes: [string, RegExp, Handler][] = [
     "GET",
     /^\/search-index$/,
     async (ctx) => {
-      // 「全部課程」搜尋用：已上架課程每一堂的章節標題、分享者（姓名、獎銜、職稱）與日期。公開資料（章節標題本來就顯示在課程頁），只回搜尋要用的欄位。
+      // 「全部課程」搜尋與「章節」模式用：已上架課程每一堂的章節標題、分享者（姓名、獎銜、職稱）、日期、長度，
+      // 登入時再帶「這位會員是否已完成」。公開資料（章節標題本來就顯示在課程頁），只回需要的欄位。
       const rankMap = await ranks(ctx.db);
+      const sub = ctx.session?.sub ?? "";
       const { results } = await ctx.db
-        .prepare("SELECT l.course_id AS courseId, l.title, l.sharer, l.sharer_rank AS sharerRank, l.sharer_title AS sharerTitle, l.event_date AS eventDate FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.status = 'published' ORDER BY l.course_id, l.position")
-        .all<{ courseId: string; title: string; sharer: string; sharerRank: string; sharerTitle: string; eventDate: string | null }>();
+        .prepare(
+          "SELECT l.id AS id, l.course_id AS courseId, l.position AS position, l.title, l.sharer, l.sharer_rank AS sharerRank, l.sharer_title AS sharerTitle, l.event_date AS eventDate, l.duration_minutes AS minutes, l.media_type AS mediaType, l.media_ref AS mediaRef, (SELECT 1 FROM lesson_progress p WHERE p.lesson_id = l.id AND p.member_sub = ?) AS done FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.status = 'published' ORDER BY l.course_id, l.position",
+        )
+        .bind(sub)
+        .all<{ id: string; courseId: string; position: number; title: string; sharer: string; sharerRank: string; sharerTitle: string; eventDate: string | null; minutes: number; mediaType: string; mediaRef: string | null; done: number | null }>();
       return {
-        lessons: results.map((r) => ({ courseId: r.courseId, title: r.title, sharer: r.sharer, sharerRankName: rankMap.get(r.sharerRank)?.name ?? "", sharerTitle: r.sharerTitle, eventDate: r.eventDate })),
+        lessons: results.map((r) => ({
+          id: r.id,
+          courseId: r.courseId,
+          position: r.position,
+          title: r.title,
+          sharer: r.sharer,
+          sharerRankName: rankMap.get(r.sharerRank)?.name ?? "",
+          sharerTitle: r.sharerTitle,
+          eventDate: r.eventDate,
+          minutes: r.minutes,
+          ready: (r.mediaType !== "demo" && !!r.mediaRef) || r.minutes > 0,
+          completed: r.done === 1,
+        })),
       };
     },
   ],

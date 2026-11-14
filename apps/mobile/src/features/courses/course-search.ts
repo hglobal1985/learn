@@ -1,10 +1,10 @@
 import type { CourseSummary } from "@/api/client";
 
 /** 搜尋索引（後端 GET /search-index）裡每一堂章節的資料。 */
-export type SearchLesson = { courseId: string; title: string; sharer: string; sharerRankName: string; sharerTitle: string; eventDate: string | null };
+export type SearchLesson = { id: string; courseId: string; position: number; title: string; sharer: string; sharerRankName: string; sharerTitle: string; eventDate: string | null; minutes: number; ready: boolean; completed: boolean };
 /** 關聯詞（輸入時列出的建議）：種類＋文字。 */
 export type SearchTerm = { kind: "系列" | "課程" | "主講人" | "獎銜" | "職稱" | "章節" | "日期"; text: string };
-export type SearchIndex = { haystack: Map<string, string>; terms: SearchTerm[] };
+export type SearchIndex = { haystack: Map<string, string>; /** 章節模式用：每一堂自己的搜尋文字（含所屬課程的主講人、系列、日期）。 */ lessonHay: Map<string, string>; terms: SearchTerm[] };
 
 /** 2026-11-03 → 各種常見寫法，使用者打「11/3」「2026/11」「11月3日」都找得到。 */
 export function dateForms(d: string | null | undefined): string[] {
@@ -28,8 +28,10 @@ export function buildSearchIndex(courses: CourseSummary[], lessons: SearchLesson
     if (t) terms.set(`${kind}:${t}`, { kind, text: t });
   };
   const haystack = new Map<string, string>();
+  const lessonHay = new Map<string, string>();
   for (const c of courses) {
     const parts: string[] = [c.title, c.series, c.teacher, c.teacherRankName, c.teacherTitle];
+    const courseParts: string[] = [...parts];
     add("課程", c.title);
     add("系列", c.series);
     add("主講人", c.teacher);
@@ -37,10 +39,12 @@ export function buildSearchIndex(courses: CourseSummary[], lessons: SearchLesson
     add("職稱", c.teacherTitle);
     for (const d of [c.eventStart, c.eventEnd]) {
       parts.push(...dateForms(d));
+      courseParts.push(...dateForms(d));
       if (d) add("日期", dateForms(d)[0]);
     }
     for (const l of byCourse.get(c.id) ?? []) {
       parts.push(l.title, l.sharer, l.sharerRankName, l.sharerTitle, ...dateForms(l.eventDate));
+      lessonHay.set(l.id, [...courseParts, l.title, l.sharer, l.sharerRankName, l.sharerTitle, ...dateForms(l.eventDate)].filter(Boolean).join("\u0001").toLowerCase());
       add("章節", l.title);
       add("主講人", l.sharer);
       add("獎銜", l.sharerRankName);
@@ -49,7 +53,7 @@ export function buildSearchIndex(courses: CourseSummary[], lessons: SearchLesson
     }
     haystack.set(c.id, parts.filter(Boolean).join("\u0001").toLowerCase());
   }
-  return { haystack, terms: [...terms.values()] };
+  return { haystack, lessonHay, terms: [...terms.values()] };
 }
 
 const tokens = (q: string) => q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -60,6 +64,15 @@ export function matchCourses(index: SearchIndex, q: string): Set<string> | null 
   if (!t.length) return null;
   const out = new Set<string>();
   for (const [id, hay] of index.haystack) if (t.every((w) => hay.includes(w))) out.add(id);
+  return out;
+}
+
+/** 章節模式：符合的章節編號（空白搜尋＝null）。 */
+export function matchLessons(index: SearchIndex, q: string): Set<string> | null {
+  const t = tokens(q);
+  if (!t.length) return null;
+  const out = new Set<string>();
+  for (const [id, hay] of index.lessonHay) if (t.every((w) => hay.includes(w))) out.add(id);
   return out;
 }
 

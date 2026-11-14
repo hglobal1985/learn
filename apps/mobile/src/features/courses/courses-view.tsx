@@ -1,12 +1,14 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
 import { CourseCard } from "./course-card";
 import { byNearest } from "./series-sheet";
 import { SeriesTile } from "./series-tile";
-import { buildSearchIndex, matchCourses, suggestTerms, type SearchLesson } from "./course-search";
+import { ViewToggle, type CourseViewMode } from "./view-toggle";
+import { ChapterList, type ChapterGroup } from "./chapter-list";
+import { buildSearchIndex, matchCourses, matchLessons, suggestTerms, type SearchLesson } from "./course-search";
 import { SEARCH_ICON_W, SearchBox } from "./search-box";
 import { groupBySeries, sortCourses } from "./sort";
 import { useApi, useSession } from "@/state/session";
@@ -16,6 +18,7 @@ import { space } from "@/theme/tokens";
 import { AppText, EmptyState, ErrorView, LoadingView, Screen, Select } from "@/ui";
 
 const ALL = "";
+const MODE_KEY = "hglobal:learn:course-view-mode";
 const GAP = space.md;
 
 /** 全部課程清單。initialCategory／series 由網址（短網址 /c、/s 或 ?category=、?series=）帶入；series 篩選時上方有可清除的標籤。 */
@@ -39,19 +42,32 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState("");
-  const [freeOnly, setFreeOnly] = useState(false); // 勾「免費」只列免費課程
+  // 顯示模式：系列（封面牆）／章節（一堂一列）；記住上次的選擇。
+  const [mode, setMode] = useState<CourseViewMode>("series");
+  useEffect(() => {
+    AsyncStorage.getItem(MODE_KEY)
+      .then((v) => (v === "chapter" || v === "series") && setMode(v))
+      .catch(() => undefined);
+  }, []);
+  const pickMode = (m: CourseViewMode) => {
+    setMode(m);
+    if (m === "chapter") setWantIndex(true);
+    AsyncStorage.setItem(MODE_KEY, m).catch(() => undefined);
+  };
   const [rowW, setRowW] = useState(0);
   const [wantIndex, setWantIndex] = useState(false);
-  const searchData = useApi<{ lessons: SearchLesson[] }>(wantIndex ? "/search-index" : null);
+  const chapterMode = mode === "chapter" && !seriesFilter;
+  const searchData = useApi<{ lessons: SearchLesson[] }>(wantIndex || chapterMode ? "/search-index" : null);
   const { member } = useSession();
   const { c } = useTheme();
   const { config } = useUiConfig();
   const courses = useMemo(() => sortCourses(data ?? [], member, config.sortGroups), [data, member, config.sortGroups]);
   const categories = useMemo(() => [...new Set(courses.flatMap((x) => x.category.split("、")).filter(Boolean))], [courses]);
-  const searchIndex = useMemo(() => (wantIndex ? buildSearchIndex(courses, searchData.data?.lessons ?? []) : null), [wantIndex, courses, searchData.data]);
+  const needIndex = wantIndex || chapterMode;
+  const searchIndex = useMemo(() => (needIndex ? buildSearchIndex(courses, searchData.data?.lessons ?? []) : null), [needIndex, courses, searchData.data]);
   const matched = searchIndex && !seriesFilter ? matchCourses(searchIndex, q) : null;
   const terms = searchIndex && q.trim() && q !== picked ? suggestTerms(searchIndex, q) : [];
-  const list = courses.filter((x) => (!freeOnly || x.free) && (matched ? matched.has(x.id) : (category === ALL || x.category.split("、").includes(category)) && (!seriesFilter || x.series === seriesFilter)));
+  const list = courses.filter((x) => (matched ? matched.has(x.id) : (category === ALL || x.category.split("、").includes(category)) && (!seriesFilter || x.series === seriesFilter)));
   const pickTerm = (text: string) => {
     const head = q.trim().split(/\s+/).slice(0, -1).join(" ");
     const next = head ? `${head} ${text}` : text;
@@ -59,6 +75,30 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
     setPicked(next);
   };
   const groups = useMemo(() => groupBySeries(list, courses), [list, courses]);
+  // 章節模式：符合條件的章節，依系列分組（組的順序＝課程清單排序；組內課程由近到遠、章節依順序）。
+  const chapterGroups = useMemo<ChapterGroup[]>(() => {
+    if (!chapterMode) return [];
+    const byId = new Map(courses.map((x) => [x.id, x]));
+    const hit = searchIndex ? matchLessons(searchIndex, q) : null;
+    const canWatch = (x: (typeof courses)[number]) => member?.role === "admin" || x.enrollment === "opened" || x.isPublic || x.watchFree;
+    const out = new Map<string, ChapterGroup>();
+    const order = new Map(courses.map((x, i) => [x.id, i]));
+    for (const l of [...(searchData.data?.lessons ?? [])].sort((a, b) => (order.get(a.courseId) ?? 0) - (order.get(b.courseId) ?? 0) || a.position - b.position)) {
+      const co = byId.get(l.courseId);
+      if (!co) continue;
+      if (hit ? !hit.has(l.id) : category !== ALL && !co.category.split("、").includes(category)) continue;
+      const key = co.series ? `s:${co.series}` : `c:${co.id}`;
+      const g = out.get(key) ?? { key, title: co.series || co.title, items: [] };
+      g.items.push({ lesson: l, course: co, locked: !canWatch(co) });
+      out.set(key, g);
+    }
+    // 組內：課程日期由近到遠（還沒結束的在前），同一課程內照章節順序。
+    for (const g of out.values()) {
+      const rank = new Map(byNearest(g.items.map((i) => i.course).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i)).map((x, i) => [x.id, i]));
+      g.items.sort((a, b) => (rank.get(a.course.id) ?? 0) - (rank.get(b.course.id) ?? 0) || a.lesson.position - b.lesson.position);
+    }
+    return [...out.values()];
+  }, [chapterMode, courses, searchData.data, searchIndex, q, category, member]);
   // 一排放幾張：手機 2 張，寬一點的畫面 3 張，同一頁容納更多。
   const cols = boxW >= 520 ? 3 : 2;
   const tileW = boxW ? Math.floor((boxW - GAP * (cols - 1)) / cols) : 0;
@@ -76,12 +116,7 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
       {!seriesFilter ? <View style={{ width: SEARCH_ICON_W }} /> : null}
       <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-end", gap: space.sm, opacity: searchOpen ? 0 : 1 }} pointerEvents={searchOpen ? "none" : "auto"}>
       <Select value={shownCategory} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={seriesFilter ? leaveSeries : pickCategory} />
-      {!seriesFilter ? (
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: freeOnly }} accessibilityLabel="只看免費課程" onPress={() => setFreeOnly((v) => !v)} hitSlop={6} style={styles.freeCheck}>
-          <Ionicons name={freeOnly ? "checkbox" : "square-outline"} size={28} color={freeOnly ? c.accent : c.textMuted} />
-          <AppText variant="body">免費</AppText>
-        </Pressable>
-      ) : null}
+      {!seriesFilter ? <ViewToggle value={mode} onChange={pickMode} /> : null}
       </View>
       {!seriesFilter ? (
         <SearchBox
@@ -132,10 +167,20 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
       {filterRow}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
-      {data && !groups.length ? <EmptyState icon="library-outline" title={matched ? "找不到符合的課程" : "沒有符合條件的課程"} /> : null}
-      <View style={styles.grid} onLayout={(e) => setBoxW(Math.floor(e.nativeEvent.layout.width))}>
-        {tileW ? groups.map((g) => <SeriesTile key={g.key} group={g} width={tileW} />) : null}
-      </View>
+      {chapterMode ? (
+        <>
+          {data && searchData.loading && !searchData.data ? <LoadingView /> : null}
+          {data && searchData.data && !chapterGroups.length ? <EmptyState icon="library-outline" title={q.trim() ? "找不到符合的章節" : "沒有符合條件的章節"} /> : null}
+          <ChapterList groups={chapterGroups} />
+        </>
+      ) : (
+        <>
+          {data && !groups.length ? <EmptyState icon="library-outline" title={matched ? "找不到符合的課程" : "沒有符合條件的課程"} /> : null}
+          <View style={styles.grid} onLayout={(e) => setBoxW(Math.floor(e.nativeEvent.layout.width))}>
+            {tileW ? groups.map((g) => <SeriesTile key={g.key} group={g} width={tileW} />) : null}
+          </View>
+        </>
+      )}
     </Screen>
   );
 }
@@ -144,4 +189,4 @@ const styles = StyleSheet.create({
   terms: { marginTop: space.xs, borderWidth: 1, borderRadius: 12, overflow: "hidden" },
   term: { minHeight: 44, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   kind: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 }, filters: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
-  freeCheck: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 48 }, grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, rowGap: space.lg } });
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, rowGap: space.lg } });

@@ -98,8 +98,10 @@ test("搜尋索引：已上架課程的章節標題、分享者與日期（未�
   await call("PATCH", `/admin/courses/${pub.id}`, admin, { status: "published" });
   await call("POST", `/admin/courses/${pub.id}/lessons`, admin, { title: "搜尋章節", sharer: "李講師", sharerTitle: "經理", eventDate: "2026-11-03" });
   await call("POST", `/admin/courses/${draft.id}/lessons`, admin, { title: "不該出現" });
-  const r = await call<{ lessons: { courseId: string; title: string; sharer: string; sharerTitle: string; eventDate: string | null }[] }>("GET", "/search-index");
-  assert.equal(r.status, 200); // 不用登入
+  const r = await call<{ lessons: { id: string; courseId: string; position: number; title: string; sharer: string; sharerTitle: string; eventDate: string | null; completed: boolean; ready: boolean }[] }>("GET", "/search-index", admin);
+  assert.equal(r.status, 200);
+  assert.equal((await call("GET", "/search-index")).status, 200); // 不用登入也能讀
+  assert.ok(r.data.lessons.every((l) => typeof l.id === "string" && typeof l.position === "number" && l.completed === false));
   assert.ok(r.data.lessons.some((l) => l.courseId === pub.id && l.title === "搜尋章節" && l.sharer === "李講師" && l.sharerTitle === "經理" && l.eventDate === "2026-11-03"));
   assert.ok(!r.data.lessons.some((l) => l.courseId === draft.id));
 });
