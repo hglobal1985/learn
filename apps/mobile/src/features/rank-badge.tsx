@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { resolveUrl } from "@/api/client";
 
-/** 徽章高度：72（業主 2026-11-14 要求比頭像高度 48 再放大 1.5 倍）。圖是直式（380×720），寬度依比例。要改大小只改這裡。 */
-export const BADGE_SIZE = 72;
+/** 徽章高度：108（業主 2026-11-14：先放大 1.5 倍到 72，再放大 1.5 倍到 108）。圖是直式（380×720），寬度依比例。要改大小只改這裡，閃光球大小會跟著縮放。 */
+export const BADGE_SIZE = 108;
+const K = BADGE_SIZE / 72; // 閃光球的大小以 72 高為基準，隨徽章等比縮放
 const BADGE_W = Math.round((BADGE_SIZE * 380) / 720);
 
 /** 各徽章圖案在 720 高畫布裡的上下範圍（像素；量自 24 張圖）。閃光球只出現在圖案上。 */
@@ -77,7 +78,7 @@ export function RankBadge({ url, label }: { url: string; label?: string | null }
   return (
     <View style={styles.box} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>
       <Image source={{ uri: resolveUrl(url) }} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
-      {!still ? SPARKS.map((s, i) => <Spark key={i} cx={s.x * BADGE_W} cy={y0 + s.y * artH} size={s.size} delay={s.delay} period={s.period} still={still} />) : null}
+      {!still ? SPARKS.map((s, i) => <Spark key={i} cx={s.x * BADGE_W} cy={y0 + s.y * artH} size={s.size * K} delay={s.delay} period={s.period} still={still} />) : null}
     </View>
   );
 }
