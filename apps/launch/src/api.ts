@@ -2916,7 +2916,7 @@ const routes: [string, RegExp, Handler][] = [
       const sel = normalizeSelection({ ...(await loadSelection(ctx.db)), ...(body.selection as object) });
       // 只用免費額度時，不能選沒有免費額度的外部模型
       const paid = AI_MODELS.find((m) => m.needsKey && Object.values(sel).includes(m.id));
-      if (st.freeOnly && paid) fail(409, "free_only", `目前設定為「只用免費額度」，「${paid.name}」沒有免費額度，請先關閉「只用免費額度」`);
+      if (st.freeOnly && paid) fail(409, "free_only", `目前設定為「只用免費模型」，「${paid.name}」沒有免費額度，請先關閉「只用免費模型」`);
       await saveSelection(ctx.db, sel);
       await saveSettings(ctx.db, st);
       await audit(ctx.db, s.sub, "ai_models.set", "ui_settings", "ai_models", JSON.stringify({ sel, st })).run();

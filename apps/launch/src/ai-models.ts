@@ -141,7 +141,7 @@ export async function reserveAi(db: D1Database, modelId: string, w: AiWork, now 
   const st = await loadSettings(db);
   const est = estimateNeurons(modelId, w);
   if (est === null) {
-    if (st.freeOnly) throw new AiStopped("目前設定為「只用免費額度」，這個模型沒有免費額度，已停止");
+    if (st.freeOnly) throw new AiStopped("「只用免費模型」目前是開啟的，Claude 沒有免費額度所以已停止。請到本頁把「只用免費模型（不用 Claude）」改成「關」");
     return 0;
   }
   const day = usageDay(now);
