@@ -67,8 +67,8 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
             }}
             style={[styles.row, { borderTopColor: c.border }]}
           >
-            {x.edmUrl ? (
-              <Image source={{ uri: resolveUrl(x.edmUrl) }} style={styles.thumb} resizeMode="cover" />
+            {x.coverUrl || x.edmUrl ? (
+              <Image source={{ uri: resolveUrl((x.coverUrl || x.edmUrl) as string) }} style={styles.thumb} resizeMode="cover" />
             ) : (
               <Image source={require("../../../assets/icon.png")} style={styles.thumb} resizeMode="cover" />
             )}
