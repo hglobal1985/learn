@@ -52,12 +52,11 @@ function StatusChip({ course }: { course: CourseSummary }) {
 export function SeriesSheet({ title, items, onClose, onPick, currentId, showAllSeries }: { title: string; items: CourseSummary[]; onClose: () => void; onPick?: (c: CourseSummary) => void; currentId?: string; showAllSeries?: string }) {
   const { c } = useTheme();
   const links = useApi<{ kind: string; value: string; slug: string }[]>(showAllSeries ? "/short-links" : null);
-  /** 顯示該系列全部梯次（全部展開）：有設定短網址就用短網址，沒有用 /courses?series=。 */
+  /** 顯示該系列全部梯次（全部展開）：有設定短網址就用短網址，沒有用 /series/系列名稱。 */
   const showAll = () => {
     onClose();
     const slug = links.data?.find((l) => l.kind === "series" && l.value === showAllSeries)?.slug;
-    if (slug) router.push(`/${slug}`);
-    else router.push({ pathname: "/courses", params: { series: showAllSeries } });
+    router.push(slug ? `/${slug}` : `/series/${encodeURIComponent(showAllSeries ?? "")}`);
   };
   return (
     <BottomSheet onClose={onClose}>

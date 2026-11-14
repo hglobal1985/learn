@@ -1,10 +1,10 @@
-import { Stack, router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { saveLastLesson } from "@/lib/last-lesson";
 import { Platform, StyleSheet, View } from "react-native";
 import { api, type CourseDetail, type Playback } from "@/api/client";
 import { AttachmentList } from "@/features/attachments";
-import { HeaderShare } from "@/features/share-button";
+import { PageHeader } from "@/features/page-header";
 import { InlineAudio } from "@/features/player/audio-bar";
 import { engine } from "@/features/player/engine";
 import { eventDays } from "@/features/format";
@@ -111,7 +111,7 @@ export default function LessonScreen() {
         </View>
       ) : null}
     <Screen header={false} tight gap={space.sm}>
-      <Stack.Screen options={{ title: c.title, headerRight: () => <HeaderShare title={`${c.title}｜${lesson.title}`} path={`/learn/${c.id}/${lesson.id}`} /> }} />
+      <PageHeader title={c.title} shareTitle={`${c.title}｜${lesson.title}`} path={`/learn/${c.id}/${lesson.id}`} />
       {legacyYoutube && playback ? (
         <LessonPlayer playback={playback} onSegmentEnd={() => setLegacyDone(true)} />
       ) : playError ? (

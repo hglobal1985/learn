@@ -1,4 +1,4 @@
-import { Redirect, Stack, router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Platform, StyleSheet, View } from "react-native";
@@ -6,7 +6,7 @@ import { api, type CourseDetail, type Order } from "@/api/client";
 import { CommentBoard } from "@/features/comments/comment-board";
 import { confirmSheet } from "@/features/confirm";
 import { EdmStage } from "@/features/courses/edm-viewer";
-import { HeaderShare } from "@/features/share-button";
+import { PageHeader } from "@/features/page-header";
 import { eventDays } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
@@ -99,7 +99,7 @@ export default function CourseDetailScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack.Screen options={{ title: course.title, headerRight: () => <HeaderShare title={course.title} path={`/course/${course.id}`} /> }} />
+      <PageHeader title={course.title} path={`/course/${course.id}`} />
       <EdmStage course={course} />
       <Screen header={false}>
         {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}

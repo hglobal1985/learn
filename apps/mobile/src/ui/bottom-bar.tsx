@@ -14,7 +14,7 @@ const FIXED = new Set(["/me", "/learning", "/notices", "/achievements", "/orders
 const isShortLink = (p: string) => /^\/[a-z0-9-]{2,30}$/.test(p) && !FIXED.has(p);
 const tabs: { href: Href; title: string; icon: IconName; active: IconName; match: (p: string) => boolean }[] = [
   { href: "/", title: "首頁", icon: "home-outline", active: "home", match: (p) => p === "/" },
-  { href: "/courses", title: "全部課程", icon: "library-outline", active: "library", match: (p) => p === "/courses" || p.startsWith("/course/") || isShortLink(p) },
+  { href: "/courses", title: "全部課程", icon: "library-outline", active: "library", match: (p) => p === "/courses" || p.startsWith("/course/") || p.startsWith("/series/") || isShortLink(p) },
   { href: "/learning", title: "學習中", icon: "play-circle-outline", active: "play-circle", match: (p) => p === "/learning" || p.startsWith("/learn/") },
   { href: "/notices", title: "通知", icon: "notifications-outline", active: "notifications", match: (p) => p === "/notices" },
   { href: "/me", title: "設定", icon: "person-circle-outline", active: "person-circle", match: (p) => p === "/me" || p.startsWith("/orders") || p.startsWith("/admin") || p.startsWith("/settings") },

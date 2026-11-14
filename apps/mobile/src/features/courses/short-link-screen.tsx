@@ -1,4 +1,5 @@
-import { router, Stack, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { PageHeader } from "@/features/page-header";
 import { useApi } from "@/state/session";
 import { EmptyState, ErrorView, LoadingView, Screen, Button } from "@/ui";
 import { CoursesView } from "./courses-view";
@@ -26,7 +27,7 @@ export function ShortLinkScreen() {
     );
   return (
     <>
-      <Stack.Screen options={{ title: data.value }} />
+      <PageHeader title={data.value} path={`/${slug}`} />
       {data.kind === "category" ? <CoursesView initialCategory={data.value} /> : <CoursesView series={data.value} />}
     </>
   );
