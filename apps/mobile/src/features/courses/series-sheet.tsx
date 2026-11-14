@@ -1,6 +1,6 @@
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import type { CourseSummary } from "@/api/client";
+import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { resolveUrl, type CourseSummary } from "@/api/client";
 import { eventDays } from "@/features/format";
 import { useTheme } from "@/theme/theme";
 import { minTouch, radius, space } from "@/theme/tokens";
@@ -29,6 +29,8 @@ function byNearest(items: CourseSummary[]): CourseSummary[] {
     return ra === 0 ? da.localeCompare(db) : db.localeCompare(da);
   });
 }
+/** 選單顯示順序：日期較遠的在上、較近的在下（與 byNearest 相反）。 */
+const farToNear = (items: CourseSummary[]) => byNearest(items).reverse();
 
 /** 狀態標籤：與課程卡左邊緞帶同步的文字與顏色；沒有左緞帶時用右邊緞帶（倒數、進行中…）。 */
 function StatusChip({ course }: { course: CourseSummary }) {
@@ -51,9 +53,9 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
   const { c } = useTheme();
   return (
     <BottomSheet onClose={onClose}>
-      <AppText variant="headline">{title}　全部梯次</AppText>
-      <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: 0 }}>
-        {byNearest(items).map((x) => (
+      <AppText variant="headline">{title}</AppText>
+      <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 0 }}>
+        {farToNear(items).map((x) => (
           <Pressable
             key={x.id}
             accessibilityRole="button"
@@ -65,11 +67,16 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
             }}
             style={[styles.row, { borderTopColor: c.border }]}
           >
+            {x.edmUrl ? (
+              <Image source={{ uri: resolveUrl(x.edmUrl) }} style={styles.thumb} resizeMode="cover" />
+            ) : (
+              <Image source={require("../../../assets/icon.png")} style={styles.thumb} resizeMode="cover" />
+            )}
             <View style={{ flex: 1, gap: 2 }}>
-              <AppText variant="callout" style={{ fontWeight: "700" }}>
+              <AppText variant="body" style={{ fontWeight: "700" }}>
                 {x.eventStart ? eventDays(x.eventStart, x.eventEnd) : "未設定日期"}{x.id === currentId ? "（目前顯示）" : ""}
               </AppText>
-              <AppText variant="caption" tone="muted" numberOfLines={1}>
+              <AppText variant="callout" tone="muted" numberOfLines={1}>
                 {x.title}
               </AppText>
             </View>
@@ -85,5 +92,6 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
 
 const styles = StyleSheet.create({
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, maxWidth: 120 },
-  row: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 8, borderTopWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
+  thumb: { width: 64, height: 36, borderRadius: radius.sm },
+  row: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 12, borderTopWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
 });
