@@ -1908,6 +1908,20 @@ const routes: [string, RegExp, Handler][] = [
       return row ?? fail(404, "not_found", "找不到這個短網址");
     },
   ],
+  [
+    "GET",
+    /^\/search-index$/,
+    async (ctx) => {
+      // 「全部課程」搜尋用：已上架課程每一堂的章節標題、分享者（姓名、獎銜、職稱）與日期。公開資料（章節標題本來就顯示在課程頁），只回搜尋要用的欄位。
+      const rankMap = await ranks(ctx.db);
+      const { results } = await ctx.db
+        .prepare("SELECT l.course_id AS courseId, l.title, l.sharer, l.sharer_rank AS sharerRank, l.sharer_title AS sharerTitle, l.event_date AS eventDate FROM lessons l JOIN courses c ON c.id = l.course_id WHERE c.status = 'published' ORDER BY l.course_id, l.position")
+        .all<{ courseId: string; title: string; sharer: string; sharerRank: string; sharerTitle: string; eventDate: string | null }>();
+      return {
+        lessons: results.map((r) => ({ courseId: r.courseId, title: r.title, sharer: r.sharer, sharerRankName: rankMap.get(r.sharerRank)?.name ?? "", sharerTitle: r.sharerTitle, eventDate: r.eventDate })),
+      };
+    },
+  ],
   ["GET", /^\/ui-config$/, async (ctx) => loadConfig(ctx.db)],
   [
     "PUT",

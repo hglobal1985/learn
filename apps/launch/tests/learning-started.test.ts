@@ -82,3 +82,24 @@ test("播放進度：沒看完的章節也讓課程進度前進（只進不退�
   await call("POST", `/courses/${created.id}/lessons/${a.id}/complete`, student);
   assert.equal(await pct(), 100); // 第一堂完成＋第二堂播放到 100%＝兩堂都滿
 });
+
+test("搜尋索引：已上架課程的章節標題、分享者與日期（未上架不出現）", async () => {
+  const env: Env = { DB: createTestDb(), DEMO_LOGIN: "on" };
+  const call = async <T = unknown>(method: string, path: string, token?: string, body?: unknown) => {
+    const res = await handleApi(
+      new Request(`https://learn.test/api/v2${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
+      env,
+    );
+    return { status: res.status, data: (await res.json()) as T };
+  };
+  const admin = (await call<{ token: string }>("POST", "/auth/demo", undefined, { sub: "demo-admin" })).data.token;
+  const pub = (await call<CourseDetail>("POST", "/admin/courses", admin, { title: "上架課", priceTwd: 0 })).data;
+  const draft = (await call<CourseDetail>("POST", "/admin/courses", admin, { title: "草稿課", priceTwd: 0 })).data;
+  await call("PATCH", `/admin/courses/${pub.id}`, admin, { status: "published" });
+  await call("POST", `/admin/courses/${pub.id}/lessons`, admin, { title: "搜尋章節", sharer: "李講師", sharerTitle: "經理", eventDate: "2026-11-03" });
+  await call("POST", `/admin/courses/${draft.id}/lessons`, admin, { title: "不該出現" });
+  const r = await call<{ lessons: { courseId: string; title: string; sharer: string; sharerTitle: string; eventDate: string | null }[] }>("GET", "/search-index");
+  assert.equal(r.status, 200); // 不用登入
+  assert.ok(r.data.lessons.some((l) => l.courseId === pub.id && l.title === "搜尋章節" && l.sharer === "李講師" && l.sharerTitle === "經理" && l.eventDate === "2026-11-03"));
+  assert.ok(!r.data.lessons.some((l) => l.courseId === draft.id));
+});

@@ -48,5 +48,4 @@ test("新會員：沒勾 Amway 也會提醒；會員中心暫時查不到不記�
   const fresh = await me("?fresh=1");
   assert.equal(fresh.rankLabel, "金章");
   assert.deepEqual(fresh.profileMissing ?? [], []);
-  setCentralFetch(null);
 });
