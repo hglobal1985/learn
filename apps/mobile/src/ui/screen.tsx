@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from "react";
-import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import type { ReactNode } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { maxContentWidth, space } from "@/theme/tokens";
+import { usePullRefresh } from "./pull-refresh";
 import { AppText } from "./text";
 
 /**
@@ -31,21 +31,10 @@ export function Screen({
 }) {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { member, refreshMember, invalidate } = useSession();
-  const [refreshing, setRefreshing] = useState(false);
-  // 手機下拉重新整理：重新向會員中心拿最新獎銜與資料，並重新載入這一頁的清單（App 沒有重新整理鈕）。
-  const onRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await refreshMember(0);
-      invalidate();
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  const refreshControl = usePullRefresh();
   return (
     <ScrollView
-      refreshControl={member ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} colors={[c.accent]} /> : undefined}
+      refreshControl={refreshControl}
       style={{ flex: 1, backgroundColor: c.background }}
       contentContainerStyle={[
         styles.content,

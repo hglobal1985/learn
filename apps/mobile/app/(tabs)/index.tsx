@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, type Announcement, type CourseSummary } from "@/api/client";
 import { MemberHeader } from "@/features/member-header";
@@ -10,6 +10,7 @@ import { collapseSeries } from "@/features/courses/sort";
 import { useApi, useSession } from "@/state/session";
 import { useTheme } from "@/theme/theme";
 import { maxContentWidth, space } from "@/theme/tokens";
+import { usePullRefresh } from "@/ui/pull-refresh";
 import { AppText, BrandTitle, Button, ErrorView, HomeRailsSkeleton, Ticker } from "@/ui";
 
 /**
@@ -27,6 +28,7 @@ export default function HomeScreen() {
   const [quote, setQuote] = useState<string | null>(null);
   const [noticeClosed, setNoticeClosed] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
+  const refreshControl = usePullRefresh(); // 首頁也能下拉：立刻更新名字旁的獎銜標籤
   useEffect(() => {
     if (!member) promptedFor = null;
     else if (member.profileMissing?.length && promptedFor !== member.sub) {
@@ -56,7 +58,7 @@ export default function HomeScreen() {
   return (
     <>
     {promptOpen && member ? <ProfilePrompt onClose={() => setPromptOpen(false)} initial={member.profileForm ?? null} /> : null}
-    <View style={[styles.page, { backgroundColor: c.background, paddingTop: insets.top + space.md }]}>
+    <ScrollView style={{ flex: 1, backgroundColor: c.background }} contentContainerStyle={[styles.page, { paddingTop: insets.top + space.md }]} refreshControl={refreshControl} alwaysBounceVertical keyboardShouldPersistTaps="handled">
       <View style={styles.inner}>
         <View style={styles.head}>
           <BrandTitle />
@@ -111,13 +113,13 @@ export default function HomeScreen() {
           </View>
         ) : null}
       </View>
-    </View>
+    </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, alignItems: "center", paddingHorizontal: space.md, overflow: "hidden" },
+  page: { flexGrow: 1, alignItems: "center", paddingHorizontal: space.md, overflow: "hidden" },
   inner: { width: "100%", maxWidth: maxContentWidth, gap: space.md, flex: 1 },
   head: { alignItems: "center", gap: space.sm },
   brand: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.sm },

@@ -444,3 +444,4 @@
 - 2026-11-14 **新會員補填視窗與獎銜即時同步**：①原因一＝新會員沒勾「我是 Amway 會員」時 enabled=false，過去判斷為『沒缺漏』所以不彈視窗；現在 enabled≠true 也算缺漏（視窗引導到會員中心勾選並填寫）。②原因二＝profileGaps 在會員中心暫時查不到時把『沒有缺漏』快取 60 秒；現在查不到回 undefined 不快取。③獎銜不更新：伺服器對會員中心資料有記憶體快取（amway 2 分鐘、資格 10 分鐘→改 2 分鐘），重新整理仍讀快取；現在 GET /me?fresh=1 會先丟掉該會員的快取（forgetMember），前端每次開啟／重新整理／登入／回到前景（網頁切回分頁、App 回到前景，30 秒節流）都帶 fresh=1 並更新會員資料與清單（session.tsx）。測試 tests/me-fresh.test.ts（共 82 項）。
 - 2026-11-14 調整（業主質疑頻率太高）：課程資格快取 TTL 改回 10 分鐘；回到前景自動更新會員資料的間隔由 30 秒改為 10 分鐘（開啟／重新整理仍一律 fresh=1 立刻更新；會員中心 member.profile_changed webhook 會清該會員快取）。
 - 2026-11-14 App 版沒有重新整理鈕：①所有捲動頁（Screen）加下拉重新整理（RefreshControl，登入後才有）＝refreshMember(0)＋invalidate，立刻向會員中心拿最新獎銜並重載清單；②進入設定頁自動 refreshMember(1 分鐘)；③回前景 10 分鐘；④開啟 App 一律 fresh。session.tsx 新增 refreshMember(minGapMs)。首頁是固定一頁不能捲動，沒有下拉（請到設定頁或下拉其他頁）。未在實機驗證。
+- 2026-11-14 首頁也能下拉重新整理（首頁外層改 ScrollView＋refreshControl，內容仍固定一頁）；下拉邏輯抽成共用 hook usePullRefresh（src/ui/pull-refresh.tsx），Screen 與首頁共用。
