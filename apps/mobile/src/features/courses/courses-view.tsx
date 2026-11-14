@@ -11,7 +11,6 @@ import { SEARCH_ICON_W, SearchBox } from "./search-box";
 import { groupBySeries, sortCourses } from "./sort";
 import { useApi, useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
-import { canManageCourses } from "@/lib/roles";
 import { useTheme } from "@/theme/theme";
 import { space } from "@/theme/tokens";
 import { AppText, EmptyState, ErrorView, LoadingView, Screen, Select } from "@/ui";
@@ -40,6 +39,7 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
   const [searchOpen, setSearchOpen] = useState(false);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState("");
+  const [freeOnly, setFreeOnly] = useState(false); // 勾「免費」只列免費課程
   const [rowW, setRowW] = useState(0);
   const [wantIndex, setWantIndex] = useState(false);
   const searchData = useApi<{ lessons: SearchLesson[] }>(wantIndex ? "/search-index" : null);
@@ -51,7 +51,7 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
   const searchIndex = useMemo(() => (wantIndex ? buildSearchIndex(courses, searchData.data?.lessons ?? []) : null), [wantIndex, courses, searchData.data]);
   const matched = searchIndex && !seriesFilter ? matchCourses(searchIndex, q) : null;
   const terms = searchIndex && q.trim() && q !== picked ? suggestTerms(searchIndex, q) : [];
-  const list = courses.filter((x) => (matched ? matched.has(x.id) : (category === ALL || x.category.split("、").includes(category)) && (!seriesFilter || x.series === seriesFilter)));
+  const list = courses.filter((x) => (!freeOnly || x.free) && (matched ? matched.has(x.id) : (category === ALL || x.category.split("、").includes(category)) && (!seriesFilter || x.series === seriesFilter)));
   const pickTerm = (text: string) => {
     const head = q.trim().split(/\s+/).slice(0, -1).join(" ");
     const next = head ? `${head} ${text}` : text;
@@ -76,9 +76,10 @@ export function CoursesView({ initialCategory = "", series = "", inStack = false
       {!seriesFilter ? <View style={{ width: SEARCH_ICON_W }} /> : null}
       <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-end", gap: space.sm, opacity: searchOpen ? 0 : 1 }} pointerEvents={searchOpen ? "none" : "auto"}>
       <Select value={shownCategory} options={[{ key: ALL, label: "全部分類" }, ...categories.map((x) => ({ key: x, label: x }))]} onChange={seriesFilter ? leaveSeries : pickCategory} />
-      {canManageCourses(member) ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="課程設定" onPress={() => router.push("/admin/courses")} hitSlop={8} style={styles.gear}>
-          <Ionicons name="settings-outline" size={26} color={c.text} />
+      {!seriesFilter ? (
+        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: freeOnly }} accessibilityLabel="只看免費課程" onPress={() => setFreeOnly((v) => !v)} hitSlop={6} style={styles.freeCheck}>
+          <Ionicons name={freeOnly ? "checkbox" : "square-outline"} size={28} color={freeOnly ? c.accent : c.textMuted} />
+          <AppText variant="body">免費</AppText>
         </Pressable>
       ) : null}
       </View>
@@ -143,4 +144,4 @@ const styles = StyleSheet.create({
   terms: { marginTop: space.xs, borderWidth: 1, borderRadius: 12, overflow: "hidden" },
   term: { minHeight: 44, paddingHorizontal: space.md, flexDirection: "row", alignItems: "center", gap: space.sm, borderBottomWidth: StyleSheet.hairlineWidth },
   kind: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 }, filters: { flexDirection: "row", alignItems: "flex-end", gap: space.sm },
-  gear: { width: 48, height: 48, alignItems: "center", justifyContent: "center" }, grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, rowGap: space.lg } });
+  freeCheck: { flexDirection: "row", alignItems: "center", gap: 4, minHeight: 48 }, grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, rowGap: space.lg } });
