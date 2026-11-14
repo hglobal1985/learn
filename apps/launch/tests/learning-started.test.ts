@@ -45,3 +45,37 @@ test("播放超過 1%：納入學習中（含沒有報名紀錄的管理員）�
   // 沒登入不行
   assert.equal((await call("POST", `/courses/${created.id}/lessons/${lessonId}/started`)).status, 401);
 });
+
+test("播放進度：沒看完的章節也讓課程進度前進（只進不退），看完後以完成為準", async () => {
+  const env: Env = { DB: createTestDb(), DEMO_LOGIN: "on" };
+  const call = async <T = unknown>(method: string, path: string, token?: string, body?: unknown) => {
+    const res = await handleApi(
+      new Request(`https://learn.test/api/v2${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
+      env,
+    );
+    return { status: res.status, data: (await res.json()) as T };
+  };
+  const admin = (await call<{ token: string }>("POST", "/auth/demo", undefined, { sub: "demo-admin" })).data.token;
+  const student = (await call<{ token: string }>("POST", "/auth/demo", undefined, { sub: "demo-student" })).data.token;
+  const created = (await call<CourseDetail>("POST", "/admin/courses", admin, { title: "進度課", priceTwd: 0, isPublic: true })).data;
+  await call("PATCH", `/admin/courses/${created.id}`, admin, { status: "published" });
+  // 第一堂（預設空白章節）＋第二堂；兩堂都設長度，方便驗算
+  const l2 = (await call<CourseDetail>("POST", `/admin/courses/${created.id}/lessons`, admin, { title: "第二堂" })).data.lessons;
+  const [a, b] = [l2[0]!, l2[1]!];
+  await call("PATCH", `/admin/lessons/${a.id}`, admin, { minutes: 10 });
+  await call("PATCH", `/admin/lessons/${b.id}`, admin, { minutes: 10 });
+  const pct = async () => (await call<CourseSummary[]>("GET", "/courses", student)).data.find((c) => c.id === created.id)!.progressPercent;
+
+  assert.equal(await pct(), 0);
+  assert.equal((await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: 0.5 })).status, 200);
+  assert.equal(await pct(), 25); // 20 分鐘裡看了 5 分鐘
+  await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: 0.2 }); // 倒轉重看：不退步
+  assert.equal(await pct(), 25);
+  await call("POST", `/courses/${created.id}/lessons/${b.id}/watch`, student, { ratio: 1 });
+  assert.equal(await pct(), 75);
+  assert.equal((await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, student, { ratio: -1 })).status, 400);
+  assert.equal((await call("POST", `/courses/${created.id}/lessons/${a.id}/watch`, undefined, { ratio: 0.5 })).status, 401);
+  // 看完第一堂：以完成計（不重複加上播放比例）
+  await call("POST", `/courses/${created.id}/lessons/${a.id}/complete`, student);
+  assert.equal(await pct(), 100); // 第一堂完成＋第二堂播放到 100%＝兩堂都滿
+});

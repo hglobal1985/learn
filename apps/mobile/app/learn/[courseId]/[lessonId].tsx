@@ -87,6 +87,33 @@ export default function LessonScreen() {
         startedSent.current = null; // 失敗下次再試
       });
   }, [started, member?.sub, curLesson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 播放進度（0～1）：每前進 1% 且距離上次回報超過 10 秒就回報一次，離開這一堂時再補送最後的位置，讓「學習中」的進度條跟著走。
+  const ratio = here && segLen > 0 ? Math.min(1, Math.max(0, (player.position - segStart) / segLen)) : 0;
+  const ratioByLesson = useRef<Record<string, number>>({}); // 每一堂目前播放到哪（離開時補送用；換堂時不會被新的一堂蓋掉）
+  if (curLesson && ratio > (ratioByLesson.current[curLesson.id] ?? 0)) ratioByLesson.current[curLesson.id] = ratio;
+  const watchSent = useRef({ lesson: "", ratio: 0, at: 0 });
+  useEffect(() => {
+    if (!c || !curLesson || !member || ratio < 0.01) return;
+    const w = watchSent.current;
+    if (w.lesson !== curLesson.id) Object.assign(w, { lesson: curLesson.id, ratio: 0, at: 0 });
+    if (ratio - w.ratio < 0.01 || Date.now() - w.at < 10000) return;
+    Object.assign(w, { ratio, at: Date.now() });
+    api("POST", `/courses/${c.id}/lessons/${curLesson.id}/watch`, { ratio }).catch(() => undefined);
+  }, [ratio, member?.sub, curLesson?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const courseId = c?.id;
+    const lessonKey = curLesson?.id;
+    return () => {
+      const w = watchSent.current;
+      const last = lessonKey ? (ratioByLesson.current[lessonKey] ?? 0) : 0;
+      if (!courseId || !lessonKey || !member || last < 0.01 || (w.lesson === lessonKey && last - w.ratio < 0.005)) return;
+      w.lesson = lessonKey;
+      w.ratio = last;
+      api("POST", `/courses/${courseId}/lessons/${lessonKey}/watch`, { ratio: last })
+        .then(() => invalidate())
+        .catch(() => undefined);
+    };
+  }, [c?.id, curLesson?.id, member?.sub]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!c || !curLesson || !member || !finished || curLesson.completed || autoDone.current === curLesson.id) return;
     autoDone.current = curLesson.id;

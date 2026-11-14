@@ -265,6 +265,7 @@ export async function purgeMember(db: D1Database, sub: string, actor: string, ac
     db.prepare("DELETE FROM comment_reports WHERE reporter_sub = ?").bind(sub),
     db.prepare("DELETE FROM lesson_progress WHERE member_sub = ?").bind(sub),
     db.prepare("DELETE FROM learning_started WHERE member_sub = ?").bind(sub),
+    db.prepare("DELETE FROM lesson_watch WHERE member_sub = ?").bind(sub),
     db.prepare("DELETE FROM enrollments WHERE member_sub = ?").bind(sub),
     // 審核員／窗口收到的「有新的報名待審核」等通知連到這位會員的報名紀錄，報名紀錄刪除前先清掉，免得點了找不到。
     db.prepare("DELETE FROM notifications WHERE (link LIKE '/admin/orders/%' AND substr(link, 15) IN (SELECT id FROM orders WHERE member_sub = ?1)) OR (link LIKE '/orders/%' AND substr(link, 9) IN (SELECT id FROM orders WHERE member_sub = ?1))").bind(sub),
@@ -330,20 +331,23 @@ const COURSE_SELECT = `SELECT c.id, c.title, c.subtitle, c.teacher, c.category, 
   FROM courses c`;
 
 async function memberCourseState(db: D1Database, sub: string | undefined) {
-  const empty = { started: new Set<string>(), startedHidden: new Set<string>(), hidden: new Set<string>(), enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
+  const empty = { partialMinutes: new Map<string, number>(), partialLessons: new Map<string, number>(), started: new Set<string>(), startedHidden: new Set<string>(), hidden: new Set<string>(), enrolled: new Set<string>(), pending: new Set<string>(), pendingOrder: new Map<string, string>(), done: new Map<string, number>(), doneMinutes: new Map<string, number>() };
   if (!sub) return empty;
-  const [e, p, d, st] = await db.batch([
+  const [e, p, d, st, w] = await db.batch([
     db.prepare("SELECT course_id, hidden FROM enrollments WHERE member_sub = ?").bind(sub),
     db.prepare("SELECT i.course_id, i.order_id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.member_sub = ? AND o.status = 'pending' ORDER BY o.created_at").bind(sub),
     db.prepare("SELECT p.course_id AS course_id, COUNT(*) AS n, COALESCE(SUM(l.duration_minutes), 0) AS m FROM lesson_progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.member_sub = ? GROUP BY p.course_id").bind(sub),
     db.prepare("SELECT course_id, hidden FROM learning_started WHERE member_sub = ?").bind(sub),
+    // 還沒看完的章節：播放到哪（比例）× 該章長度，讓進度條隨播放前進。
+    db.prepare("SELECT w.course_id AS course_id, SUM(w.ratio * l.duration_minutes) AS m, SUM(w.ratio) AS n FROM lesson_watch w JOIN lessons l ON l.id = w.lesson_id LEFT JOIN lesson_progress p ON p.lesson_id = w.lesson_id AND p.member_sub = w.member_sub WHERE w.member_sub = ? AND p.lesson_id IS NULL GROUP BY w.course_id").bind(sub),
   ]);
   const keys = (rows: unknown[]) => new Set((rows as { course_id: string }[]).map((r) => r.course_id));
   const pendingOrder = new Map<string, string>();
   for (const r of p.results as { course_id: string; order_id: string }[]) pendingOrder.set(r.course_id, r.order_id);
   const hidden = new Set((e.results as { course_id: string; hidden: number }[]).filter((r) => r.hidden === 1).map((r) => r.course_id));
   const startedRows = st.results as { course_id: string; hidden: number }[];
-  return { started: new Set(startedRows.map((r) => r.course_id)), startedHidden: new Set(startedRows.filter((r) => r.hidden === 1).map((r) => r.course_id)), hidden, enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
+  const partial = w.results as { course_id: string; m: number; n: number }[];
+  return { partialMinutes: new Map(partial.map((r) => [r.course_id, r.m])), partialLessons: new Map(partial.map((r) => [r.course_id, r.n])), started: new Set(startedRows.map((r) => r.course_id)), startedHidden: new Set(startedRows.filter((r) => r.hidden === 1).map((r) => r.course_id)), hidden, enrolled: keys(e.results), pending: keys(p.results), pendingOrder, done: new Map((d.results as { course_id: string; n: number }[]).map((r) => [r.course_id, r.n])), doneMinutes: new Map((d.results as { course_id: string; m: number }[]).map((r) => [r.course_id, r.m])) };
 }
 type MemberState = Awaited<ReturnType<typeof memberCourseState>>;
 
@@ -411,11 +415,18 @@ function summarize(row: CourseRow, ctx: Ctx, rankMap: Map<string, Rank>, state: 
     allowPresident: row.allow_president === 1,
     enrollment: state.enrolled.has(row.id) ? "opened" : state.pending.has(row.id) ? "pending" : null,
     completedLessons: state.done.get(row.id) ?? 0,
-    // 學習進度百分比：每一堂都有長度就以「已完成的長度／總長度」算；有任何一堂沒有長度（例如 YouTube 抓不到時間），改用「已完成章節數／章節總數」。
+    // 學習進度百分比：每一堂都有長度就以「（已完成的長度＋沒看完章節已播放的部分）／總長度」算；有任何一堂沒有長度（例如 YouTube 抓不到時間），改用章節數（已完成章節數＋沒看完章節的播放比例）／章節總數。
     progressPercent:
       row.lesson_count === 0
         ? 0
-        : Math.min(100, Math.round(row.zero_minute_lessons === 0 && row.total_minutes > 0 ? ((state.doneMinutes.get(row.id) ?? 0) / row.total_minutes) * 100 : ((state.done.get(row.id) ?? 0) / row.lesson_count) * 100)),
+        : Math.min(
+            100,
+            Math.round(
+              row.zero_minute_lessons === 0 && row.total_minutes > 0
+                ? (((state.doneMinutes.get(row.id) ?? 0) + (state.partialMinutes.get(row.id) ?? 0)) / row.total_minutes) * 100
+                : (((state.done.get(row.id) ?? 0) + (state.partialLessons.get(row.id) ?? 0)) / row.lesson_count) * 100,
+            ),
+          ),
   };
 }
 
@@ -1784,6 +1795,25 @@ const routes: [string, RegExp, Handler][] = [
         .bind(s.sub, courseId)
         .run();
       await ctx.db.prepare("UPDATE enrollments SET hidden = 0 WHERE member_sub = ? AND course_id = ? AND hidden = 1").bind(s.sub, courseId).run();
+      return { ok: true };
+    },
+  ],
+  [
+    "POST",
+    /^\/courses\/([\w-]+)\/lessons\/([\w-]+)\/watch$/,
+    async (ctx, [courseId, lessonId]) => {
+      const s = requireMember(ctx);
+      const body = await readJson<{ ratio?: unknown }>(ctx.req);
+      const ratio = Number(body.ratio);
+      if (!Number.isFinite(ratio) || ratio < 0) fail(400, "invalid_ratio", "播放進度不正確");
+      if (lessonId.startsWith(FULL_PREFIX)) return { ok: true }; // 完整版影片不計入章節進度
+      await lessonOf(ctx, courseId, lessonId); // 找不到章節時會丟錯
+      if (!(await canWatch(ctx, courseId))) fail(403, "not_enrolled", "請先報名並通過審核");
+      // 只會往前（取最大值），不會因為倒轉重看而退步。
+      await ctx.db
+        .prepare("INSERT INTO lesson_watch (member_sub, lesson_id, course_id, ratio) VALUES (?, ?, ?, ?) ON CONFLICT(member_sub, lesson_id) DO UPDATE SET ratio = MAX(ratio, excluded.ratio), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')")
+        .bind(s.sub, lessonId, courseId, Math.min(1, ratio))
+        .run();
       return { ok: true };
     },
   ],
