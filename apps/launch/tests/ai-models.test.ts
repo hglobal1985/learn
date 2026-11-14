@@ -43,6 +43,12 @@ test("AI 每日額度：超過上限自動停止、隔天自動恢復、只用�
   // Cloudflare 回報額度用完 → 當天直接停
   await markExhausted(db, day2);
   await assert.rejects(() => reserveAi(db, "@cf/baai/bge-m3", { inputTokens: 100 }, day2), AiStopped);
+  // 關閉「限制免費額度」開關後不再擋（仍記錄用量）；重新開啟又會擋
+  const { saveSettings, DEFAULT_AI_SETTINGS } = await import("../src/ai-models.ts");
+  await saveSettings(db, { ...DEFAULT_AI_SETTINGS, capEnabled: false });
+  await reserveAi(db, "@cf/baai/bge-m3", { inputTokens: 100 }, day2);
+  await saveSettings(db, DEFAULT_AI_SETTINGS);
+  await assert.rejects(() => reserveAi(db, "@cf/baai/bge-m3", { inputTokens: 100 }, day2), AiStopped);
   // 只用免費額度（預設）時，外部模型被擋
   await assert.rejects(() => reserveAi(db, "claude-haiku-5-5", { inputTokens: 100 }, day1), AiStopped);
 });
@@ -58,6 +64,7 @@ test("AI 設定：只用免費額度時不能選外部模型；可調每日上�
   assert.equal(g.data.usage.freeOnly, true);
   assert.equal(g.data.usage.dailyCap, 9000);
   assert.equal(g.data.usage.used, 0);
+  assert.equal(g.data.usage.capEnabled, true);
   assert.equal((await call("PUT", "/admin/ai-models", admin, { selection: { keywords: "claude-haiku-5-5" } })).status, 409);
   const ok = await call("PUT", "/admin/ai-models", admin, { settings: { dailyCap: 5000, freeOnly: false }, selection: { keywords: "claude-haiku-5-5" } });
   assert.equal(ok.status, 200);

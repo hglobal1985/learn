@@ -43,8 +43,8 @@ export type AiSelection = Record<string, string>;
 /** Cloudflare Workers AI 每天免費 10,000 點，UTC 00:00（台灣時間 08:00）重新計算。 */
 export const FREE_DAILY_NEURONS = 10000;
 export const CAP_CHOICES = [5000, 7000, 9000] as const;
-export type AiSettings = { freeOnly: boolean; dailyCap: number };
-export const DEFAULT_AI_SETTINGS: AiSettings = { freeOnly: true, dailyCap: 9000 };
+export type AiSettings = { freeOnly: boolean; dailyCap: number; capEnabled: boolean };
+export const DEFAULT_AI_SETTINGS: AiSettings = { freeOnly: true, dailyCap: 9000, capEnabled: true };
 
 export function defaultSelection(): AiSelection {
   return Object.fromEntries(AI_JOBS.map((j) => [j.key, j.default]));
@@ -82,6 +82,7 @@ export async function saveSelection(db: D1Database, sel: AiSelection): Promise<v
 export function normalizeSettings(raw: unknown, base: AiSettings = DEFAULT_AI_SETTINGS): AiSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   return {
+    capEnabled: r.capEnabled === undefined ? base.capEnabled : r.capEnabled === true,
     freeOnly: r.freeOnly === undefined ? base.freeOnly : r.freeOnly === true,
     dailyCap: (CAP_CHOICES as readonly number[]).includes(r.dailyCap as number) ? (r.dailyCap as number) : base.dailyCap,
   };
@@ -140,6 +141,11 @@ export async function reserveAi(db: D1Database, modelId: string, w: AiWork, now 
   }
   const day = usageDay(now);
   await db.prepare("INSERT OR IGNORE INTO ai_usage (day, neurons) VALUES (?, 0)").bind(day).run();
+  if (!st.capEnabled) {
+    // 額度限制已關閉：照常記錄用量，但不擋（超過免費額度時由 Cloudflare 依方案處理，付費方案會計費）
+    await db.prepare("UPDATE ai_usage SET neurons = neurons + ? WHERE day = ?").bind(est, day).run();
+    return est;
+  }
   const r = await db.prepare("UPDATE ai_usage SET neurons = neurons + ? WHERE day = ? AND neurons + ? <= ?").bind(est, day, est, st.dailyCap).run();
   if (r.meta?.changes === 0) throw new AiStopped("今天的 AI 免費額度已用完（自動停止），明天早上 8:00（台灣時間）自動恢復");
   return est;
@@ -161,5 +167,5 @@ export async function usageSummary(db: D1Database, now = new Date()) {
   const st = await loadSettings(db);
   const used = await todayUsed(db, usageDay(now));
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
-  return { ...st, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
+  return { ...st, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: st.capEnabled && used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
 }

@@ -10,7 +10,7 @@ import { AppText, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, S
 type Kind = "speech" | "text" | "embedding";
 type Model = { id: string; name: string; vendor: string; kind: Kind; cost: string; costLevel: "低" | "中" | "高"; strengths: string; bestFor: string; needsKey: boolean };
 type Job = { key: string; label: string; desc: string; kind: Kind; default: string };
-type Usage = { freeOnly: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
+type Usage = { freeOnly: boolean; capEnabled: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
 type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string>; usage: Usage };
 const KIND_LABEL: Record<Kind, string> = { speech: "語音轉文字", text: "文字整理", embedding: "語意搜尋" };
 const COLS = [
@@ -38,7 +38,7 @@ export default function AiModelsScreen() {
     );
   const current = sel ?? data?.selection ?? {};
   const u = usage ?? data?.usage;
-  const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap">>, ok: string) => {
+  const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap" | "capEnabled">>, ok: string) => {
     setMsg(null);
     try {
       const r = await api<Data>("PUT", "/admin/ai-models", { settings });
@@ -86,9 +86,25 @@ export default function AiModelsScreen() {
                 <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: "hidden" }}>
                   <View style={{ height: 10, width: `${Math.min(100, (u.used / u.dailyCap) * 100)}%`, backgroundColor: u.stopped ? c.danger : c.accent }} />
                 </View>
-                <AppText variant="caption" tone="muted">
-                  Cloudflare 每天免費 {u.freeDaily.toLocaleString()} 點，用到上限就自動停止所有 AI 工作，{resumeText}。
+                <AppText variant="callout">限制在免費額度內（用完自動停止）</AppText>
+                <View style={styles.chips}>
+                  {([true, false] as const).map((v) => {
+                    const on = u.capEnabled === v;
+                    return (
+                      <Pressable key={String(v)} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ capEnabled: v }, v ? "已開啟：用到上限就自動停止，隔天恢復" : "已關閉：不再自動停止"))} style={[styles.chip, { flex: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                        <AppText variant="callout" style={{ fontWeight: on ? "700" : "400" }}>
+                          {v ? "開（建議）" : "關"}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <AppText variant="caption" tone={u.capEnabled ? "muted" : undefined} style={u.capEnabled ? undefined : { color: c.danger }}>
+                  {u.capEnabled
+                    ? `Cloudflare 每天免費 ${u.freeDaily.toLocaleString()} 點，用到下方上限就自動停止所有 AI 工作，${resumeText}。`
+                    : "已關閉：AI 不會自動停止。超過免費額度時，Cloudflare 免費方案會直接拒絕，付費方案會開始計費（每 1,000 點 US$0.011）。"}
                 </AppText>
+                <View style={{ opacity: u.capEnabled ? 1 : 0.45, gap: space.sm }} pointerEvents={u.capEnabled ? "auto" : "none"}>
                 <AppText variant="callout">每天最多用（留一點緩衝，避免超過免費額度）</AppText>
                 <View style={styles.chips}>
                   {u.capChoices.map((n) => {
@@ -102,12 +118,13 @@ export default function AiModelsScreen() {
                     );
                   })}
                 </View>
-                <AppText variant="callout">只用免費額度</AppText>
+                </View>
+                <AppText variant="callout">只用免費模型（不用 Claude）</AppText>
                 <View style={styles.chips}>
                   {([true, false] as const).map((v) => {
                     const on = u.freeOnly === v;
                     return (
-                      <Pressable key={String(v)} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ freeOnly: v }, v ? "已改為只用免費額度" : "已允許使用付費模型"))} style={[styles.chip, { flex: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                      <Pressable key={String(v)} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ freeOnly: v }, v ? "已改為只用免費模型" : "已允許使用付費模型"))} style={[styles.chip, { flex: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
                         <AppText variant="callout" style={{ fontWeight: on ? "700" : "400" }}>
                           {v ? "開（建議）" : "關"}
                         </AppText>
