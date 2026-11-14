@@ -1,6 +1,6 @@
 import { resolveUrl } from "@/api/client";
 import { embeddedCover } from "./audio-cover";
-import { EMPTY, segmentOf, type Snapshot, type Track } from "./engine.types";
+import { EMPTY, nextRate, segmentOf, type Snapshot, type Track } from "./engine.types";
 import { askSwitch } from "./switch-prompt";
 
 /**
@@ -35,6 +35,27 @@ let bg = false;
 let coverUrl: string | null = null;
 let fsTarget: HTMLElement | null = null;
 
+// 倍數播放：使用者選的倍數（記在瀏覽器，換課、重開網頁仍沿用）。
+const RATE_KEY = "hglobal:learn:rate";
+let userRate = (() => {
+  try {
+    const v = Number(localStorage.getItem(RATE_KEY));
+    return [1, 1.2, 1.5, 1.8, 2].includes(v) ? v : 1;
+  } catch {
+    return 1;
+  }
+})();
+/** YouTube 內嵌播放器只支援固定檔位（1.25、1.75…），1.2、1.8 用最接近的檔位。 */
+const ytRate = (r: number) => ({ 1.2: 1.25, 1.8: 1.75 } as Record<number, number>)[r] ?? r;
+function applyRate() {
+  for (const el of [video, audio]) {
+    if (!el) continue;
+    el.defaultPlaybackRate = userRate;
+    el.playbackRate = userRate;
+  }
+  if (snap.track?.mode === "youtube") ytCommand("setPlaybackRate", [ytRate(userRate)]);
+}
+
 let pipActive = false;
 let pipLeftAt = 0;
 
@@ -57,6 +78,7 @@ function wire(el: HTMLMediaElement) {
     if (!mine()) return;
     intent = true;
     emit({ playing: true });
+    if (el.playbackRate !== userRate) el.playbackRate = userRate; // 部分瀏覽器換來源後會把倍數重設
   });
   el.addEventListener("pause", () => {
     if (!mine()) return;
@@ -132,6 +154,8 @@ const urlOf = (t: Track) => (t.playback.kind === "youtube" ? "" : t.playback.kin
 /** 把來源接到某個媒體元素（HLS 用 hls.js），並從 startAt 秒開始。回傳 hls 實例。 */
 function attach(el: HTMLMediaElement, t: Track, startAt: number, autoplay: boolean, keep: (h: { destroy(): void } | null) => void) {
   const url = urlOf(t);
+  el.defaultPlaybackRate = userRate; // 換來源時瀏覽器會回到預設倍數，所以預設值也一起設
+  el.playbackRate = userRate;
   const onReady = () => {
     if (startAt && el.currentTime < startAt - 1) el.currentTime = startAt;
     if (autoplay) void el.play().catch(() => undefined);
@@ -295,7 +319,10 @@ if (typeof window !== "undefined") {
       return;
     }
     const state = d.event === "onStateChange" ? (d.info as number) : d.event === "infoDelivery" && typeof d.info === "object" ? d.info?.playerState : undefined;
-    if (state === 1) emit({ playing: true, segmentEnded: false, loading: false });
+    if (state === 1) {
+      emit({ playing: true, segmentEnded: false, loading: false });
+      if (userRate !== 1) ytCommand("setPlaybackRate", [ytRate(userRate)]);
+    }
     else if (state === 2) emit({ playing: false });
     else if (state === 0) emit({ playing: false, segmentEnded: true });
     if (d.event === "infoDelivery" && typeof d.info === "object") {
@@ -401,9 +428,10 @@ export const engine = {
     teardownMedia();
     endedFlag = false;
     intent = false; // 等真的開始播放（play 事件）才算「想播放」
-    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: t.mode !== "youtube", error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
+    emit({ rate: userRate, track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: t.mode !== "youtube", error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
     if (t.mode !== "youtube") {
       attach(element(), t, segmentOf(t).start, true, (h) => (hlsVideo = h));
+      applyRate();
       setupSession(t);
     } else if ("mediaSession" in navigator) navigator.mediaSession.metadata = null;
   },
@@ -447,6 +475,17 @@ export const engine = {
     teardownMedia();
     endedFlag = false;
     if ("mediaSession" in navigator) navigator.mediaSession.metadata = null;
-    emit({ ...EMPTY, slotKey: snap.slotKey });
+    emit({ ...EMPTY, slotKey: snap.slotKey, rate: userRate });
+  },
+  /** 切換到下一個倍數（1 → 1.2 → 1.5 → 1.8 → 2 → 1）。 */
+  cycleRate() {
+    userRate = nextRate(userRate);
+    try {
+      localStorage.setItem(RATE_KEY, String(userRate));
+    } catch {
+      /* 存不了就只在這次有效 */
+    }
+    applyRate();
+    emit({ rate: userRate });
   },
 };

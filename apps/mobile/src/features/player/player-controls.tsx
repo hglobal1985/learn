@@ -4,7 +4,7 @@ import { useTheme } from "@/theme/theme";
 import { maxContentWidth, minTouch, space } from "@/theme/tokens";
 import { AppText } from "@/ui";
 import { engine } from "./engine";
-import { formatClock, segmentOf } from "./engine.types";
+import { formatClock, rateText, segmentOf } from "./engine.types";
 import { SeekBar } from "./seek-bar";
 import { usePlayer } from "./use-player";
 
@@ -33,8 +33,17 @@ export function PlayerControls() {
         </View>
         <AppText variant="caption" tone="muted" style={styles.time}>
           {formatClock(at)}
-          {total ? ` / ${formatClock(total)}` : ""}
         </AppText>
+        {/* 倍數播放：每按一次跳一檔（1 → 1.2 → 1.5 → 1.8 → 2 → 1）；正常速度顯示加速圖示，加速中改顯示目前倍數。 */}
+        <Pressable accessibilityRole="button" accessibilityLabel={`播放速度，目前 ${s.rate} 倍，點一下切換`} onPress={() => engine.cycleRate()} style={styles.btn}>
+          {s.rate === 1 ? (
+            <Ionicons name="speedometer-outline" size={24} color={c.text} />
+          ) : (
+            <AppText variant="callout" style={{ color: c.accentText, fontWeight: "800" }} numberOfLines={1}>
+              {rateText(s.rate)}
+            </AppText>
+          )}
+        </Pressable>
         {t.mode === "video" && engine.canPip() ? (
           <Pressable accessibilityRole="button" accessibilityLabel="浮動小視窗" onPress={() => engine.togglePip()} style={styles.btn}>
             <Ionicons name="albums-outline" size={20} color={engine.isPip() ? c.accentText : c.text} />
@@ -59,5 +68,5 @@ const styles = StyleSheet.create({
   btn: { width: minTouch, height: minTouch, alignItems: "center", justifyContent: "center" },
   bar: { flex: 1 },
   pipLabel: { fontSize: 10, lineHeight: 12 },
-  time: { minWidth: 70, textAlign: "right" },
+  time: { minWidth: 44, textAlign: "right" },
 });

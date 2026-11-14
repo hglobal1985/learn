@@ -35,9 +35,17 @@ export type Snapshot = {
   hintAt: number;
   /** 正在從這一堂換到同一門課的另一堂（使用者在上課頁點了章節清單）：換好之前不顯示迷你播放器，也不再詢問。 */
   switching: boolean;
+  /** 目前的播放倍數（1＝正常；可切換 1.2／1.5／1.8／2）。換課、關閉播放後仍沿用。 */
+  rate: number;
 };
 
-export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null, collapsed: false, artworkUrl: null, hintAt: 0, switching: false };
+export const EMPTY: Snapshot = { track: null, playing: false, position: 0, duration: 0, loading: false, error: null, segmentEnded: false, slotKey: null, collapsed: false, artworkUrl: null, hintAt: 0, switching: false, rate: 1 };
+
+/** 倍數播放的檔位：1 → 1.2 → 1.5 → 1.8 → 2 → 回到 1。 */
+export const RATES = [1, 1.2, 1.5, 1.8, 2] as const;
+export const nextRate = (r: number): number => RATES[(RATES.findIndex((x) => x === r) + 1) % RATES.length] ?? 1;
+/** 倍數的顯示文字：1.2×、2×。 */
+export const rateText = (r: number): string => `${r}×`;
 
 export const trackMode = (p: Playback): TrackMode => (p.kind === "youtube" ? "youtube" : p.kind === "audio" ? "audio" : "video");
 

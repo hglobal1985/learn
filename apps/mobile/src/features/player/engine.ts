@@ -1,6 +1,6 @@
 import { createVideoPlayer, type VideoPlayer, type VideoView } from "expo-video";
 import { resolveUrl } from "@/api/client";
-import { EMPTY, segmentOf, type Snapshot, type Track } from "./engine.types";
+import { EMPTY, nextRate, segmentOf, type Snapshot, type Track } from "./engine.types";
 import { askSwitch } from "./switch-prompt";
 
 /**
@@ -20,6 +20,7 @@ const emit = (patch: Partial<Snapshot>) => {
 let player: VideoPlayer | null = null;
 let fsView: VideoView | null = null;
 let endedFlag = false;
+let userRate = 1; // 使用者選的倍數（換課、關閉後仍沿用）
 let subs: { remove(): void }[] = [];
 
 const sourceOf = (t: Track) => {
@@ -123,7 +124,8 @@ export const engine = {
       player = createVideoPlayer(src);
       bind(player);
     } else player.replace(src);
-    emit({ track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: true, error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
+    player.playbackRate = userRate;
+    emit({ rate: userRate, track: t, playing: false, position: segmentOf(t).start, duration: 0, loading: true, error: null, segmentEnded: false, collapsed: false, artworkUrl: t.artwork });
     const { start } = segmentOf(t);
     if (start) player.currentTime = start;
     player.play();
@@ -147,12 +149,18 @@ export const engine = {
     emit({ position: to, segmentEnded: false });
     player.currentTime = to;
   },
+  /** 切換到下一個倍數（1 → 1.2 → 1.5 → 1.8 → 2 → 1）。 */
+  cycleRate() {
+    userRate = nextRate(userRate);
+    if (player) player.playbackRate = userRate;
+    emit({ rate: userRate });
+  },
   skip(delta: number) {
     engine.seek(snap.position + delta);
   },
   close() {
     player?.pause();
     endedFlag = false;
-    emit({ ...EMPTY, slotKey: snap.slotKey });
+    emit({ ...EMPTY, slotKey: snap.slotKey, rate: userRate });
   },
 };
