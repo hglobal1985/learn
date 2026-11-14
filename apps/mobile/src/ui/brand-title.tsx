@@ -86,5 +86,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.xs },
   logo: { width: 52, height: 52 },
   letters: { flexDirection: "row", alignItems: "center", justifyContent: "center" }, // 字與字貼近：不加 gap
-  ch: { fontFamily: THIN_FONT, fontSize: 32, lineHeight: 42, fontWeight: "normal", letterSpacing: -2 },
+  ch: { fontFamily: THIN_FONT, fontSize: 32, lineHeight: 42, fontWeight: "normal", letterSpacing: 2 },
 });

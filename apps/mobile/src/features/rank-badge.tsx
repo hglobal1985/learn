@@ -1,25 +1,67 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { resolveUrl } from "@/api/client";
 
-/** 徽章高度：與會員大頭照同高（48）。圖是直式（380×720），寬度依比例。要改大小只改這裡。 */
-export const BADGE_SIZE = 48;
+/** 徽章高度：72（業主 2026-11-14 要求比頭像高度 48 再放大 1.5 倍）。圖是直式（380×720），寬度依比例。要改大小只改這裡。 */
+export const BADGE_SIZE = 72;
 const BADGE_W = Math.round((BADGE_SIZE * 380) / 720);
-const BAND = 9; // 反光帶寬度
-const SWEEP_MS = 800; // 一次掃過的時間
-const PAUSE_MS = 2600; // 兩次反光之間的停頓
+
+/** 各徽章圖案在 720 高畫布裡的上下範圍（像素；量自 24 張圖）。閃光球只出現在圖案上。 */
+const ART_Y: Record<string, [number, number]> = {
+  "01": [257, 463], "02": [235, 488], "03": [235, 488], "04": [181, 552], "05": [167, 564], "06": [181, 552], "07": [167, 564],
+  "08": [167, 564], "09": [167, 564], "10": [167, 564], "11": [167, 564], "12": [167, 564], "13": [137, 593], "14": [137, 593],
+  "15": [137, 593], "16": [138, 594], "17": [138, 594], "18": [138, 594], "19": [137, 593], "20": [138, 594], "21": [70, 659],
+  "22": [70, 659], "23": [32, 694], "24": [32, 694],
+};
+/** 閃光球的位置（圖案範圍內的比例 x、y）、大小、出現時間點。多顆錯開，像星星此起彼落地閃。 */
+const SPARKS = [
+  { x: 0.28, y: 0.12, size: 15, delay: 0, period: 2600 },
+  { x: 0.74, y: 0.42, size: 12, delay: 900, period: 3000 },
+  { x: 0.36, y: 0.74, size: 14, delay: 1700, period: 2800 },
+  { x: 0.8, y: 0.9, size: 10, delay: 2300, period: 3200 },
+];
+
+/** 一顆星形閃光球：中心亮點＋十字與斜十字的細光芒＋柔和光暈。 */
+function Spark({ cx, cy, size, delay, period, still }: { cx: number; cy: number; size: number; delay: number; period: number; still: boolean }) {
+  const k = useRef(new Animated.Value(0)).current; // 0＝看不見，1＝最亮
+  useEffect(() => {
+    if (still) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(k, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.timing(k, { toValue: 0, duration: 420, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+        Animated.delay(Math.max(0, period - 680)),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [still, k, delay, period]);
+  const scale = k.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
+  const spin = k.interpolate({ inputRange: [0, 1], outputRange: ["-35deg", "0deg"] });
+  const arm = { position: "absolute" as const, backgroundColor: "#fffdf0", borderRadius: 2 };
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{ position: "absolute", left: cx - size / 2, top: cy - size / 2, width: size, height: size, opacity: k, transform: [{ scale }, { rotate: spin }], alignItems: "center", justifyContent: "center" }}
+    >
+      <View style={[styles.glow, { width: size * 0.9, height: size * 0.9, borderRadius: size }]} />
+      <View style={[arm, { width: size, height: 2, top: size / 2 - 1 }]} />
+      <View style={[arm, { width: 2, height: size, left: size / 2 - 1 }]} />
+      <View style={[arm, { width: size * 0.62, height: 1.5, top: size / 2 - 0.75, left: size * 0.19, transform: [{ rotate: "45deg" }], opacity: 0.8 }]} />
+      <View style={[arm, { width: size * 0.62, height: 1.5, top: size / 2 - 0.75, left: size * 0.19, transform: [{ rotate: "-45deg" }], opacity: 0.8 }]} />
+      <View style={[styles.core, { width: size * 0.36, height: size * 0.36, borderRadius: size }]} />
+    </Animated.View>
+  );
+}
 
 /**
- * 獎銜徽章圖＋反光閃爍：一道亮帶定期由左掃到右（只照在徽章圖案上，透明處不會亮），
- * 掃過後徽章整體微微閃一下。系統開啟「減少動態效果」時只顯示靜態徽章。
- * 做法：用同一張圖染成白色，只露出「移動中的窄窗」那一段（窗往右、圖往左等量反向移動，所以圖始終對齊徽章）。
+ * 獎銜徽章圖＋星星般閃爍的閃光球：在徽章圖案上，幾顆小星形光球此起彼落地亮起、旋轉、淡出。
+ * 系統開啟「減少動態效果」時只顯示靜態徽章。
  */
 export function RankBadge({ url, label }: { url: string; label?: string | null }) {
   const [failed, setFailed] = useState(false);
   const [still, setStill] = useState(false);
-  const x = useRef(new Animated.Value(-BAND)).current;
-  const twinkle = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     let alive = true;
     AccessibilityInfo.isReduceMotionEnabled().then((v) => alive && setStill(v)).catch(() => undefined);
@@ -27,38 +69,15 @@ export function RankBadge({ url, label }: { url: string; label?: string | null }
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (still || failed) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(PAUSE_MS),
-        Animated.timing(x, { toValue: BADGE_W, duration: SWEEP_MS, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-        Animated.timing(twinkle, { toValue: 1, duration: 160, useNativeDriver: true }),
-        Animated.timing(twinkle, { toValue: 0, duration: 380, useNativeDriver: true }),
-        Animated.timing(x, { toValue: -BAND, duration: 0, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [still, failed, x, twinkle]);
-
+  // 由網址的檔名編號（?f=13-Diamond → 13）找出圖案範圍，閃光球就落在圖案上
+  const [top, bottom] = useMemo(() => ART_Y[/f=(\d\d)-/.exec(url)?.[1] ?? ""] ?? [0, 720], [url]);
   if (failed) return null;
-  const src = { uri: resolveUrl(url) };
-  const counter = Animated.multiply(x, -1); // 圖與窗反向等量移動
+  const y0 = (top / 720) * BADGE_SIZE;
+  const artH = ((bottom - top) / 720) * BADGE_SIZE;
   return (
     <View style={styles.box} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>
-      <Image source={src} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
-      {!still ? (
-        <>
-          {/* 整體微閃 */}
-          <Animated.Image source={src} resizeMode="contain" style={[styles.img, styles.fill, { tintColor: "#ffffff", opacity: Animated.multiply(twinkle, 0.35) }]} accessibilityIgnoresInvertColors />
-          {/* 掃過的亮帶 */}
-          <Animated.View pointerEvents="none" style={[styles.window, { transform: [{ translateX: x }] }]}>
-            <Animated.Image source={src} resizeMode="contain" style={[styles.img, { position: "absolute", top: 0, left: 0, tintColor: "#ffffff", opacity: 0.85, transform: [{ translateX: counter }] }]} accessibilityIgnoresInvertColors />
-          </Animated.View>
-        </>
-      ) : null}
+      <Image source={{ uri: resolveUrl(url) }} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
+      {!still ? SPARKS.map((s, i) => <Spark key={i} cx={s.x * BADGE_W} cy={y0 + s.y * artH} size={s.size} delay={s.delay} period={s.period} still={still} />) : null}
     </View>
   );
 }
@@ -66,6 +85,6 @@ export function RankBadge({ url, label }: { url: string; label?: string | null }
 const styles = StyleSheet.create({
   box: { width: BADGE_W, height: BADGE_SIZE },
   img: { width: BADGE_W, height: BADGE_SIZE },
-  fill: { position: "absolute", top: 0, left: 0 },
-  window: { position: "absolute", top: 0, left: 0, width: BAND, height: BADGE_SIZE, overflow: "hidden" },
+  glow: { position: "absolute", backgroundColor: "rgba(255,236,150,0.55)", shadowColor: "#ffd54a", shadowOpacity: 1, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  core: { position: "absolute", backgroundColor: "#ffffff", shadowColor: "#fff3b0", shadowOpacity: 1, shadowRadius: 5, shadowOffset: { width: 0, height: 0 } },
 });

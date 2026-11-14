@@ -41,15 +41,20 @@ export function MemberHeader({ member, onPress }: { member: Member; onPress?: ()
             </AppText>
           </View>
         ) : null}
+        {/* 徽章緊貼在獎銜標籤右邊 */}
+        {member.rankBadge ? (
+          <View style={{ marginLeft: -space.xs }}>
+            <RankBadge url={member.rankBadge} label={member.rankLabel} />
+          </View>
+        ) : null}
       </View>
-      {member.rankBadge ? <RankBadge url={member.rankBadge} label={member.rankLabel} /> : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  who: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: 56, width: "100%", maxWidth: "100%" },
-  left: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.md, minWidth: 0 },
+  who: { flexDirection: "row", alignItems: "center", justifyContent: "center", minHeight: 56, maxWidth: "100%" },
+  left: { flexShrink: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: space.md, minWidth: 0 },
   rank: { borderWidth: 1, borderColor: "#e6c48c", backgroundColor: "#fdf0e3", borderRadius: 7, paddingHorizontal: 8, paddingVertical: 2 },
   avatar: { width: 48, height: 48, borderRadius: 24 },
 });
