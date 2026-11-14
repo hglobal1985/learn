@@ -110,6 +110,7 @@ export default function LessonManagerScreen() {
         <LessonEditor
           key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.eventDate}`}
           lesson={l}
+          prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
           onSaved={invalidate}
           onUp={i > 0 ? () => move(i, i - 1) : undefined}
@@ -180,8 +181,11 @@ function LessonEditor({
   onDelete,
   disabled,
   allowMux,
+  prevDate,
 }: {
   allowMux: boolean;
+  /** 上一堂的活動日期（有才會顯示「同上」勾選）。 */
+  prevDate?: string;
   lesson: Lesson;
   onSaved: () => void;
   onUp?: () => void;
@@ -196,6 +200,7 @@ function LessonEditor({
   const [start, setStart] = useState(toHms(lesson.start));
   const [end, setEnd] = useState(toHms(lesson.end));
   const [eventDate, setEventDate] = useState(lesson.eventDate ?? "");
+  const sameAsPrev = !!prevDate && eventDate === prevDate;
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
@@ -268,7 +273,30 @@ function LessonEditor({
         accessibilityLabel={`第 ${lesson.position} 堂名稱`}
         style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
       />
-      <DateSelect label="活動日期" value={eventDate} onChange={setEventDate} />
+      <View style={styles.dateHead}>
+        <AppText variant="callout" style={{ flex: 1 }}>
+          活動日期
+        </AppText>
+        {prevDate ? (
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: sameAsPrev }}
+            accessibilityLabel="日期同上一堂"
+            onPress={() => setEventDate(sameAsPrev ? "" : prevDate)}
+            style={styles.sameCheck}
+          >
+            <Icon name={sameAsPrev ? "checkbox" : "square-outline"} size={28} color={sameAsPrev ? c.accent : c.textMuted} />
+            <AppText variant="body">同上</AppText>
+          </Pressable>
+        ) : null}
+      </View>
+      {sameAsPrev ? (
+        <AppText variant="body" tone="muted">
+          {eventDate.replace(/-/g, "/")}（與上一堂相同）
+        </AppText>
+      ) : (
+        <DateSelect value={eventDate} onChange={setEventDate} />
+      )}
       <View style={styles.row}>
         {kinds.filter((k) => allowMux || k.key !== "mux" || kind === "mux").map((k) => {
           const active = k.key === kind;
@@ -369,6 +397,8 @@ function IconButton({ icon, label, onPress, disabled, danger }: { icon: "arrow-u
 }
 
 const styles = StyleSheet.create({
+  dateHead: { flexDirection: "row", alignItems: "center" },
+  sameCheck: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: minTouch, paddingLeft: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
   chip: { minHeight: minTouch - 8, paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center" },
   input: { minHeight: minTouch, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: space.md },
