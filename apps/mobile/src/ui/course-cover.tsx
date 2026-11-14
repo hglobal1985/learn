@@ -31,7 +31,7 @@ export function fitFontSize(title: string, w: number, h: number, max = 72, min =
 
 /**
  * 課程封面（課程清單縮圖）：有 16:9 封面圖就顯示圖片（管理員從 EDM 裁切出來的）；
- * 沒有就由系統自動產生：依「課程名稱＋分類」在主題色底上放大大的標題文字（程式排版，不是 AI 生成）。
+ * 沒有就由系統自動產生：在主題色底上放大大的標題文字（程式排版，不是 AI 生成）；不顯示系列與分類標籤（業主 2026-11-14 指示）。
  * fill＝填滿父層（課程介紹頁上方沒有 EDM 時用）。
  */
 export function CourseCover({ theme, label, title, height, imageUrl, fill }: { theme: string; label: string; title?: string; height?: number; imageUrl?: string | null; fill?: boolean }) {
@@ -43,10 +43,8 @@ export function CourseCover({ theme, label, title, height, imageUrl, fill }: { t
   const [bg, fg] = (courseThemes[theme] ?? courseThemes.sage)[scheme];
   const pad = space.md;
   const hasTitle = !!title?.trim();
-  const labels = (label || "").split(/[、,，]+/).map((x) => x.trim()).filter(Boolean);
-  const tagH = labels.length ? 26 * Math.ceil(labels.length / 3) + (Math.ceil(labels.length / 3) - 1) * 6 : 0;
   const innerW = Math.max(0, box.w - pad * 2);
-  const innerH = Math.max(0, box.h - pad * 2 - tagH - (labels.length ? 6 : 0));
+  const innerH = Math.max(0, box.h - pad * 2);
   const fs = hasTitle && box.w ? fitFontSize(title!, innerW, innerH) : 0;
   return (
     <View
@@ -58,17 +56,6 @@ export function CourseCover({ theme, label, title, height, imageUrl, fill }: { t
     >
       <View style={[styles.ring, { borderColor: fg }]} />
       <View style={[styles.ring2, { backgroundColor: fg }]} />
-      {labels.length ? (
-        <View style={styles.tags}>
-          {labels.map((x) => (
-            <View key={x} style={[styles.tag, { borderColor: fg }]}>
-              <AppText variant="caption" style={{ color: fg, fontWeight: "800", letterSpacing: 1 }}>
-                {x}
-              </AppText>
-            </View>
-          ))}
-        </View>
-      ) : null}
       {hasTitle ? (
         <View style={styles.titleBox}>
           {fs ? (
@@ -86,7 +73,5 @@ const styles = StyleSheet.create({
   cover: { borderRadius: radius.md, padding: space.md, overflow: "hidden", gap: 6 },
   ring: { position: "absolute", right: -24, top: -24, width: 110, height: 110, borderRadius: 55, borderWidth: 14, opacity: 0.25 },
   ring2: { position: "absolute", left: -40, bottom: -40, width: 120, height: 120, borderRadius: 60, opacity: 0.1 },
-  tags: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6 },
-  tag: { borderWidth: 1.5, borderRadius: radius.pill, paddingHorizontal: 10, height: 26, justifyContent: "center" },
   titleBox: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
