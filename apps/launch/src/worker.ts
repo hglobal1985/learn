@@ -1,5 +1,6 @@
 import { handleApi } from "./api.ts";
 import type { Env } from "./d1.ts";
+import { resolveShortLink } from "./short-links.ts";
 import { serveStatic, type StaticFiles } from "./site.ts";
 
 /**
@@ -12,6 +13,10 @@ export function createWorker(staticFiles: StaticFiles) {
       const url = new URL(req.url);
       if (url.pathname === "/api/v2" || url.pathname.startsWith("/api/v2/")) return handleApi(req, env, exec);
       if (url.pathname.startsWith("/api/")) return new Response("Not found", { status: 404 });
+      if (req.method === "GET" && /^\/[cs]\//.test(url.pathname)) {
+        const to = await resolveShortLink(env.DB, url.pathname).catch(() => null);
+        if (to) return new Response(null, { status: 302, headers: { location: to, "cache-control": "no-store" } });
+      }
       const res = serveStatic(req, staticFiles);
       res.headers.set("x-content-type-options", "nosniff");
       res.headers.set("referrer-policy", "strict-origin-when-cross-origin");

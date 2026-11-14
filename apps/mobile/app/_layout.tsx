@@ -50,6 +50,7 @@ export default function RootLayout() {
             <Stack.Screen name="admin/list-rules" options={{ title: "課程排序與條件" }} />
             <Stack.Screen name="admin/stats" options={{ title: "統計分析" }} />
             <Stack.Screen name="admin/keywords" options={{ title: "關鍵字管理" }} />
+            <Stack.Screen name="admin/short-links" options={{ title: "短網址" }} />
             <Stack.Screen name="achievements" options={{ title: "學習成就" }} />
             <Stack.Screen name="admin/achievements" options={{ title: "學習成就徽章設定" }} />
             <Stack.Screen name="orders/index" options={{ title: "訂單紀錄" }} />

@@ -1,3 +1,4 @@
+import { SLUG_RE } from "./short-links.ts";
 import {
   DEMO_MEMBERS,
   HQ_UNIT,
@@ -1334,6 +1335,16 @@ async function rewriteCategories(ctx: Ctx, fn: (list: string[]) => string): Prom
     const next = fn(splitCats(r.category));
     return next === r.category ? [] : [ctx.db.prepare("UPDATE courses SET category = ? WHERE id = ?").bind(next, r.id)];
   });
+}
+
+type ShortLinkItem = { kind: "category" | "series"; value: string; slug: string | null };
+/** 短網址設定清單：所有分類與系列（含還沒設定縮寫的），各帶目前的縮寫。 */
+async function listShortLinks(ctx: Ctx): Promise<ShortLinkItem[]> {
+  const [kw, links] = await Promise.all([listKeywords(ctx), ctx.db.prepare("SELECT slug, kind, value FROM short_links").all<{ slug: string; kind: string; value: string }>()]);
+  const slugOf = new Map(links.results.map((r) => [`${r.kind}:${r.value}`, r.slug]));
+  const out: ShortLinkItem[] = [];
+  for (const kind of ["category", "series"] as const) for (const k of kw[kind]) out.push({ kind, value: k.value, slug: slugOf.get(`${kind}:${k.value}`) ?? null });
+  return out;
 }
 
 type KeywordItem = { value: string; count: number; preset: boolean; edmUrl?: string | null };
@@ -2678,6 +2689,40 @@ const routes: [string, RegExp, Handler][] = [
       return keywordChoices(ctx, kind, who.role !== "admin" ? (who.center?.key ?? "") : null);
     },
   ],
+  ["GET", /^\/admin\/short-links$/, async (ctx) => (requireSuperAdmin(ctx), listShortLinks(ctx))],
+  [
+    "PUT",
+    /^\/admin\/short-links$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const kind = keywordKind(body.kind);
+      if (kind === "location") fail(400, "invalid_kind", "只有分類與系列可以設定短網址");
+      const value = keywordText(body.value);
+      const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
+      if (!SLUG_RE.test(slug)) fail(400, "invalid_slug", "縮寫只能用小寫英文字母、數字與連字號（-），長度 2～30 字");
+      const taken = await ctx.db.prepare("SELECT kind, value FROM short_links WHERE slug = ?").bind(slug).first<{ kind: string; value: string }>();
+      if (taken && !(taken.kind === kind && taken.value === value)) fail(409, "slug_taken", `「${slug}」已被「${taken.value}」使用`);
+      await ctx.db.batch([
+        ctx.db.prepare("DELETE FROM short_links WHERE kind = ? AND value = ?").bind(kind, value),
+        ctx.db.prepare("INSERT INTO short_links (slug, kind, value) VALUES (?, ?, ?)").bind(slug, kind, value),
+        audit(ctx.db, s.sub, "short_link.set", "short_link", kind, `${value} → ${slug}`),
+      ]);
+      return listShortLinks(ctx);
+    },
+  ],
+  [
+    "POST",
+    /^\/admin\/short-links\/remove$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const kind = keywordKind(body.kind);
+      const value = keywordText(body.value);
+      await ctx.db.batch([ctx.db.prepare("DELETE FROM short_links WHERE kind = ? AND value = ?").bind(kind, value), audit(ctx.db, s.sub, "short_link.remove", "short_link", kind, value)]);
+      return listShortLinks(ctx);
+    },
+  ],
   ["GET", /^\/admin\/keywords$/, async (ctx) => (requireSuperAdmin(ctx), listKeywords(ctx))],
   [
     "POST",
@@ -2706,6 +2751,7 @@ const routes: [string, RegExp, Handler][] = [
         ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = ? WHERE ${col} = ?`).bind(to, from)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, from),
         ctx.db.prepare("INSERT OR IGNORE INTO keywords (kind, value) VALUES (?, ?)").bind(kind, to),
+        ...(kind === "category" || kind === "series" ? [ctx.db.prepare("UPDATE OR REPLACE short_links SET value = ? WHERE kind = ? AND value = ?").bind(to, kind, from)] : []),
         ...(kind === "series" ? [ctx.db.prepare("UPDATE OR REPLACE series_art SET series = ? WHERE series = ?").bind(to, from)] : []),
         audit(ctx.db, s.sub, "keyword.rename", "keyword", kind, `${from} → ${to}`),
       ]);
@@ -2728,6 +2774,7 @@ const routes: [string, RegExp, Handler][] = [
       await ctx.db.batch([
         ...(kind === "category" ? catUpdates : [ctx.db.prepare(`UPDATE courses SET ${col} = '' WHERE ${col} = ?`).bind(value)]),
         ctx.db.prepare("DELETE FROM keywords WHERE kind = ? AND value = ?").bind(kind, value),
+        ctx.db.prepare("DELETE FROM short_links WHERE kind = ? AND value = ?").bind(kind, value),
         audit(ctx.db, s.sub, "keyword.remove", "keyword", kind, value),
       ]);
       return listKeywords(ctx);
