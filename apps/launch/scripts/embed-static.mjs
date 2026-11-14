@@ -38,6 +38,13 @@ if (files["/index.html"]) {
     '<meta name="theme-color" content="#2F5D3A"/>',
     '<meta name="apple-mobile-web-app-capable" content="yes"/>',
     '<meta name="apple-mobile-web-app-title" content="寰宇行動大學"/>',
+    // 一般網址分享到 LINE 等的預設預覽（短網址的預覽由 Worker 依內容替換，見 src/og.ts）。
+    '<meta name="description" content="寰宇行動大學"/>',
+    '<meta property="og:site_name" content="寰宇行動大學"/>',
+    '<meta property="og:type" content="website"/>',
+    '<meta property="og:title" content="寰宇行動大學"/>',
+    '<meta property="og:description" content="寰宇行動大學"/>',
+    '<meta property="og:image" content="https://learn.hglobal1985.com/icon-512.png"/>',
   ].join("");
   const html = Buffer.from(files["/index.html"].data, "base64").toString("utf8");
   if (!html.includes("apple-touch-icon")) files["/index.html"].data = Buffer.from(html.replace("</head>", `${tags}</head>`), "utf8").toString("base64");
