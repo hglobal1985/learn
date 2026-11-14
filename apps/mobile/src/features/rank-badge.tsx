@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { resolveUrl } from "@/api/client";
 
-/** 徽章高度：108（業主 2026-11-14：先放大 1.5 倍到 72，再放大 1.5 倍到 108）。圖是直式（380×720），寬度依比例。要改大小只改這裡，閃光球大小會跟著縮放。 */
-export const BADGE_SIZE = 108;
+/** 徽章高度：92（業主 2026-11-14：48→72→108，再縮小 15% 到 92）。圖是直式（380×720），寬度依比例。要改大小只改這裡，閃光球大小會跟著縮放。 */
+export const BADGE_SIZE = 92;
 const K = BADGE_SIZE / 72; // 閃光球的大小以 72 高為基準，隨徽章等比縮放
 const BADGE_W = Math.round((BADGE_SIZE * 380) / 720);
 
