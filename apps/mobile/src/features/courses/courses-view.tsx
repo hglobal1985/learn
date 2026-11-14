@@ -3,6 +3,8 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
+import { CourseCard } from "./course-card";
+import { byNearest } from "./series-sheet";
 import { SeriesTile } from "./series-tile";
 import { groupBySeries, sortCourses } from "./sort";
 import { useApi, useSession } from "@/state/session";
@@ -42,6 +44,26 @@ export function CoursesView({ initialCategory = "", series = "" }: { initialCate
   // 一排放幾張：手機 2 張，寬一點的畫面 3 張，同一頁容納更多。
   const cols = boxW >= 520 ? 3 : 2;
   const tileW = boxW ? Math.floor((boxW - GAP * (cols - 1)) / cols) : 0;
+  // 系列單頁（顯示全部）：只列該系列，每一梯都展開成完整課程卡，由近到遠。
+  if (seriesFilter) {
+    const all = byNearest(courses.filter((x) => x.series === seriesFilter));
+    return (
+      <Screen>
+        <Pressable accessibilityRole="button" accessibilityLabel="離開系列，看全部課程" onPress={() => router.replace("/courses")} style={[styles.seriesChip, { backgroundColor: c.accentSoft }]}>
+          <AppText variant="callout" style={{ color: c.accentText, fontWeight: "700", flexShrink: 1 }} numberOfLines={1}>
+            系列：{seriesFilter}
+          </AppText>
+          <Ionicons name="close-circle" size={22} color={c.accentText} />
+        </Pressable>
+        {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
+        {loading && !data ? <LoadingView /> : null}
+        {data && !all.length ? <EmptyState icon="library-outline" title="這個系列目前沒有課程" /> : null}
+        {all.map((x) => (
+          <CourseCard key={x.id} course={x} />
+        ))}
+      </Screen>
+    );
+  }
   return (
     <Screen>
       <View style={styles.filters}>
@@ -52,14 +74,6 @@ export function CoursesView({ initialCategory = "", series = "" }: { initialCate
           </Pressable>
         ) : null}
       </View>
-      {seriesFilter ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="清除系列篩選，看全部課程" onPress={() => router.replace("/courses")} style={[styles.seriesChip, { backgroundColor: c.accentSoft }]}>
-          <AppText variant="callout" style={{ color: c.accentText, fontWeight: "700", flexShrink: 1 }} numberOfLines={1}>
-            系列：{seriesFilter}
-          </AppText>
-          <Ionicons name="close-circle" size={22} color={c.accentText} />
-        </Pressable>
-      ) : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
       {loading && !data ? <LoadingView /> : null}
       {data && !groups.length ? <EmptyState icon="library-outline" title="沒有符合條件的課程" /> : null}

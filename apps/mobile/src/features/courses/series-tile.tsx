@@ -57,7 +57,7 @@ export function SeriesTile({ group, width }: { group: SeriesGroup; width: number
         </AppText>
         <Ionicons name="chevron-down" size={18} color={c.accent} />
       </Pressable>
-      {sheet ? <SeriesSheet title={inSeries ? rep.series : rep.title} items={group.sessions} onClose={() => setSheet(false)} /> : null}
+      {sheet ? <SeriesSheet title={inSeries ? rep.series : rep.title} items={group.sessions} showAllSeries={inSeries ? rep.series : undefined} onClose={() => setSheet(false)} /> : null}
     </View>
   );
 }

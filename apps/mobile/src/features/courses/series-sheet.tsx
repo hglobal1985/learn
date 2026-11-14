@@ -7,13 +7,13 @@ import { minTouch, radius, space } from "@/theme/tokens";
 import { AppText, Button } from "@/ui";
 import { BottomSheet } from "@/ui/bottom-sheet";
 import { ribbonsFor } from "./ribbons";
-import { useSession } from "@/state/session";
+import { useApi, useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { startOf } from "./sort";
 import { todayStr } from "@/ui/date-select";
 
 /** 梯次排序：還沒結束的（日期最近的在上、最晚的在下）排前面，已結束的接在後面（最近結束的在前），沒有日期的放最後。 */
-function byNearest(items: CourseSummary[]): CourseSummary[] {
+export function byNearest(items: CourseSummary[]): CourseSummary[] {
   const today = todayStr();
   const rank = (c: CourseSummary) => {
     const d = startOf(c);
@@ -49,11 +49,30 @@ function StatusChip({ course }: { course: CourseSummary }) {
 }
 
 /** 「還有 N 個梯次」：從下方彈出，列出同系列所有梯次（日期＋狀態），點一列進入那一場的課程頁。 */
-export function SeriesSheet({ title, items, onClose, onPick, currentId }: { title: string; items: CourseSummary[]; onClose: () => void; onPick?: (c: CourseSummary) => void; currentId?: string }) {
+export function SeriesSheet({ title, items, onClose, onPick, currentId, showAllSeries }: { title: string; items: CourseSummary[]; onClose: () => void; onPick?: (c: CourseSummary) => void; currentId?: string; showAllSeries?: string }) {
   const { c } = useTheme();
+  const links = useApi<{ kind: string; value: string; slug: string }[]>(showAllSeries ? "/short-links" : null);
+  /** 顯示該系列全部梯次（全部展開）：有設定短網址就用短網址，沒有用 /courses?series=。 */
+  const showAll = () => {
+    onClose();
+    const slug = links.data?.find((l) => l.kind === "series" && l.value === showAllSeries)?.slug;
+    if (slug) router.push(`/${slug}`);
+    else router.push({ pathname: "/courses", params: { series: showAllSeries } });
+  };
   return (
     <BottomSheet onClose={onClose}>
-      <AppText variant="headline">{title}</AppText>
+      <View style={styles.head}>
+        <AppText variant="headline" style={{ flex: 1 }} numberOfLines={2}>
+          {title}
+        </AppText>
+        {showAllSeries ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`顯示「${showAllSeries}」全部梯次`} onPress={showAll} style={[styles.showAll, { backgroundColor: c.accent }]}>
+            <AppText variant="callout" style={{ color: c.textOnAccent, fontWeight: "800" }} numberOfLines={1}>
+              顯示全部
+            </AppText>
+          </Pressable>
+        ) : null}
+      </View>
       <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{ gap: 0 }}>
         {farToNear(items).map((x) => (
           <Pressable
@@ -91,6 +110,8 @@ export function SeriesSheet({ title, items, onClose, onPick, currentId }: { titl
 }
 
 const styles = StyleSheet.create({
+  head: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  showAll: { minHeight: minTouch, paddingHorizontal: space.lg, borderRadius: 999, alignItems: "center", justifyContent: "center" },
   chip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, maxWidth: 120 },
   thumb: { width: 64, height: 36, borderRadius: radius.sm },
   row: { flexDirection: "row", alignItems: "center", gap: space.sm, minHeight: minTouch + 12, borderTopWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
