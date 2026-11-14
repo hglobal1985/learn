@@ -15,6 +15,7 @@ import { installNoPageZoom } from "@/lib/no-page-zoom";
 import { SessionProvider } from "@/state/session";
 import { UiConfigProvider } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
+import { UpdateNotice } from "@/features/update-notice";
 import { BottomBar, HeaderBack, HeaderShadow } from "@/ui";
 
 export default function RootLayout() {
@@ -75,6 +76,7 @@ export default function RootLayout() {
           <HeaderShadow />
           </View>
           <MiniAudioBar />
+          <UpdateNotice />
           <BottomBar />
           <PlayerLayer />
           <SwitchSheet />
