@@ -69,6 +69,12 @@ export function sharerLine(l: { sharer: string; sharerRankName: string; sharerTi
   return t ? `分享者：${t}` : "";
 }
 
+/** 課程的主講人顯示：「主講人：王老師 白金 經理」（姓名、獎銜、職稱，沒填的略過；都沒填回空字串）。 */
+export function teacherLine(c: { teacher: string; teacherRankName: string; teacherTitle: string }): string {
+  const t = [c.teacher, c.teacherRankName, c.teacherTitle].map((x) => x.trim()).filter(Boolean).join(" ");
+  return t ? `主講人：${t}` : "";
+}
+
 /** 只有主辦單位的顯示：「台中主辦」（首頁區塊用，不含指導單位）。 */
 export function hostLine(c: { hostUnit: string }): string {
   const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);

@@ -7,7 +7,7 @@ import { CommentBoard } from "@/features/comments/comment-board";
 import { confirmSheet } from "@/features/confirm";
 import { EdmStage } from "@/features/courses/edm-viewer";
 import { PageHeader } from "@/features/page-header";
-import { eventDays, sharerLine } from "@/features/format";
+import { eventDays, sharerLine, teacherLine } from "@/features/format";
 import { useApi, useSession } from "@/state/session";
 import { space } from "@/theme/tokens";
 import { AppText, Button, Card, ErrorView, ListRow, LoadingView, NoticeBox, Screen, Section } from "@/ui";
@@ -110,6 +110,12 @@ export default function CourseDetailScreen() {
       <Screen header={false} footer={stickyAction}>
         {message ? <NoticeBox tone={message.tone} text={message.text} /> : null}
         {stickyNotice}
+
+        {teacherLine(course) ? (
+          <AppText variant="callout" tone="muted">
+            {teacherLine(course)}
+          </AppText>
+        ) : null}
 
         <Section title="課程章節">
           <View>

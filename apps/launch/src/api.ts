@@ -34,6 +34,7 @@ import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
+import { AI_JOBS, AI_MODELS, loadSelection, normalizeSelection, saveSelection } from "./ai-models.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
 import { collectCfStats } from "./cf-stats.ts";
 import { collectAppStats } from "./app-stats.ts";
@@ -2896,6 +2897,19 @@ const routes: [string, RegExp, Handler][] = [
       const who = requireCourseCreator(ctx);
       const kind = what === "categories" ? "category" : what === "series" ? "series" : "location";
       return keywordChoices(ctx, kind, who.role !== "admin" ? (who.center?.key ?? "") : null);
+    },
+  ],
+  ["GET", /^\/admin\/ai-models$/, async (ctx) => (requireSuperAdmin(ctx), { jobs: AI_JOBS, models: AI_MODELS, selection: await loadSelection(ctx.db) })],
+  [
+    "PUT",
+    /^\/admin\/ai-models$/,
+    async (ctx) => {
+      const s = requireSuperAdmin(ctx);
+      const body = await readJson<Record<string, unknown>>(ctx.req);
+      const sel = normalizeSelection({ ...(await loadSelection(ctx.db)), ...(body.selection as object) });
+      await saveSelection(ctx.db, sel);
+      await audit(ctx.db, s.sub, "ai_models.set", "ui_settings", "ai_models", JSON.stringify(sel)).run();
+      return { jobs: AI_JOBS, models: AI_MODELS, selection: sel };
     },
   ],
   ["GET", /^\/admin\/short-links$/, async (ctx) => (requireSuperAdmin(ctx), listShortLinks(ctx))],
