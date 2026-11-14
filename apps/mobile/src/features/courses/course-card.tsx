@@ -36,17 +36,18 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
           </AppText>
         ) : null}
       </View>
-      <UnitTags course={course} />
+      {/* 標籤全部排在同一列（放不下才自動換行）：主辦單位、費用、獎銜資格、狀態 */}
+      <View style={styles.meta}>
+        {unitLine(course) ? <Pill label={unitLine(course)} tone="accent" /> : null}
+        <CoursePriceTag course={course} />
+        {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
+        {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
+      </View>
       {placeText(course) ? (
         <AppText variant="caption" tone="muted" numberOfLines={1}>
           地點：{placeText(course)}
         </AppText>
       ) : null}
-      <View style={styles.meta}>
-        <CoursePriceTag course={course} />
-        {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
-        {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
-      </View>
       {course.enrollment === "opened" ? (
         <View style={[styles.track, { backgroundColor: c.surfaceMuted }]} accessibilityLabel={`學習進度 ${course.progressPercent}%`}>
           <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
@@ -82,17 +83,6 @@ export function CoursePriceTag({ course }: { course: CourseSummary }) {
   if (course.free) return <Pill label="免費" tone="accent" />;
   if (course.priceTwd !== null) return <Pill label={`NT$${course.priceTwd.toLocaleString()}${course.diamondFree ? "・鑽石免費" : ""}`} />;
   return <Pill label="學員專屬" />;
-}
-
-/** 指導與主辦：一個標籤，格式「寰宇總部指導、台中主辦」。 */
-export function UnitTags({ course }: { course: CourseSummary }) {
-  const line = unitLine(course);
-  if (!line) return null;
-  return (
-    <View style={styles.meta}>
-      <Pill label={line} tone="accent" />
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({

@@ -454,6 +454,7 @@ function fullVersions(rows: LessonRowLite[], state: MemberState, courseId: strin
     start: null,
     end: null,
     eventDate: null,
+    sharer: "",
     ready: true,
     locked: !(admin || state.enrolled.has(courseId) || row.is_public === 1 || watchFree),
   }));
@@ -469,9 +470,9 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
     ranks(ctx.db),
     memberCourseState(ctx.db, s?.sub),
     ctx.db
-      .prepare("SELECT id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
+      .prepare("SELECT id, position, title, sharer, duration_minutes, media_type, media_ref, start_seconds, end_seconds, event_date FROM lessons WHERE course_id = ? ORDER BY position")
       .bind(id)
-      .all<{ id: string; position: number; title: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
+      .all<{ id: string; position: number; title: string; sharer: string; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null; event_date: string | null }>(),
     s ? ctx.db.prepare("SELECT lesson_id FROM lesson_progress WHERE member_sub = ? AND course_id = ?").bind(s.sub, id).all<{ lesson_id: string }>() : Promise.resolve({ results: [] as { lesson_id: string }[] }),
   ]);
   const completed = new Set(done.results.map((r) => r.lesson_id));
@@ -491,6 +492,7 @@ async function courseDetail(ctx: Ctx, id: string): Promise<CourseDetail> {
       start: l.start_seconds,
       end: l.end_seconds,
       eventDate: l.event_date,
+      sharer: l.sharer,
       // 還沒上傳／設定內容的章節（新增課程時自動建立的空白示範章節）＝敬請期待。
       ready: (l.media_type !== "demo" && !!l.media_ref) || l.duration_minutes > 0,
       // 完全公開的課程：任何人（含訪客與會員）都可以看章節，不需要報名。
@@ -1378,9 +1380,9 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
   const row = await ctx.db.prepare("SELECT * FROM courses WHERE id = ?").bind(id).first<Record<string, unknown>>();
   if (!row) return fail(404, "not_found", "找不到這門課程");
   const { results: lessons } = await ctx.db
-    .prepare("SELECT title, position, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
+    .prepare("SELECT title, sharer, position, duration_minutes, media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE course_id = ? ORDER BY position")
     .bind(id)
-    .all<{ title: string; position: number; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
+    .all<{ title: string; sharer: string; position: number; duration_minutes: number; media_type: MediaType; media_ref: string | null; start_seconds: number | null; end_seconds: number | null }>();
   const newId = `c${randomId(7)}`;
   const series = String(row.series || "").trim() || String(row.title ?? "").slice(0, 60);
   const max = await ctx.db.prepare("SELECT COALESCE(MAX(sort_order), 0) AS m FROM courses").first<{ m: number }>();
@@ -1392,8 +1394,8 @@ async function duplicateCourse(ctx: Ctx, id: string, admin: Session) {
     ...lessons.map((l) => {
       const audio = l.media_type === "audio"; // 音檔是這門課自己的檔案，不共用
       return ctx.db
-        .prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type, media_ref, start_seconds, end_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(`${newId}-${randomId(6)}`, newId, l.position, l.title, audio ? 0 : l.duration_minutes, audio ? "demo" : l.media_type, audio ? null : l.media_ref, audio ? null : l.start_seconds, audio ? null : l.end_seconds);
+        .prepare("INSERT INTO lessons (id, course_id, position, title, sharer, duration_minutes, media_type, media_ref, start_seconds, end_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(`${newId}-${randomId(6)}`, newId, l.position, l.title, l.sharer, audio ? 0 : l.duration_minutes, audio ? "demo" : l.media_type, audio ? null : l.media_ref, audio ? null : l.start_seconds, audio ? null : l.end_seconds);
     }),
     audit(ctx.db, admin.sub, "course.duplicate", "course", newId, id),
   ];
@@ -1436,7 +1438,7 @@ const seconds = (v: unknown): number | null | undefined => {
 
 /** 修改章節：名稱、影片來源（示範／YouTube／Mux）、時間軸區間。音檔由上傳流程設定。 */
 async function updateLesson(ctx: Ctx, id: string, admin: Session) {
-  const body = await readJson<{ eventDate?: unknown; title?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
+  const body = await readJson<{ eventDate?: unknown; title?: unknown; sharer?: unknown; mediaType?: unknown; mediaRef?: unknown; minutes?: unknown; startSeconds?: unknown; endSeconds?: unknown }>(ctx.req);
   if (body.mediaType === "mux" && admin.role !== "admin") fail(403, "forbidden", "Mux 影片由總部管理，請改用 YouTube 或音檔，或請總部協助");
   const cur = await ctx.db
     .prepare("SELECT media_type, media_ref, start_seconds, end_seconds FROM lessons WHERE id = ?")
@@ -1449,6 +1451,8 @@ async function updateLesson(ctx: Ctx, id: string, admin: Session) {
     if (!title) fail(400, "title_required", "請輸入章節名稱");
     sets.push(["title", title]);
   }
+  const sharer = text(body.sharer, 60);
+  if (sharer !== undefined) sets.push(["sharer", sharer]);
   if (body.eventDate !== undefined) sets.push(["event_date", dayOrNull(body.eventDate)]);
   let type = cur.media_type;
   if (body.mediaType !== undefined) {
@@ -2880,7 +2884,8 @@ const routes: [string, RegExp, Handler][] = [
     /^\/admin\/courses\/([\w-]+)\/lessons$/,
     async (ctx, [courseId]) => {
       const admin = await requireCourseManager(ctx, courseId);
-      const body = await readJson<{ title?: unknown; eventDate?: unknown }>(ctx.req);
+      const body = await readJson<{ title?: unknown; sharer?: unknown; eventDate?: unknown }>(ctx.req);
+      const sharer = typeof body.sharer === "string" ? body.sharer.trim().slice(0, 60) : "";
       const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
       if (!title) fail(400, "title_required", "請輸入章節名稱");
       const eventDate = body.eventDate === undefined ? null : dayOrNull(body.eventDate);
@@ -2888,7 +2893,7 @@ const routes: [string, RegExp, Handler][] = [
       if (!course) return fail(404, "not_found", "找不到這門課程");
       const id = `${courseId}-${randomId(6)}`;
       await ctx.db.batch([
-        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, duration_minutes, media_type, event_date) VALUES (?, ?, ?, ?, 0, 'demo', ?)").bind(id, courseId, course.maxpos + 1, title, eventDate),
+        ctx.db.prepare("INSERT INTO lessons (id, course_id, position, title, sharer, duration_minutes, media_type, event_date) VALUES (?, ?, ?, ?, ?, 0, 'demo', ?)").bind(id, courseId, course.maxpos + 1, title, sharer, eventDate),
         audit(ctx.db, admin.sub, "lesson.create", "lesson", id, title),
       ]);
       return courseDetail(ctx, courseId);

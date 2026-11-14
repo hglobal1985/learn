@@ -110,6 +110,8 @@ export type Lesson = {
   kind: "video" | "audio";
   /** 這一堂的活動日期（YYYY-MM-DD；沒有設定為 null）。 */
   eventDate: string | null;
+  /** 這一堂的分享者（沒有填為空字串）。 */
+  sharer: string;
   /** 內容已準備好（已上傳影片／音檔或設定好來源）；false＝敬請期待。 */
   ready: boolean;
   /** 時間軸分段（秒）：同一支影片切成多堂時使用；null 表示從頭／播到結束。 */

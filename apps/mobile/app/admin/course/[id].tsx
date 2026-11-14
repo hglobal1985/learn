@@ -71,6 +71,7 @@ export default function LessonManagerScreen() {
     };
   }, [course.data, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   const [newTitle, setNewTitle] = useState("");
+  const [newSharer, setNewSharer] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   if (!isAdmin) return <Screen header={false}><EmptyState icon="lock-closed-outline" title="需要課程管理權限" /></Screen>;
@@ -108,7 +109,7 @@ export default function LessonManagerScreen() {
       {msg ? <NoticeBox tone="danger" text={msg} /> : null}
       {lessons.map((l, i) => (
         <LessonEditor
-          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.minutes}:${l.eventDate}`}
+          key={`${l.id}:${l.media?.type}:${l.media?.ref}:${l.start}:${l.end}:${l.title}:${l.sharer}:${l.minutes}:${l.eventDate}`}
           lesson={l}
           prevDate={i > 0 ? lessons[i - 1]?.eventDate ?? undefined : undefined}
           allowMux={member?.role === "admin"}
@@ -123,20 +124,40 @@ export default function LessonManagerScreen() {
       ))}
       <Card>
         <AppText variant="headline">新增章節</AppText>
-        <TextInput
-          value={newTitle}
-          onChangeText={setNewTitle}
-          placeholder="章節名稱，例如：第 2 段 Q&A"
-          placeholderTextColor={c.textMuted}
-          accessibilityLabel="新章節名稱"
-          style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
-        />
+        <View style={styles.twoCol}>
+          <View style={{ flex: 3, gap: space.xs }}>
+            <AppText variant="callout" tone="muted">
+              章節名稱
+            </AppText>
+            <TextInput
+              value={newTitle}
+              onChangeText={setNewTitle}
+              placeholder="例如：第 2 段 Q&A"
+              placeholderTextColor={c.textMuted}
+              accessibilityLabel="新章節名稱"
+              style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+            />
+          </View>
+          <View style={{ flex: 2, gap: space.xs }}>
+            <AppText variant="callout" tone="muted">
+              分享者
+            </AppText>
+            <TextInput
+              value={newSharer}
+              onChangeText={setNewSharer}
+              placeholder="選填"
+              placeholderTextColor={c.textMuted}
+              accessibilityLabel="新章節分享者"
+              style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+            />
+          </View>
+        </View>
         <Button
           label="新增章節"
           icon="add"
           loading={busy}
           disabled={!newTitle.trim()}
-          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle, eventDate: todayStr() })).then(() => setNewTitle(""))}
+          onPress={() => run(() => api("POST", `/admin/courses/${id}/lessons`, { title: newTitle, sharer: newSharer, eventDate: todayStr() })).then(() => (setNewTitle(""), setNewSharer("")))}
         />
       </Card>
     </Screen>
@@ -195,6 +216,7 @@ function LessonEditor({
 }) {
   const { c } = useTheme();
   const [title, setTitle] = useState(lesson.title);
+  const [sharer, setSharer] = useState(lesson.sharer ?? "");
   const [kind, setKind] = useState<MediaType>(lesson.media?.type ?? "demo");
   const [ref, setRef] = useState(lesson.media?.type === "youtube" ? lesson.media.ref ?? "" : "");
   const [start, setStart] = useState(toHms(lesson.start));
@@ -216,7 +238,7 @@ function LessonEditor({
     setBusy("save");
     setMsg(null);
     try {
-      const body: Record<string, unknown> = { title, startSeconds: s, endSeconds: e, eventDate: eventDate || null };
+      const body: Record<string, unknown> = { title, sharer, startSeconds: s, endSeconds: e, eventDate: eventDate || null };
       if (kind === "demo" || kind === "youtube") body.mediaType = kind;
       if (kind === "youtube") body.mediaRef = ref;
       await api("PATCH", `/admin/lessons/${lesson.id}`, body);
@@ -267,12 +289,32 @@ function LessonEditor({
         <IconButton icon="arrow-down" label="下移" onPress={onDown} disabled={disabled} />
         <IconButton icon="trash-outline" label="刪除章節" onPress={onDelete} disabled={disabled} danger />
       </View>
-      <TextInput
-        value={title}
-        onChangeText={setTitle}
-        accessibilityLabel={`第 ${lesson.position} 堂名稱`}
-        style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
-      />
+      <View style={styles.twoCol}>
+        <View style={{ flex: 3, gap: space.xs }}>
+          <AppText variant="callout" tone="muted">
+            章節名稱
+          </AppText>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            accessibilityLabel={`第 ${lesson.position} 堂名稱`}
+            style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+          />
+        </View>
+        <View style={{ flex: 2, gap: space.xs }}>
+          <AppText variant="callout" tone="muted">
+            分享者
+          </AppText>
+          <TextInput
+            value={sharer}
+            onChangeText={setSharer}
+            placeholder="選填"
+            placeholderTextColor={c.textMuted}
+            accessibilityLabel={`第 ${lesson.position} 堂分享者`}
+            style={[styles.input, type.body, { color: c.text, borderColor: c.border, backgroundColor: c.surface }]}
+          />
+        </View>
+      </View>
       <View style={styles.dateHead}>
         <AppText variant="callout" style={{ flex: 1 }}>
           活動日期
@@ -397,6 +439,7 @@ function IconButton({ icon, label, onPress, disabled, danger }: { icon: "arrow-u
 }
 
 const styles = StyleSheet.create({
+  twoCol: { flexDirection: "row", gap: space.sm },
   dateHead: { flexDirection: "row", alignItems: "center" },
   sameCheck: { flexDirection: "row", alignItems: "center", gap: space.xs, minHeight: minTouch, paddingLeft: space.sm },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
