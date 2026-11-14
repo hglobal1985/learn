@@ -48,8 +48,13 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         </AppText>
       ) : null}
       {course.enrollment === "opened" ? (
-        <View style={[styles.track, { backgroundColor: c.surfaceMuted }]} accessibilityLabel={`學習進度 ${course.progressPercent}%`}>
-          <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
+        <View style={styles.progressRow} accessibilityLabel={`學習進度 ${course.progressPercent}%`}>
+          <View style={[styles.track, { backgroundColor: c.surfaceMuted }]}>
+            <View style={[styles.bar, { backgroundColor: c.accent, width: `${ratio * 100}%` }]} />
+          </View>
+          <AppText variant="callout" tone="muted" style={styles.percent}>
+            {course.progressPercent}%
+          </AppText>
         </View>
       ) : null}
       {footer}
@@ -88,9 +93,11 @@ const styles = StyleSheet.create({
   hide: { position: "absolute", top: -12, right: -8, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", zIndex: 5 },
   more: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderStyle: "dashed", borderRadius: radius.md },
   coverWrap: { borderRadius: radius.md, overflow: "hidden" },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  percent: { minWidth: 44, textAlign: "right", fontVariant: ["tabular-nums"] },
   infoRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   date: { textAlign: "right", flexShrink: 0, paddingTop: 2 },
   meta: { flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.xs + 2 },
-  track: { height: 6, borderRadius: radius.pill, overflow: "hidden" },
+  track: { flex: 1, height: 6, borderRadius: radius.pill, overflow: "hidden" },
   bar: { height: 6, borderRadius: radius.pill },
 });
