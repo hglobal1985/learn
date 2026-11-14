@@ -1,4 +1,4 @@
-import { SLUG_RE } from "./short-links.ts";
+import { RESERVED_SLUGS, SLUG_RE } from "./short-links.ts";
 import {
   DEMO_MEMBERS,
   HQ_UNIT,
@@ -1795,6 +1795,19 @@ const routes: [string, RegExp, Handler][] = [
     },
   ],
   ["POST", /^\/orders$/, async (ctx) => createOrders(ctx, await readJson(ctx.req))],
+  [
+    "GET",
+    /^\/short-links$/,
+    async (ctx) => (await ctx.db.prepare("SELECT kind, value, slug FROM short_links ORDER BY kind, slug").all<{ kind: string; value: string; slug: string }>()).results,
+  ],
+  [
+    "GET",
+    /^\/short-links\/([a-z0-9-]{2,30})$/,
+    async (ctx, [slug]) => {
+      const row = await ctx.db.prepare("SELECT kind, value FROM short_links WHERE slug = ?").bind(slug).first<{ kind: string; value: string }>();
+      return row ?? fail(404, "not_found", "找不到這個短網址");
+    },
+  ],
   ["GET", /^\/ui-config$/, async (ctx) => loadConfig(ctx.db)],
   [
     "PUT",
@@ -2700,6 +2713,7 @@ const routes: [string, RegExp, Handler][] = [
       if (kind === "location") fail(400, "invalid_kind", "只有分類與系列可以設定短網址");
       const value = keywordText(body.value);
       const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
+      if (RESERVED_SLUGS.has(slug)) fail(400, "reserved_slug", `「${slug}」是網站頁面名稱，請換一個縮寫`);
       if (!SLUG_RE.test(slug)) fail(400, "invalid_slug", "縮寫只能用小寫英文字母、數字與連字號（-），長度 2～30 字");
       const taken = await ctx.db.prepare("SELECT kind, value FROM short_links WHERE slug = ?").bind(slug).first<{ kind: string; value: string }>();
       if (taken && !(taken.kind === kind && taken.value === value)) fail(409, "slug_taken", `「${slug}」已被「${taken.value}」使用`);

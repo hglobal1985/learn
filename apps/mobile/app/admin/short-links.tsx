@@ -9,11 +9,10 @@ import { AppText, Button, Card, EmptyState, ErrorView, LoadingView, NoticeBox, S
 import { showToast } from "@/ui/toast";
 
 type Item = { kind: "category" | "series"; value: string; slug: string | null };
-const PREFIX = { category: "c", series: "s" } as const;
 const TITLE = { category: "分類", series: "系列" } as const;
 const host = () => (typeof location !== "undefined" ? location.host : "learn.hglobal1985.com");
 
-/** 短網址（超級管理員）：替每個分類、系列自訂英文縮寫，網址 /c/縮寫（分類）、/s/縮寫（系列），開啟後直接顯示該分類／系列的課程。 */
+/** 短網址（超級管理員）：替每個分類、系列自訂英文縮寫，網址 /縮寫，開啟後直接顯示該分類／系列的課程。 */
 export default function ShortLinksScreen() {
   const { c } = useTheme();
   const { member } = useSession();
@@ -44,7 +43,7 @@ export default function ShortLinksScreen() {
   };
   const save = (i: Item) => {
     const slug = (drafts[keyOf(i)] ?? i.slug ?? "").trim().toLowerCase();
-    run(keyOf(i), () => api("PUT", "/admin/short-links", { kind: i.kind, value: i.value, slug }), `已儲存：${host()}/${PREFIX[i.kind]}/${slug}`).then(() =>
+    run(keyOf(i), () => api("PUT", "/admin/short-links", { kind: i.kind, value: i.value, slug }), `已儲存：${host()}/${slug}`).then(() =>
       setDrafts((d) => {
         const { [keyOf(i)]: _gone, ...rest } = d;
         return rest;
@@ -52,14 +51,14 @@ export default function ShortLinksScreen() {
     );
   };
   const share = async (i: Item) => {
-    const r = await shareLink(i.value, `/${PREFIX[i.kind]}/${i.slug}`);
+    const r = await shareLink(i.value, `/${i.slug}`);
     if (r === "copied") showToast("已複製短網址");
   };
 
   return (
     <Screen header={false}>
       <AppText variant="callout" tone="muted">
-        替分類、系列自訂英文縮寫（小寫英文、數字、連字號，2～30 字）。{"\n"}分類網址：{host()}/c/縮寫{"\n"}系列網址：{host()}/s/縮寫{"\n"}別人開啟短網址，就會直接看到該分類或系列的課程。
+        替分類、系列自訂英文縮寫（小寫英文、數字、連字號，2～30 字）。{"\n"}網址：{host()}/縮寫（分類與系列共用，不能重複）{"\n"}別人開啟短網址，就會直接看到該分類或系列的課程。
       </AppText>
       {msg ? <NoticeBox tone={msg.tone} text={msg.text} /> : null}
       {error && !data ? <ErrorView message={error} onRetry={reload} /> : null}
@@ -79,7 +78,7 @@ export default function ShortLinksScreen() {
                         <AppText variant="headline">{i.value}</AppText>
                         <View style={styles.inputRow}>
                           <AppText variant="callout" tone="muted">
-                            /{PREFIX[kind]}/
+                            /
                           </AppText>
                           <TextInput
                             value={value}

@@ -418,4 +418,4 @@
 - 驗證：型別檢查、後端 76 項測試、ESLint 都通過；網頁用模擬手機載入 5 個頁面無錯誤。
 - 2026-11-14 章節設定：活動日期右側新增「同上」勾選（第二堂起、上一堂有日期才顯示；勾選＝複製上一堂日期並隱藏日期下拉，取消勾選＝清空重選；存的仍是實際日期，之後上一堂改日期不會自動連動）。
 - 2026-11-14 梯次選單縮圖改用裁切後的 16:9 封面（coverUrl，沒有才退回 EDM 原圖）。
-- 2026-11-14 短網址：分類／系列可自訂英文縮寫（migration 0035 short_links；超級管理員 GET/PUT /admin/short-links、POST /admin/short-links/remove；設定→管理→短網址）。網址 /c/縮寫（分類）、/s/縮寫（系列）由 Worker 302 轉到 /courses?category=／?series=（src/short-links.ts、worker.ts）；全部課程頁讀取參數套用篩選，系列篩選時有「系列：xxx ✕」可清除。關鍵字改名縮寫跟著走、刪除時一併刪。已用正式站驗證轉址；管理頁畫面未實機驗證。
+- 2026-11-14 短網址：分類／系列可自訂英文縮寫（migration 0035 short_links；超級管理員 GET/PUT /admin/short-links、POST /admin/short-links/remove；設定→管理→短網址）。**（2026-11-14 業主改）網址直接是 `網域/縮寫`（不加 /c、/s 前綴；分類與系列共用同一縮寫空間，不可重複；與網站頁面同名的縮寫被擋，名單在 src/short-links.ts RESERVED_SLUGS）。** 前端 `app/[slug].tsx` 呼叫公開 `GET /short-links/:slug` 取得種類與名稱後顯示對應課程清單（網址列不轉址，維持短網址）；`GET /short-links` 公開列出已設定的縮寫。全部課程頁選分類時（網頁）以 history.replaceState 把網址列同步成該分類短網址，選「全部分類」回 /courses；系列篩選時有「系列：xxx ✕」可清除。關鍵字改名縮寫跟著走、刪除時一併刪。已用正式站驗證轉址；管理頁畫面未實機驗證。

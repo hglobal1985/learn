@@ -46,6 +46,7 @@ export default function RootLayout() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false, title: "寰宇行動大學" }} />
             <Stack.Screen name="course/[id]" options={{ title: "課程介紹" }} />
+            <Stack.Screen name="[slug]" options={{ title: "課程" }} />
             <Stack.Screen name="learn/[courseId]/[lessonId]" options={{ title: "上課" }} />
             <Stack.Screen name="admin/list-rules" options={{ title: "課程排序與條件" }} />
             <Stack.Screen name="admin/stats" options={{ title: "統計分析" }} />
