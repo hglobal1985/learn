@@ -36,9 +36,10 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
           </AppText>
         ) : null}
       </View>
-      {/* 標籤全部排在同一列（放不下才自動換行）：主辦單位、費用、獎銜資格、狀態 */}
+      {/* 標籤全部排在同一列（放不下才自動換行）：主辦單位、主講人、費用、獎銜資格、狀態 */}
       <View style={styles.meta}>
         {unitLine(course) ? <Pill label={unitLine(course)} tone="accent" /> : null}
+        {course.teacher.trim() ? <Pill label={`主講 ${course.teacher.trim()}`} /> : null}
         <CoursePriceTag course={course} />
         {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
         {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}

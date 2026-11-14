@@ -6,7 +6,7 @@ import { resolveUrl } from "@/api/client";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { useTheme } from "@/theme/theme";
-import { minTouch, radius, space } from "@/theme/tokens";
+import { radius, space } from "@/theme/tokens";
 import { AppText, CornerRibbon, CourseCover } from "@/ui";
 import { ribbonsFor } from "./ribbons";
 import { SeriesSheet } from "./series-sheet";
@@ -64,5 +64,5 @@ export function SeriesTile({ group, width }: { group: SeriesGroup; width: number
 
 const styles = StyleSheet.create({
   art: { borderRadius: radius.md, overflow: "hidden" },
-  pick: { flexDirection: "row", alignItems: "center", minHeight: minTouch, marginTop: space.xs, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.md },
+  pick: { flexDirection: "row", alignItems: "center", minHeight: 36, marginTop: space.xs, paddingHorizontal: space.md, borderWidth: 1.5, borderRadius: radius.md },
 });
