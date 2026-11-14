@@ -85,13 +85,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setMember(known(await fetchMember()));
     invalidate();
   }, [invalidate]);
-  // 回到 App／網頁（切回分頁、從背景回來）時，重新向伺服器（會員中心）拿一次最新的會員資料與獎銜；30 秒內不重複。
+  // 回到 App／網頁（切回分頁、從背景回來）時，距離上次更新超過 10 分鐘才重新向伺服器（會員中心）拿一次最新的會員資料與獎銜；獎銜很少變動，不用頻繁詢問。開啟、重新整理一律立刻更新。
   const memberSub = member?.sub;
   useEffect(() => {
     if (!memberSub) return;
     let last = Date.now();
     const refresh = async () => {
-      if (Date.now() - last < 30_000) return;
+      if (Date.now() - last < 10 * 60_000) return;
       last = Date.now();
       const m = await fetchMember();
       if (m && m !== "offline" && m.sub === memberSub) {

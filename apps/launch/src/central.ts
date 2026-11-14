@@ -250,7 +250,7 @@ export async function rankEligibility(sub: string, token: string, minRanks: stri
     const allowed = results[i]?.allowed === true;
     out.set(r, allowed);
     // 只快取成功的結果 10 分鐘（規範上限 1 日）；失敗不快取，下次重試。
-    if (res?.ok) memo.set(`elig:${sub}:${r}`, { value: allowed, until: Date.now() + 120_000 });
+    if (res?.ok) memo.set(`elig:${sub}:${r}`, { value: allowed, until: Date.now() + 600_000 });
   });
   return out;
 }
