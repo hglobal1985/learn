@@ -34,6 +34,7 @@ import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
+import { TranscribeError, transcribeNext, transcriptView } from "./transcribe.ts";
 import { AI_JOBS, AI_MODELS, AiStopped, keyStatuses, loadSelection, testConnection, loadSettings, normalizeSelection, normalizeSettings, saveSelection, saveSettings, usageSummary } from "./ai-models.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
 import { collectCfStats } from "./cf-stats.ts";
@@ -2933,6 +2934,25 @@ const routes: [string, RegExp, Handler][] = [
       } catch (e) {
         if (e instanceof AiStopped) fail(429, "ai_stopped", e.message);
         fail(502, "ai_test_failed", (e as Error).message);
+      }
+    },
+  ],
+  ["GET", /^\/admin\/lessons\/([\w-]+)\/transcript$/, async (ctx, [id]) => (await requireLessonManager(ctx, id!), transcriptView(ctx.db, id!))],
+  [
+    "POST",
+    /^\/admin\/lessons\/([\w-]+)\/transcript\/next$/,
+    async (ctx, [id]) => {
+      // 轉下一段逐字稿（前端依序呼叫直到完成）。額度用完回 429，隔天可接著做。
+      const admin = await requireLessonManager(ctx, id!);
+      const body = await readJson<Record<string, unknown>>(ctx.req).catch(() => ({}) as Record<string, unknown>);
+      try {
+        const view = await transcribeNext(ctx.env, ctx.db, id!, { restart: body.restart === true });
+        if (body.restart === true) await audit(ctx.db, admin.sub, "lesson.transcript_restart", "lesson", id!).run();
+        return view;
+      } catch (e) {
+        if (e instanceof AiStopped) fail(429, "ai_stopped", e.message);
+        if (e instanceof TranscribeError) fail(e.code === "not_found" ? 404 : e.code === "ai_failed" ? 502 : 409, e.code, e.message);
+        throw e;
       }
     },
   ],

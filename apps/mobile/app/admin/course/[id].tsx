@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { api, type CourseDetail, type Lesson, type MediaType } from "@/api/client";
 import { pickAndUploadAudio } from "@/features/admin/audio-upload";
 import { LessonArt } from "@/features/admin/lesson-art";
+import { LessonTranscript } from "@/features/admin/lesson-transcript";
 import { RankTitleRow, useRankOptions } from "@/features/admin/person-extra";
 import { AttachmentManager } from "@/features/attachments";
 import { confirmAsk } from "@/features/confirm";
@@ -446,6 +447,7 @@ function LessonEditor({
             disabled={!!busy}
             onPress={upload}
           />
+          {currentKind === "audio" ? <LessonTranscript lessonId={lesson.id} /> : null}
         </View>
       ) : null}
 
