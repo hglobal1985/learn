@@ -63,12 +63,6 @@ export function eventDays(start: string | null | undefined, end?: string | null)
 /** 單位名稱不顯示教育中心的數字代碼：「飛登 013」→「飛登」。 */
 export const cleanUnit = (u: string): string => u.replace(/\s*\d+\s*$/, "").trim();
 
-/** 指導與主辦的顯示格式：「寰宇總部指導、台中主辦」（多個主辦用「、」連起來；沒有的就略過）。 */
-export function unitLine(c: { guidanceUnit: string; hostUnit: string }): string {
-  const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);
-  return [c.guidanceUnit ? `${cleanUnit(c.guidanceUnit)}指導` : "", hosts.length ? `${hosts.join("、")}主辦` : ""].filter(Boolean).join("、");
-}
-
 /** 只有主辦單位的顯示：「台中主辦」（首頁區塊用，不含指導單位）。 */
 export function hostLine(c: { hostUnit: string }): string {
   const hosts = c.hostUnit.split(/[、,，;；\n]+/).map(cleanUnit).filter(Boolean);

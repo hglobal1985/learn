@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import type { CourseSummary } from "@/api/client";
-import { eventDays, placeText, plainDate, unitLine } from "@/features/format";
+import { eventDays, hostLine, placeText, plainDate } from "@/features/format";
 import { useSession } from "@/state/session";
 import { useUiConfig } from "@/state/ui-config";
 import { ribbonsFor } from "./ribbons";
@@ -28,21 +28,19 @@ export function CourseCard({ course, siblings = [], footer, onPress, onPickSibli
         {ribbons.left ? <CornerRibbon label={ribbons.left.label} bg={ribbons.left.bg} fg={ribbons.left.fg} side="left" /> : null}
         {ribbons.right ? <CornerRibbon label={ribbons.right.label} bg={ribbons.right.bg} fg={ribbons.right.fg} side="right" /> : null}
       </View>
-      <View style={styles.titleRow}>
-        <View style={{ flex: 1 }} />
+      {/* 資訊列（全站課程資訊卡的統一格式，學習中／系列頁／管理清單共用這一個元件）：
+          左邊最多三個標籤＝主講人姓名、主辦、價格（或已開通等狀態），日期靠右在同一列。 */}
+      <View style={styles.infoRow}>
+        <View style={styles.meta}>
+          {course.teacher.trim() ? <Pill label={course.teacher.trim()} /> : null}
+          {hostLine(course) ? <Pill label={hostLine(course)} tone="accent" /> : null}
+          <CoursePriceTag course={course} />
+        </View>
         {course.eventStart ? (
           <AppText variant="callout" tone="muted" style={styles.date}>
             {eventDays(course.eventStart, course.eventEnd)}
           </AppText>
         ) : null}
-      </View>
-      {/* 標籤全部排在同一列（放不下才自動換行）：主辦單位、主講人、費用、獎銜資格、狀態 */}
-      <View style={styles.meta}>
-        {unitLine(course) ? <Pill label={unitLine(course)} tone="accent" /> : null}
-        {course.teacher.trim() ? <Pill label={`主講 ${course.teacher.trim()}`} /> : null}
-        <CoursePriceTag course={course} />
-        {course.minRank.order > 10 ? <Pill label={`${course.minRank.name}以上`} tone={course.eligible ? "neutral" : "warning"} /> : null}
-        {course.status !== "published" ? <Pill label="未上架" tone="danger" /> : null}
       </View>
       {placeText(course) ? (
         <AppText variant="caption" tone="muted" numberOfLines={1}>
@@ -90,9 +88,9 @@ const styles = StyleSheet.create({
   hide: { position: "absolute", top: -12, right: -8, width: 32, height: 32, borderRadius: 16, backgroundColor: "rgba(0,0,0,0.85)", alignItems: "center", justifyContent: "center", zIndex: 5 },
   more: { flexDirection: "row", alignItems: "center", minHeight: 44, paddingHorizontal: space.md, borderWidth: 1.5, borderStyle: "dashed", borderRadius: radius.md },
   coverWrap: { borderRadius: radius.md, overflow: "hidden" },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
+  infoRow: { flexDirection: "row", alignItems: "flex-start", gap: space.sm },
   date: { textAlign: "right", flexShrink: 0, paddingTop: 2 },
-  meta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.sm },
+  meta: { flex: 1, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space.xs + 2 },
   track: { height: 6, borderRadius: radius.pill, overflow: "hidden" },
   bar: { height: 6, borderRadius: radius.pill },
 });
