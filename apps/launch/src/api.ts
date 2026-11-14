@@ -34,7 +34,7 @@ import { amwayMe, centerKey, centerList, rankOptionList, centralProfileView, cen
 import type { D1Database, D1PreparedStatement, Env } from "./d1.ts";
 import { LINK_DEFAULT_TITLE, classifyLink, parseHttpsUrl } from "./links.ts";
 import { evaluateAchievements } from "./achievements.ts";
-import { AI_JOBS, AI_MODELS, loadSelection, normalizeSelection, saveSelection } from "./ai-models.ts";
+import { AI_JOBS, AI_MODELS, loadSelection, loadSettings, normalizeSelection, normalizeSettings, saveSelection, saveSettings, usageSummary } from "./ai-models.ts";
 import { loadConfig, normalizeConfig, saveConfig } from "./ui-config.ts";
 import { collectCfStats } from "./cf-stats.ts";
 import { collectAppStats } from "./app-stats.ts";
@@ -1392,6 +1392,10 @@ async function rewriteCategories(ctx: Ctx, fn: (list: string[]) => string): Prom
 
 type ShortLinkItem = { kind: "category" | "series"; value: string; slug: string | null };
 /** 短網址設定清單：所有分類與系列（含還沒設定縮寫的），各帶目前的縮寫。 */
+async function aiModelsView(ctx: Ctx) {
+  return { jobs: AI_JOBS, models: AI_MODELS, selection: await loadSelection(ctx.db), usage: await usageSummary(ctx.db) };
+}
+
 async function listShortLinks(ctx: Ctx): Promise<ShortLinkItem[]> {
   const [kw, links] = await Promise.all([listKeywords(ctx), ctx.db.prepare("SELECT slug, kind, value FROM short_links").all<{ slug: string; kind: string; value: string }>()]);
   const slugOf = new Map(links.results.map((r) => [`${r.kind}:${r.value}`, r.slug]));
@@ -2899,17 +2903,23 @@ const routes: [string, RegExp, Handler][] = [
       return keywordChoices(ctx, kind, who.role !== "admin" ? (who.center?.key ?? "") : null);
     },
   ],
-  ["GET", /^\/admin\/ai-models$/, async (ctx) => (requireSuperAdmin(ctx), { jobs: AI_JOBS, models: AI_MODELS, selection: await loadSelection(ctx.db) })],
+  ["GET", /^\/admin\/ai-models$/, async (ctx) => (requireSuperAdmin(ctx), aiModelsView(ctx))],
   [
     "PUT",
     /^\/admin\/ai-models$/,
     async (ctx) => {
       const s = requireSuperAdmin(ctx);
       const body = await readJson<Record<string, unknown>>(ctx.req);
+      const cur = await loadSettings(ctx.db);
+      const st = normalizeSettings({ ...cur, ...(body.settings as object) }, cur);
       const sel = normalizeSelection({ ...(await loadSelection(ctx.db)), ...(body.selection as object) });
+      // 只用免費額度時，不能選沒有免費額度的外部模型
+      const paid = AI_MODELS.find((m) => m.needsKey && Object.values(sel).includes(m.id));
+      if (st.freeOnly && paid) fail(409, "free_only", `目前設定為「只用免費額度」，「${paid.name}」沒有免費額度，請先關閉「只用免費額度」`);
       await saveSelection(ctx.db, sel);
-      await audit(ctx.db, s.sub, "ai_models.set", "ui_settings", "ai_models", JSON.stringify(sel)).run();
-      return { jobs: AI_JOBS, models: AI_MODELS, selection: sel };
+      await saveSettings(ctx.db, st);
+      await audit(ctx.db, s.sub, "ai_models.set", "ui_settings", "ai_models", JSON.stringify({ sel, st })).run();
+      return aiModelsView(ctx);
     },
   ],
   ["GET", /^\/admin\/short-links$/, async (ctx) => (requireSuperAdmin(ctx), listShortLinks(ctx))],

@@ -13,6 +13,8 @@ export type AiModel = {
   costLevel: "低" | "中" | "高";
   strengths: string;
   bestFor: string;
+  /** 用量換算成 Workers AI 的「點數」（neuron）；外部模型（Claude）沒有免費額度，所以沒有 */
+  neurons?: { perMinute?: number; perMInput?: number; perMOutput?: number };
   /** 需要另外申請金鑰（由業主在 Cloudflare 後台設定，不放程式裡） */
   needsKey: boolean;
 };
@@ -25,18 +27,24 @@ export const AI_JOBS: AiJob[] = [
 ];
 
 export const AI_MODELS: AiModel[] = [
-  { id: "@cf/openai/whisper-large-v3-turbo", name: "Whisper Large v3 Turbo", vendor: "Cloudflare（OpenAI 模型）", kind: "speech", cost: "約 US$0.0005／音訊分鐘（1 小時約 US$0.03）", costLevel: "低", strengths: "速度快、支援中文等 90 多種語言，準確度高", bestFor: "課程逐字稿的首選", needsKey: false },
-  { id: "@cf/openai/whisper", name: "Whisper（標準版）", vendor: "Cloudflare（OpenAI 模型）", kind: "speech", cost: "約 US$0.00045／音訊分鐘", costLevel: "低", strengths: "較舊的版本，便宜一點點，中文準確度略低", bestFor: "預算極度吃緊、對準確度要求不高時", needsKey: false },
-  { id: "@cf/meta/llama-3.1-8b-instruct-fp8", name: "Llama 3.1 8B", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.28／百萬字進、US$0.83／百萬字出", costLevel: "低", strengths: "速度快、最便宜；中文理解普通，偶爾抓錯重點", bestFor: "大量、簡單的整理（短關鍵字）", needsKey: false },
-  { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.29／百萬字進、US$2.25／百萬字出", costLevel: "中", strengths: "理解力與中文表現比 8B 好很多，仍在 Cloudflare 內不需金鑰", bestFor: "關鍵字、hashtag、摘要（預設）", needsKey: false },
-  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰）", costLevel: "中", strengths: "中文整理與歸納品質高、速度快", bestFor: "品質要求較高的摘要與關鍵字", needsKey: true },
-  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰），比 Haiku 貴", costLevel: "高", strengths: "理解與寫作最細緻，能處理很長的逐字稿", bestFor: "重要課程的精修摘要；日常不建議（較貴）", needsKey: true },
-  { id: "@cf/baai/bge-m3", name: "BGE-M3", vendor: "Cloudflare（BAAI 模型）", kind: "embedding", cost: "約 US$0.012／百萬字", costLevel: "低", strengths: "多語言，中文與中英混用表現好", bestFor: "語意搜尋的首選（預設）", needsKey: false },
-  { id: "@cf/baai/bge-base-en-v1.5", name: "BGE Base（英文版）", vendor: "Cloudflare（BAAI 模型）", kind: "embedding", cost: "約 US$0.067／百萬字", costLevel: "低", strengths: "英文為主，中文效果差", bestFor: "純英文內容；本站不建議", needsKey: false },
+  { id: "@cf/openai/whisper-large-v3-turbo", name: "Whisper Large v3 Turbo", vendor: "Cloudflare（OpenAI 模型）", kind: "speech", cost: "約 US$0.0005／音訊分鐘（1 小時約 US$0.03）；每天免費額度約可轉 200 分鐘", costLevel: "低", strengths: "速度快、支援中文等 90 多種語言，準確度高", bestFor: "課程逐字稿的首選", neurons: { perMinute: 46.63 }, needsKey: false },
+  { id: "@cf/openai/whisper", name: "Whisper（標準版）", vendor: "Cloudflare（OpenAI 模型）", kind: "speech", cost: "約 US$0.0005／音訊分鐘；每天免費額度約可轉 240 分鐘", costLevel: "低", strengths: "較舊的版本，點數略省，中文準確度略低", bestFor: "免費額度快不夠、對準確度要求不高時", neurons: { perMinute: 41.14 }, needsKey: false },
+  { id: "@cf/meta/llama-3.1-8b-instruct-fp8-fast", name: "Llama 3.1 8B（快速版）", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.045／百萬字進、US$0.384／百萬字出", costLevel: "低", strengths: "速度快、最省額度；中文理解普通，偶爾抓錯重點", bestFor: "大量、簡單的整理（短關鍵字）", neurons: { perMInput: 4119, perMOutput: 34868 }, needsKey: false },
+  { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B", vendor: "Cloudflare（Meta 模型）", kind: "text", cost: "約 US$0.293／百萬字進、US$2.253／百萬字出", costLevel: "中", strengths: "理解力與中文表現比 8B 好很多，仍在 Cloudflare 內不需金鑰", bestFor: "關鍵字、hashtag、摘要（預設）", neurons: { perMInput: 26668, perMOutput: 204805 }, needsKey: false },
+  { id: "claude-haiku-5-5", name: "Claude Haiku 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰，沒有每日免費額度）", costLevel: "中", strengths: "中文整理與歸納品質高、速度快", bestFor: "品質要求較高的摘要與關鍵字", needsKey: true },
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", vendor: "Anthropic", kind: "text", cost: "依 Anthropic 官方牌價計費（需另外申請金鑰，沒有每日免費額度），比 Haiku 貴", costLevel: "高", strengths: "理解與寫作最細緻，能處理很長的逐字稿", bestFor: "重要課程的精修摘要；日常不建議（較貴）", needsKey: true },
+  { id: "@cf/baai/bge-m3", name: "BGE-M3", vendor: "Cloudflare（BAAI 模型）", kind: "embedding", cost: "約 US$0.0118／百萬字", costLevel: "低", strengths: "多語言（100 多種），中文與中英混用表現好", bestFor: "語意搜尋的首選（預設）", neurons: { perMInput: 1073 }, needsKey: false },
 ];
 
 const KEY = "ai_models";
+const USAGE_KEY = "ai_settings";
 export type AiSelection = Record<string, string>;
+
+/** Cloudflare Workers AI 每天免費 10,000 點，UTC 00:00（台灣時間 08:00）重新計算。 */
+export const FREE_DAILY_NEURONS = 10000;
+export const CAP_CHOICES = [5000, 7000, 9000] as const;
+export type AiSettings = { freeOnly: boolean; dailyCap: number };
+export const DEFAULT_AI_SETTINGS: AiSettings = { freeOnly: true, dailyCap: 9000 };
 
 export function defaultSelection(): AiSelection {
   return Object.fromEntries(AI_JOBS.map((j) => [j.key, j.default]));
@@ -67,4 +75,91 @@ export async function saveSelection(db: D1Database, sel: AiSelection): Promise<v
     .prepare("INSERT INTO ui_settings (key, value, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
     .bind(KEY, JSON.stringify(sel))
     .run();
+}
+
+// ───────────── 每日免費額度控管 ─────────────
+
+export function normalizeSettings(raw: unknown, base: AiSettings = DEFAULT_AI_SETTINGS): AiSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    freeOnly: r.freeOnly === undefined ? base.freeOnly : r.freeOnly === true,
+    dailyCap: (CAP_CHOICES as readonly number[]).includes(r.dailyCap as number) ? (r.dailyCap as number) : base.dailyCap,
+  };
+}
+
+export async function loadSettings(db: D1Database): Promise<AiSettings> {
+  const row = await db.prepare("SELECT value FROM ui_settings WHERE key = ?").bind(USAGE_KEY).first<{ value: string }>();
+  try {
+    return normalizeSettings(row ? JSON.parse(row.value) : {});
+  } catch {
+    return { ...DEFAULT_AI_SETTINGS };
+  }
+}
+
+export async function saveSettings(db: D1Database, st: AiSettings): Promise<void> {
+  await db
+    .prepare("INSERT INTO ui_settings (key, value, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at")
+    .bind(USAGE_KEY, JSON.stringify(st))
+    .run();
+}
+
+/** 用日期（UTC）當帳；跟 Cloudflare 的每日重置同一時刻，所以隔天自然歸零、自動恢復。 */
+export const usageDay = (now = new Date()): string => now.toISOString().slice(0, 10);
+
+export type AiWork = { minutes?: number; inputTokens?: number; outputTokens?: number };
+
+/** 估算這次工作會用掉幾點；外部模型（沒有點數）回傳 null。 */
+export function estimateNeurons(modelId: string, w: AiWork): number | null {
+  const n = AI_MODELS.find((m) => m.id === modelId)?.neurons;
+  if (!n) return null;
+  return Math.ceil((w.minutes ?? 0) * (n.perMinute ?? 0) + ((w.inputTokens ?? 0) / 1e6) * (n.perMInput ?? 0) + ((w.outputTokens ?? 0) / 1e6) * (n.perMOutput ?? 0));
+}
+
+export async function todayUsed(db: D1Database, day = usageDay()): Promise<number> {
+  const row = await db.prepare("SELECT neurons FROM ai_usage WHERE day = ?").bind(day).first<{ neurons: number }>();
+  return row?.neurons ?? 0;
+}
+
+export class AiStopped extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * 呼叫 AI 之前先「預扣」額度：今天已用＋這次估算超過上限就拒絕（等隔天 UTC 00:00＝台灣 08:00 自動恢復）。
+ * 開啟「只用免費額度」時，沒有免費額度的外部模型一律拒絕。
+ * 預扣是一個原子操作，同時多個工作也不會一起衝過上限。
+ */
+export async function reserveAi(db: D1Database, modelId: string, w: AiWork, now = new Date()): Promise<number> {
+  const st = await loadSettings(db);
+  const est = estimateNeurons(modelId, w);
+  if (est === null) {
+    if (st.freeOnly) throw new AiStopped("目前設定為「只用免費額度」，這個模型沒有免費額度，已停止");
+    return 0;
+  }
+  const day = usageDay(now);
+  await db.prepare("INSERT OR IGNORE INTO ai_usage (day, neurons) VALUES (?, 0)").bind(day).run();
+  const r = await db.prepare("UPDATE ai_usage SET neurons = neurons + ? WHERE day = ? AND neurons + ? <= ?").bind(est, day, est, st.dailyCap).run();
+  if (r.meta?.changes === 0) throw new AiStopped("今天的 AI 免費額度已用完（自動停止），明天早上 8:00（台灣時間）自動恢復");
+  return est;
+}
+
+/** 工作失敗時把預扣的點數還回去（Cloudflare 沒扣的話）。 */
+export async function refundAi(db: D1Database, est: number, now = new Date()): Promise<void> {
+  if (est > 0) await db.prepare("UPDATE ai_usage SET neurons = MAX(0, neurons - ?) WHERE day = ?").bind(est, usageDay(now)).run();
+}
+
+/** Cloudflare 回報「今天免費額度已用完」（錯誤 3036）時，把今天直接記成用完，之後的工作在隔天前都不會再送出。 */
+export async function markExhausted(db: D1Database, now = new Date()): Promise<void> {
+  const day = usageDay(now);
+  await db.prepare("INSERT OR IGNORE INTO ai_usage (day, neurons) VALUES (?, 0)").bind(day).run();
+  await db.prepare("UPDATE ai_usage SET neurons = MAX(neurons, ?) WHERE day = ?").bind(FREE_DAILY_NEURONS, day).run();
+}
+
+export async function usageSummary(db: D1Database, now = new Date()) {
+  const st = await loadSettings(db);
+  const used = await todayUsed(db, usageDay(now));
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  return { ...st, day: usageDay(now), used: Math.round(used), freeDaily: FREE_DAILY_NEURONS, stopped: used >= st.dailyCap, resumesAt: next.toISOString(), capChoices: CAP_CHOICES };
 }

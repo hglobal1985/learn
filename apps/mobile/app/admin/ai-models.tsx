@@ -10,7 +10,8 @@ import { AppText, Card, EmptyState, ErrorView, LoadingView, NoticeBox, Screen, S
 type Kind = "speech" | "text" | "embedding";
 type Model = { id: string; name: string; vendor: string; kind: Kind; cost: string; costLevel: "低" | "中" | "高"; strengths: string; bestFor: string; needsKey: boolean };
 type Job = { key: string; label: string; desc: string; kind: Kind; default: string };
-type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string> };
+type Usage = { freeOnly: boolean; dailyCap: number; day: string; used: number; freeDaily: number; stopped: boolean; resumesAt: string; capChoices: number[] };
+type Data = { jobs: Job[]; models: Model[]; selection: Record<string, string>; usage: Usage };
 const KIND_LABEL: Record<Kind, string> = { speech: "語音轉文字", text: "文字整理", embedding: "語意搜尋" };
 const COLS = [
   { label: "模型", w: 150 },
@@ -27,6 +28,7 @@ export default function AiModelsScreen() {
   const isSuper = !!member?.titles.includes("超級管理員");
   const { data, error, loading, reload } = useApi<Data>(isSuper ? "/admin/ai-models" : null);
   const [sel, setSel] = useState<Record<string, string> | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "danger"; text: string } | null>(null);
   if (!isSuper)
     return (
@@ -35,6 +37,19 @@ export default function AiModelsScreen() {
       </Screen>
     );
   const current = sel ?? data?.selection ?? {};
+  const u = usage ?? data?.usage;
+  const saveSettings = async (settings: Partial<Pick<Usage, "freeOnly" | "dailyCap">>, ok: string) => {
+    setMsg(null);
+    try {
+      const r = await api<Data>("PUT", "/admin/ai-models", { settings });
+      setUsage(r.usage);
+      setSel(r.selection);
+      setMsg({ tone: "success", text: ok });
+    } catch (e) {
+      setMsg({ tone: "danger", text: (e as Error).message });
+    }
+  };
+  const resumeText = u ? `明天早上 8:00（台灣時間）自動恢復` : "";
   const choose = async (job: Job, id: string) => {
     if (current[job.key] === id) return;
     const before = current;
@@ -43,6 +58,7 @@ export default function AiModelsScreen() {
     try {
       const r = await api<Data>("PUT", "/admin/ai-models", { selection: { [job.key]: id } });
       setSel(r.selection);
+      setUsage(r.usage);
       const m = r.models.find((x) => x.id === id);
       setMsg({ tone: "success", text: `「${job.label}」已改用 ${m?.name ?? id}` });
     } catch (e) {
@@ -61,6 +77,50 @@ export default function AiModelsScreen() {
       {loading && !data ? <LoadingView /> : null}
       {data ? (
         <>
+          {u ? (
+            <Section title="今日 AI 用量">
+              <Card>
+                <AppText variant="headline">
+                  {u.used.toLocaleString()} ／ {u.dailyCap.toLocaleString()} 點{u.stopped ? "　已自動停止" : ""}
+                </AppText>
+                <View style={{ height: 10, borderRadius: 5, backgroundColor: c.border, overflow: "hidden" }}>
+                  <View style={{ height: 10, width: `${Math.min(100, (u.used / u.dailyCap) * 100)}%`, backgroundColor: u.stopped ? c.danger : c.accent }} />
+                </View>
+                <AppText variant="caption" tone="muted">
+                  Cloudflare 每天免費 {u.freeDaily.toLocaleString()} 點，用到上限就自動停止所有 AI 工作，{resumeText}。
+                </AppText>
+                <AppText variant="callout">每天最多用（留一點緩衝，避免超過免費額度）</AppText>
+                <View style={styles.chips}>
+                  {u.capChoices.map((n) => {
+                    const on = u.dailyCap === n;
+                    return (
+                      <Pressable key={n} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ dailyCap: n }, `每天上限改為 ${n.toLocaleString()} 點`))} style={[styles.chip, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                        <AppText variant="callout" style={{ fontWeight: on ? "700" : "400" }}>
+                          {n.toLocaleString()}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <AppText variant="callout">只用免費額度</AppText>
+                <View style={styles.chips}>
+                  {([true, false] as const).map((v) => {
+                    const on = u.freeOnly === v;
+                    return (
+                      <Pressable key={String(v)} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => (on ? undefined : saveSettings({ freeOnly: v }, v ? "已改為只用免費額度" : "已允許使用付費模型"))} style={[styles.chip, { flex: 1, borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                        <AppText variant="callout" style={{ fontWeight: on ? "700" : "400" }}>
+                          {v ? "開（建議）" : "關"}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <AppText variant="caption" tone="muted">
+                  開啟時，Claude 這類沒有免費額度的模型不能選用。用量是程式自己依模型換算的估計值，正確數字請看 Cloudflare 後台的 Workers AI 頁面。
+                </AppText>
+              </Card>
+            </Section>
+          ) : null}
           {data.jobs.map((job) => (
             <Section key={job.key} title={job.label}>
               <Card>
@@ -71,8 +131,9 @@ export default function AiModelsScreen() {
                   .filter((m) => m.kind === job.kind)
                   .map((m) => {
                     const on = current[job.key] === m.id;
+                    const locked = !!u?.freeOnly && m.needsKey;
                     return (
-                      <Pressable key={m.id} accessibilityRole="radio" accessibilityState={{ selected: on }} onPress={() => choose(job, m.id)} style={[styles.opt, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
+                      <Pressable key={m.id} accessibilityRole="radio" accessibilityState={{ selected: on, disabled: locked }} disabled={locked} onPress={() => choose(job, m.id)} style={[styles.opt, { opacity: locked ? 0.45 : 1 }, { borderColor: on ? c.accent : c.border, backgroundColor: on ? c.accentSoft : "transparent" }]}>
                         <Ionicons name={on ? "radio-button-on" : "radio-button-off"} size={24} color={on ? c.accent : c.textMuted} />
                         <View style={{ flex: 1 }}>
                           <AppText variant="headline">
@@ -80,7 +141,7 @@ export default function AiModelsScreen() {
                             {m.id === job.default ? "（預設）" : ""}
                           </AppText>
                           <AppText variant="caption" tone="muted">
-                            花費：{m.costLevel}　{m.needsKey ? "需另外申請金鑰" : "不需金鑰"}
+                            花費：{m.costLevel}　{m.needsKey ? (locked ? "沒有免費額度（已鎖定）" : "需另外申請金鑰") : "不需金鑰"}
                           </AppText>
                         </View>
                       </Pressable>
@@ -126,5 +187,7 @@ export default function AiModelsScreen() {
 const styles = StyleSheet.create({
   opt: { flexDirection: "row", alignItems: "center", gap: space.md, minHeight: minTouch + 8, paddingHorizontal: space.md, paddingVertical: space.sm, borderWidth: 1, borderRadius: radius.md },
   row: { flexDirection: "row" },
+  chips: { flexDirection: "row", gap: space.sm },
+  chip: { minHeight: minTouch, paddingHorizontal: space.lg, alignItems: "center", justifyContent: "center", borderWidth: 1, borderRadius: radius.md },
   cell: { padding: space.sm },
 });
