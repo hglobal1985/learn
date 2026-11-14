@@ -60,8 +60,9 @@ function Spark({ cx, cy, size, delay, period, still }: { cx: number; cy: number;
  * 獎銜徽章圖＋星星般閃爍的閃光球：在徽章圖案上，幾顆小星形光球此起彼落地亮起、旋轉、淡出。
  * 系統開啟「減少動態效果」時只顯示靜態徽章。
  */
-export function RankBadge({ url, label }: { url: string; label?: string | null }) {
+export function RankBadge({ url, label, layoutHeight = BADGE_SIZE }: { url: string; label?: string | null; layoutHeight?: number }) {
   const [failed, setFailed] = useState(false);
+  const breathe = useRef(new Animated.Value(0)).current;
   const [still, setStill] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -70,15 +71,31 @@ export function RankBadge({ url, label }: { url: string; label?: string | null }
       alive = false;
     };
   }, []);
+  // 呼吸：整個徽章（含閃光球）慢慢放大再縮回，只改大小、不變半透明；不影響版面（transform 不佔位）。
+  useEffect(() => {
+    if (still || failed) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [still, failed, breathe]);
+  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
   // 由網址的檔名編號（?f=13-Diamond → 13）找出圖案範圍，閃光球就落在圖案上
   const [top, bottom] = useMemo(() => ART_Y[/f=(\d\d)-/.exec(url)?.[1] ?? ""] ?? [0, 720], [url]);
   if (failed) return null;
   const y0 = (top / 720) * BADGE_SIZE;
   const artH = ((bottom - top) / 720) * BADGE_SIZE;
   return (
-    <View style={styles.box} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>
-      <Image source={{ uri: resolveUrl(url) }} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
-      {!still ? SPARKS.map((s, i) => <Spark key={i} cx={s.x * BADGE_W} cy={y0 + s.y * artH} size={s.size * K} delay={s.delay} period={s.period} still={still} />) : null}
+    // 外層只佔 layoutHeight 的高度（會員抬頭傳 48＝頭像高度，所以徽章放大後上下間距不變）；徽章本體 108 高置中，上下溢出到外面。
+    <View style={{ width: BADGE_W, height: layoutHeight, overflow: "visible", alignItems: "center", justifyContent: "center" }} accessible accessibilityRole="image" accessibilityLabel={label ? `${label}徽章` : "獎銜徽章"}>
+      <Animated.View style={[styles.box, { position: "absolute", top: (layoutHeight - BADGE_SIZE) / 2, transform: [{ scale }] }]}>
+        <Image source={{ uri: resolveUrl(url) }} resizeMode="contain" onError={() => setFailed(true)} style={styles.img} accessibilityIgnoresInvertColors />
+        {!still ? SPARKS.map((s, i) => <Spark key={i} cx={s.x * BADGE_W} cy={y0 + s.y * artH} size={s.size * K} delay={s.delay} period={s.period} still={still} />) : null}
+      </Animated.View>
     </View>
   );
 }
