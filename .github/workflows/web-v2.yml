@@ -1,0 +1,29 @@
+name: Web V2 isolated checks
+on:
+  pull_request:
+    paths: ['apps/web-v2/**', '.github/workflows/web-v2.yml']
+  push:
+    branches: [main, 'feat/web-v2-mobile']
+    paths: ['apps/web-v2/**', '.github/workflows/web-v2.yml']
+permissions:
+  contents: read
+jobs:
+  web-v2:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web-v2/package-lock.json
+      - run: npm ci --workspaces=false --ignore-scripts --no-audit --no-fund
+      - run: npm run test --workspaces=false
+      - run: npm run build --workspaces=false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-v2-preview
+          path: apps/web-v2/dist
